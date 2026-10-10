@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { importRefused } from "../test/lint";
 import { readRepoFile, readWorkflow, repoFiles } from "../test/repo";
 import { tierPattern, tiers } from "../test/tiers";
 
@@ -71,6 +72,15 @@ describe("fitness: the gate is offline (test-tiers.md)", () => {
     expect(guarded).toEqual(
       tiers.filter((tier) => tier.inGate).map((tier) => tier.name),
     );
+  });
+
+  it("opens a browser only through the helper that keeps it offline", async () => {
+    expect(
+      await importRefused(
+        'import { chromium } from "playwright";\nexport { chromium };\n',
+        "web/signed-out.browser.ts",
+      ),
+    ).toBe(true);
   });
 });
 

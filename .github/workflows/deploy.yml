@@ -35,6 +35,9 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
+      # Build before the job holds any AWS credentials.
+      - name: Build the page
+        run: npm run build
       - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -50,11 +53,9 @@ jobs:
           GitHubOwnerId=${{ github.repository_owner_id }}
           GitHubRepoId=${{ github.repository_id }}
       - name: Deploy the stack
-        run: npx serverless deploy
+        run: npx --yes serverless@4.43.0 deploy
         env:
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }}
-      - name: Build the page
-        run: npm run build
       - name: Publish the page
         id: page
         run: |

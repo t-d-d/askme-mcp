@@ -29,6 +29,42 @@ const colourLiteral =
   /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/iu;
 const colourDeclaration =
   /(?:^|[;{\s])(?:color|background-color|background|border-(?:[a-z]+-)?color|outline-color|fill|stroke|caret-color|accent-color|text-decoration-color)\s*:\s*([^;}]+)/giu;
+// The CSS named colours, which may hide in a shorthand such as border.
+const namedColours = new Set(
+  (
+    "aliceblue antiquewhite aqua aquamarine azure beige bisque black " +
+    "blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse " +
+    "chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan " +
+    "darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta " +
+    "darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen " +
+    "darkslateblue darkslategray darkslategrey darkturquoise darkviolet " +
+    "deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite " +
+    "forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green " +
+    "greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender " +
+    "lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan " +
+    "lightgoldenrodyellow lightgray lightgreen lightgrey lightpink " +
+    "lightsalmon lightseagreen lightskyblue lightslategray lightslategrey " +
+    "lightsteelblue lightyellow lime limegreen linen magenta maroon " +
+    "mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen " +
+    "mediumslateblue mediumspringgreen mediumturquoise mediumvioletred " +
+    "midnightblue mintcream mistyrose moccasin navajowhite navy oldlace " +
+    "olive olivedrab orange orangered orchid palegoldenrod palegreen " +
+    "paleturquoise palevioletred papayawhip peachpuff peru pink plum " +
+    "powderblue purple rebeccapurple red rosybrown royalblue saddlebrown " +
+    "salmon sandybrown seagreen seashell sienna silver skyblue slateblue " +
+    "slategray slategrey snow springgreen steelblue tan teal thistle tomato " +
+    "turquoise violet wheat white whitesmoke yellow yellowgreen"
+  ).split(" "),
+);
+
+// The words in every declaration's value in a stylesheet, comments removed.
+function valueWords(css: string): string[] {
+  const code = css.replace(/\/\*[\s\S]*?\*\//gu, "");
+  return [...code.matchAll(/:([^;{}]+)/gu)].flatMap((match) =>
+    (match[1] ?? "").toLowerCase().split(/[^a-z]+/u),
+  );
+}
+
 const colourKeyword =
   /^(?:var\(--[a-z0-9-]+\)|currentcolor|transparent|inherit|none)$/iu;
 
@@ -49,6 +85,18 @@ describe("fitness: values come from tokens (styling.md)", () => {
       .map((match) => (match[1] ?? "").trim())
       .filter((value) => !colourKeyword.test(value));
     expect(colours).toEqual([]);
+    if (path.endsWith(".css")) {
+      expect(valueWords(text).filter((word) => namedColours.has(word))).toEqual(
+        [],
+      );
+    }
+  });
+
+  it("finds a named colour hidden in a shorthand", () => {
+    expect(valueWords(".a { border: 1px solid red; }")).toContain("red");
+    expect(valueWords("/* white */ .a { color: var(--ink); }")).not.toContain(
+      "white",
+    );
   });
 
   it("uses only properties the tokens file declares", () => {

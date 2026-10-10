@@ -1,8 +1,8 @@
 import { dirname, join } from "node:path";
-import { ESLint, Linter } from "eslint";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { eslint, importRefused, reported, rulesFor } from "../test/lint";
 import { readRepoFile, repoFiles, root } from "../test/repo";
 
 const strictOptions = [
@@ -18,32 +18,6 @@ const strictOptions = [
 
 const configs = () =>
   repoFiles().filter((path) => /(?:^|\/)tsconfig[^/]*\.json$/u.test(path));
-
-const eslint = new ESLint({ cwd: root });
-
-// The rules lint reports for a piece of code, as if it were in the given file.
-async function reported(code: string, path: string): Promise<string[]> {
-  const results = await eslint.lintText(code, { filePath: join(root, path) });
-  return results.flatMap((result) =>
-    result.messages.map((message) => message.ruleId ?? message.message),
-  );
-}
-
-const severity = z.union([
-  z.literal(0),
-  z.literal(1),
-  z.literal(2),
-  z.literal("off"),
-  z.literal("warn"),
-  z.literal("error"),
-]);
-const ruleEntry = z.union([severity, z.tuple([severity], z.unknown())]);
-const resolvedSchema = z.object({ rules: z.record(z.string(), ruleEntry) });
-
-async function rulesFor(path: string) {
-  const config: unknown = await eslint.calculateConfigForFile(join(root, path));
-  return resolvedSchema.parse(config).rules;
-}
 
 describe("fitness: strict options stay on (types-and-lint.md)", () => {
   it("finds the compiler configurations", () => {
@@ -144,19 +118,6 @@ describe("fitness: no warnings (types-and-lint.md)", () => {
 });
 
 describe("fitness: layers stay apart (types-and-lint.md)", () => {
-  // Applies the import rule lint resolves for a file to a line of code.
-  async function importRefused(code: string, path: string) {
-    const entry = (await rulesFor(path))["no-restricted-imports"];
-    if (entry === undefined) return false;
-    const messages = new Linter().verify(code, {
-      languageOptions: { sourceType: "module" },
-      rules: { "no-restricted-imports": entry },
-    });
-    return messages.some(
-      (message) => message.ruleId === "no-restricted-imports",
-    );
-  }
-
   it("refuses an import of the service from the page", async () => {
     expect(
       await importRefused(
@@ -184,12 +145,12 @@ describe("fitness: layers stay apart (types-and-lint.md)", () => {
     ).toBe(false);
   });
 
-  it("is enforced by lint on the real files", async () => {
+  it("lets the service use the web streams API from Node", async () => {
     expect(
-      await reported(
-        'import { handler } from "../../service/src/api";\nexport { handler };\n',
-        "web/src/main.tsx",
+      await importRefused(
+        'import { ReadableStream } from "node:stream/web";\nexport { ReadableStream };\n',
+        "service/src/index.ts",
       ),
-    ).toContain("no-restricted-imports");
+    ).toBe(false);
   });
 });

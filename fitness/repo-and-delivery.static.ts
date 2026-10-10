@@ -12,6 +12,11 @@ import {
 } from "../test/repo";
 
 const deployPath = ".github/workflows/deploy.yml";
+
+const scripts = () =>
+  z
+    .object({ scripts: z.record(z.string(), z.string()) })
+    .parse(JSON.parse(readRepoFile("package.json"))).scripts;
 const gatePath = ".github/workflows/gate.yml";
 
 const allJobs = (): [string, Job][] =>
@@ -26,6 +31,9 @@ const runsIn = (job: Job | undefined): string[] =>
   (job?.steps ?? []).flatMap((step) =>
     step.run === undefined ? [] : [step.run],
   );
+
+const deployCommand = /\b(?:serverless|sls)\b|\baws\s/u;
+const namesAStage = /\b(?:serverless|sls)\b[^\n]*\s(?:--stage|-s)\b/u;
 
 const asksForCloudToken = (
   permissions: Job["permissions"] | undefined,
@@ -60,9 +68,7 @@ describe("fitness: deploys come only from main (repo-and-delivery.md)", () => {
   it("runs no deploy command outside the deploy job", () => {
     const deploying = allJobs()
       .filter(([id]) => id !== `${deployPath} deploy`)
-      .filter(([, job]) =>
-        runsIn(job).some((run) => /\b(?:serverless|sls|aws)\s/u.test(run)),
-      )
+      .filter(([, job]) => runsIn(job).some((run) => deployCommand.test(run)))
       .map(([id]) => id);
     expect(deploying).toEqual([]);
   });
@@ -117,6 +123,24 @@ describe("fitness: only main can assume the deploy role (repo-and-delivery.md)",
   });
 });
 
+describe("fitness: main is protected (repo-and-delivery.md)", () => {
+  // The check itself reads the repo's settings, so it is a live test
+  // (fitness/main-protected.live.ts). This keeps it scheduled.
+  it("checks branch protection every day, signed out", () => {
+    const path = ".github/workflows/main-protected.yml";
+    const workflow = readWorkflow(path);
+    expect(triggers(workflow)).toContain("schedule");
+    expect(runsIn(workflow.jobs["main-protected"])).toEqual([
+      "npm ci",
+      "npm run check:main",
+    ]);
+    expect(readRepoFile(path)).not.toMatch(/\bsecrets\b|GITHUB_TOKEN/u);
+    expect(scripts()["check:main"]).toBe(
+      "vitest run --project live fitness/main-protected.live.ts",
+    );
+  });
+});
+
 describe("fitness: one environment (repo-and-delivery.md)", () => {
   it("names exactly one stage in the deployment definition", () => {
     const definition = readYaml(
@@ -130,9 +154,16 @@ describe("fitness: one environment (repo-and-delivery.md)", () => {
     expect(definition.stages).toBeUndefined();
   });
 
+  it("spots a stage passed to the framework, and nothing else", () => {
+    expect(namesAStage.test("npx serverless deploy --stage dev")).toBe(true);
+    expect(namesAStage.test("sls deploy -s dev")).toBe(true);
+    expect(namesAStage.test("curl -s https://example.com")).toBe(false);
+    expect(namesAStage.test("ln -s a b")).toBe(false);
+  });
+
   it("deploys no other stage", () => {
     const naming = workflowPaths().filter((path) =>
-      /--stage\b|\s-s\s/u.test(readRepoFile(path)),
+      namesAStage.test(readRepoFile(path)),
     );
     expect(naming).toEqual([]);
   });
@@ -166,10 +197,7 @@ describe("fitness: one gate (repo-and-delivery.md)", () => {
   });
 
   it("chains format, lint, types and tests in that command", () => {
-    const { scripts } = z
-      .object({ scripts: z.record(z.string(), z.string()) })
-      .parse(JSON.parse(readRepoFile("package.json")));
-    expect(scripts.gate).toBe(
+    expect(scripts().gate).toBe(
       "npm run format && npm run lint && npm run types && npm run test",
     );
   });

@@ -13,7 +13,13 @@ export async function openPage(
   url: string,
   viewport: { width: number; height: number },
 ): Promise<OpenPage> {
-  const browser = await chromium.launch();
+  // Chromium cannot resolve any outside host, in case a request gets past
+  // the route below.
+  const browser = await chromium.launch({
+    args: [
+      "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
+    ],
+  });
   const context = await browser.newContext({ viewport });
   const refused: string[] = [];
   await context.route("**/*", async (route) => {

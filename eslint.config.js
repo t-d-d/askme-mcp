@@ -15,7 +15,7 @@ const layer = (other) => ({
     {
       patterns: [
         {
-          regex: `(^|/)${other}(/|$)`,
+          regex: `^(\\.\\./)+${other}(/|$)`,
           message: `The page and the service never import each other. Shared types go in their own module.`,
         },
       ],
@@ -82,6 +82,25 @@ export default defineConfig(
   {
     files: ["service/**/*.ts"],
     rules: layer("web"),
+  },
+  {
+    // The gate is offline (ADR 9). test/browser.ts refuses every request
+    // that is not to loopback, so browser tests open pages only through it.
+    files: ["**/*.browser.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "playwright",
+              message:
+                "Open pages with openPage from test/browser.ts, which keeps the browser offline.",
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     files: ["**/*.js"],

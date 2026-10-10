@@ -2,7 +2,8 @@
 # to main (ADR 4). The deploy role and its OIDC provider are a separate stack,
 # infra/github-oidc.cfn.yml, which the deploy job applies first.
 service: askme
-frameworkVersion: "4"
+# Patch releases only, as Serverless advises. A minor upgrade is a pull request.
+frameworkVersion: "~4.43.0"
 
 provider:
   name: aws

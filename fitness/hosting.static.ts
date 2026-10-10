@@ -25,6 +25,20 @@ const definitionSchema = z.object({
 
 const definition = () => readYaml("serverless.yml", definitionSchema);
 
+// The paths at which the page itself would be served.
+const pagePaths = new Set(["/", "/{proxy+}", "*"]);
+
+// The paths an HTTP event answers, written as "GET /" or as { path: "/" }.
+function eventPaths(event: Record<string, unknown>): string[] {
+  return Object.values(event).flatMap((value) => {
+    if (typeof value === "string") return [value.split(" ").at(-1) ?? value];
+    if (typeof value === "object" && value !== null && "path" in value) {
+      return typeof value.path === "string" ? [value.path] : [];
+    }
+    return [];
+  });
+}
+
 const behaviourSchema = z.object({
   TargetOriginId: z.string(),
   LambdaFunctionAssociations: z.unknown().optional(),
@@ -70,11 +84,19 @@ describe("fitness: the page is static (hosting.md)", () => {
     const servingRoot = Object.entries(definition().functions ?? {})
       .filter(([, fn]) =>
         (fn.events ?? []).some((event) =>
-          /"path":"\/(?:\{proxy\+\})?"|"\*"/u.test(JSON.stringify(event)),
+          eventPaths(event).some((path) => pagePaths.has(path)),
         ),
       )
       .map(([name]) => name);
     expect(servingRoot).toEqual([]);
+  });
+
+  it("reads an event's path in either form", () => {
+    expect(eventPaths({ httpApi: "GET /" })).toEqual(["/"]);
+    expect(eventPaths({ httpApi: "*" })).toEqual(["*"]);
+    expect(eventPaths({ http: { method: "get", path: "/{proxy+}" } })).toEqual([
+      "/{proxy+}",
+    ]);
   });
 });
 
