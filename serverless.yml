@@ -1,0 +1,90 @@
+# The deployment definition (ADR 5). One stage, deployed only by a green merge
+# to main (ADR 4). The deploy role and its OIDC provider are a separate stack,
+# infra/github-oidc.cfn.yml, which the deploy job applies first.
+service: askme
+frameworkVersion: "4"
+
+provider:
+  name: aws
+  region: ${env:AWS_REGION}
+  stage: prod
+
+resources:
+  Resources:
+    # The page's static files. Private: only the distribution below reads it.
+    WebBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+        OwnershipControls:
+          Rules:
+            - ObjectOwnership: BucketOwnerEnforced
+
+    WebOriginAccessControl:
+      Type: AWS::CloudFront::OriginAccessControl
+      Properties:
+        OriginAccessControlConfig:
+          Name: askme-web
+          OriginAccessControlOriginType: s3
+          SigningBehavior: always
+          SigningProtocol: sigv4
+
+    WebDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Enabled: true
+          Comment: askme page
+          DefaultRootObject: index.html
+          HttpVersion: http2and3
+          IPV6Enabled: true
+          PriceClass: PriceClass_100
+          Origins:
+            - Id: web
+              DomainName: !GetAtt WebBucket.RegionalDomainName
+              OriginAccessControlId: !GetAtt WebOriginAccessControl.Id
+              S3OriginConfig:
+                OriginAccessIdentity: ""
+          DefaultCacheBehavior:
+            TargetOriginId: web
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            # AWS managed policies: CachingOptimized and SecurityHeadersPolicy.
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03
+
+    WebBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref WebBucket
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Sid: TheDistributionReadsThePage
+              Effect: Allow
+              Principal:
+                Service: cloudfront.amazonaws.com
+              Action: s3:GetObject
+              Resource: !Join ["", [!GetAtt WebBucket.Arn, "/*"]]
+              Condition:
+                StringEquals:
+                  AWS:SourceArn: !Join
+                    - ""
+                    - - "arn:"
+                      - !Ref AWS::Partition
+                      - ":cloudfront::"
+                      - !Ref AWS::AccountId
+                      - ":distribution/"
+                      - !Ref WebDistribution
+
+  Outputs:
+    WebBucketName:
+      Value: !Ref WebBucket
+    WebUrl:
+      Value: !Join ["", ["https://", !GetAtt WebDistribution.DomainName]]

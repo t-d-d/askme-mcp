@@ -1,0 +1,59 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: var(--content-width);
+  margin: 0 auto;
+}
+
+/* The header keeps the height of a control at its right, as in the mockup. */
+.header {
+  box-sizing: content-box;
+  display: flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: var(--space-18) var(--space-text) var(--space-6);
+}
+
+.wordmark {
+  font-size: var(--size-wordmark);
+  line-height: var(--leading-wordmark);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wordmark);
+}
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-14);
+  padding: var(--space-18) var(--space-text) 0;
+}
+
+.headline {
+  max-width: var(--measure);
+  margin: 0;
+  font-size: var(--size-headline);
+  line-height: var(--leading-headline);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-headline);
+}
+
+.about {
+  max-width: var(--measure);
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--size-row);
+  line-height: var(--leading-body);
+}
+
+.footer {
+  margin-top: auto;
+}
+
+.notice {
+  max-width: var(--measure);
+  margin: var(--space-26) var(--space-text) var(--space-14);
+  color: var(--text-3);
+  font-size: var(--size-meta-small);
+  line-height: var(--leading-note);
+}

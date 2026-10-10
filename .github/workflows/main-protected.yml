@@ -1,0 +1,23 @@
+# Branch protection lives in the repo's settings, where no pull request can see
+# it (repo-and-delivery.md). This checks it every day, signed out.
+name: main is protected
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  main-protected:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run check:main
