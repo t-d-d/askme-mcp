@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>askme connect your agents</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&display=swap">
+<style>
+body{margin:0}
+a{color:#16211B}a:hover{color:#16211B}
+</style>
+<style>html{background:#D5DBD4}body{display:flex;justify-content:center}</style>
+</head>
+<body>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #EEF1EC; color: #16211B; font-family: 'Bricolage Grotesque', sans-serif; display: flex; flex-direction: column; overflow: hidden">
+
+<header style="display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 0 8px">
+<a href="list.html" style="min-height: 44px; padding: 0 12px 0 4px; display: flex; align-items: center; gap: 2px; color: #16211B; text-decoration: none; font-size: 16px; font-weight: 600"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>All asks</a>
+<a href="rules.html" style="min-height: 44px; padding: 0 8px; display: flex; align-items: center; color: #16211B; font-size: 16px; font-weight: 600">Rules</a>
+</header>
+
+<div style="padding: 8px 20px 0; display: flex; flex-direction: column; gap: 10px">
+<h1 style="margin: 0; font-size: 31px; line-height: 1.1; font-weight: 650; letter-spacing: -0.025em">Connect your agents</h1>
+<p style="margin: 0; font-size: 15px; line-height: 1.4; color: #3D4943">Any agent that can use an MCP server can post asks here. You approve each connection once, by signing in. There are no keys to copy.</p>
+<label for="address" style="margin-top: 6px; font-size: 15px; font-weight: 600; color: #55625B">Server address</label>
+<div style="display: flex; gap: 8px">
+<input id="address" readonly value="https://[your-askme-address]/mcp" style="flex-grow: 1; min-width: 0; height: 52px; box-sizing: border-box; padding: 0 12px; border: 1.5px solid #C3CCC3; border-radius: 18px; background: #FFFFFF; color: #16211B; font-family: inherit; font-size: 14px">
+<button style="height: 52px; padding: 0 18px; border: 0; border-radius: 18px; background: #16211B; color: #EEF1EC; font-family: inherit; font-size: 16px; font-weight: 650; cursor: pointer">Copy</button>
+</div>
+</div>
+
+<section style="padding: 22px 20px 0; display: flex; flex-direction: column; gap: 6px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.01em">Claude</h2>
+<ol style="margin: 0; padding-left: 22px; font-size: 16px; line-height: 1.5; color: #16211B">
+<li>In Claude, add a custom connector.</li>
+<li>Paste the server address.</li>
+<li>Approve askme when Claude asks you to sign in.</li>
+</ol>
+</section>
+
+<section style="padding: 20px 20px 0; display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.01em">Cursor</h2>
+<a href="https://cursor.com" style="min-height: 52px; box-sizing: border-box; padding: 0 20px; border-radius: 18px; background: #DDE2DC; color: #16211B; text-decoration: none; font-size: 17px; font-weight: 650; display: flex; align-items: center; justify-content: space-between">Add askme to Cursor<span style="font-size: 13px; font-weight: 500; color: #3D4943">cursor.com</span></a>
+</section>
+
+<section style="padding: 20px 20px 0; display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.01em">No agent yet?</h2>
+<p style="margin: 0; font-size: 15px; line-height: 1.4; color: #3D4943">Send a few sample asks from three parts of a life, and watch your rules sort them.</p>
+<button style="min-height: 52px; padding: 0 20px; border: 0; border-radius: 18px; background: #DDE2DC; color: #16211B; font-family: inherit; font-size: 17px; font-weight: 650; text-align: left; cursor: pointer">Send sample asks</button>
+</section>
+
+<p style="margin: auto 20px 14px; font-size: 13px; line-height: 1.4; color: #55625B">Demo. Every ask is deleted after a month, and sign-ups stop at 100 accounts.</p>
+
+</div>
+</body>
+</html>
