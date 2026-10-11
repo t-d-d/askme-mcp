@@ -71,36 +71,48 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
     await browser?.close();
   });
 
-  it("leaves the signed-out page for the account's list", async () => {
-    const shown = page
-      .getByRole("article")
-      .or(page.getByRole("heading", { name: "Your agents can ask here." }))
-      .or(page.getByRole("heading", { name: "All clear." }));
-    const notConnected = page.getByText("Not connected. Trying again.");
-    await shown
-      .first()
-      .waitFor({ timeout: stepMs })
-      .catch(async (error: unknown) => {
-        throw new Error(
-          `The signed-in page showed no list, no new-account card and no All clear. It showed: ${await screen(page)}`,
-          { cause: error },
+  it(
+    "leaves the signed-out page for the account's list",
+    async () => {
+      const shown = page
+        .getByRole("article")
+        .or(page.getByRole("heading", { name: "Your agents can ask here." }))
+        .or(page.getByRole("heading", { name: "All clear." }));
+      const notConnected = page.getByText("Not connected. Trying again.");
+      await shown
+        .first()
+        .waitFor({ timeout: stepMs })
+        .catch(
+          failsWith(
+            page,
+            "The signed-in page showed no list, no new-account card and no All clear.",
+          ),
         );
-      });
-    expect(await notConnected.isVisible()).toBe(false);
-    expect(await page.getByRole("button", { name: "Sign in" }).count()).toBe(0);
-  });
+      expect(await notConnected.isVisible()).toBe(false);
+      expect(await page.getByRole("button", { name: "Sign in" }).count()).toBe(
+        0,
+      );
+    },
+    2 * stepMs,
+  );
 
-  it("shows the MCP address the deploy published under Connect your agents", async () => {
-    await page.getByRole("link", { name: "Connect agents" }).click();
-    await expect
-      .poll(() => page.getByLabel("Server address").inputValue(), {
-        timeout: stepMs,
-      })
-      .toBe(mcpUrl());
-    expect(
-      await page.getByText("Not connected. Trying again.").isVisible(),
-    ).toBe(false);
-  });
+  it(
+    "shows the MCP address the deploy published under Connect your agents",
+    async () => {
+      await page
+        .getByRole("link", { name: "Connect agents" })
+        .click({ timeout: stepMs });
+      await expect
+        .poll(() => page.getByLabel("Server address").inputValue(), {
+          timeout: stepMs,
+        })
+        .toBe(mcpUrl());
+      expect(
+        await page.getByText("Not connected. Trying again.").isVisible(),
+      ).toBe(false);
+    },
+    3 * stepMs,
+  );
 });
 
 // Signs in from the signed-out page, on Clerk's screens, and lands back on
@@ -163,12 +175,7 @@ async function giveAddress(
           new URL(response.url()).pathname === path,
         { timeout: stepMs },
       )
-      .catch(async (error: unknown) => {
-        throw new Error(
-          `Clerk's screen sent nothing after Continue. It showed: ${await screen(page)}`,
-          { cause: error },
-        );
-      }),
+      .catch(failsWith(page, "Clerk's screen sent nothing after Continue.")),
     page.getByRole("button", { name: "Continue", exact: true }).click(),
   ]);
   return answer;
@@ -181,12 +188,9 @@ async function giveCode(page: Page): Promise<void> {
     .getByRole("textbox", { name: "verification code" })
     .or(page.locator('input[autocomplete="one-time-code"]'))
     .first();
-  await field.waitFor({ timeout: stepMs }).catch(async (error: unknown) => {
-    throw new Error(
-      `Clerk's screen asked for no code. It showed: ${await screen(page)}`,
-      { cause: error },
-    );
-  });
+  await field
+    .waitFor({ timeout: stepMs })
+    .catch(failsWith(page, "Clerk's screen asked for no code."));
   await field.click();
   await page.keyboard.type(testCode);
 }
@@ -195,12 +199,7 @@ async function landBack(page: Page): Promise<void> {
   const { origin } = new URL(pageUrl());
   await page
     .waitForURL((url) => url.origin === origin, { timeout: stepMs })
-    .catch(async (error: unknown) => {
-      throw new Error(
-        `Clerk did not send the page back after the code. It showed: ${await screen(page)}`,
-        { cause: error },
-      );
-    });
+    .catch(failsWith(page, "Clerk did not send the page back after the code."));
 }
 
 // What Clerk said, and what to do when its bot check said it.
@@ -209,6 +208,15 @@ function said(error: z.infer<typeof refusal>["errors"][number] | undefined) {
   return /captcha|\bbot\b/iu.test(what)
     ? `${what}. Its bot check blocked the run, and getting past it needs Clerk's secret key or a dashboard step, which ADR 16 leaves to a new decision.`
     : what;
+}
+
+// A step's failure, told with what the page showed at the time.
+function failsWith(page: Page, message: string) {
+  return async (error: unknown): Promise<never> => {
+    throw new Error(`${message} It showed: ${await screen(page)}`, {
+      cause: error,
+    });
+  };
 }
 
 // The words on the page, for a failure's message.

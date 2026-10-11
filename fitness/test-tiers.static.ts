@@ -278,9 +278,16 @@ describe("fitness: the live tier signs in as one account (test-tiers.md)", () =>
           'import "@scope/package";',
           'const a = "someone+clerk_test@example.com";',
           "// Write to help@example.org.",
+          'const b = "x+clerk_test" + "@example.net";',
+          "const c = `${user}@example.io`;",
         ].join("\n"),
       ),
-    ).toEqual(["someone+clerk_test@example.com", "help@example.org"]);
+    ).toEqual([
+      "someone+clerk_test@example.com",
+      "help@example.org",
+      "@example.net",
+      "@example.io",
+    ]);
   });
 
   it("holds one address, carrying +clerk_test, in one live file", () => {
@@ -305,6 +312,7 @@ describe("fitness: the live tier signs in as one account (test-tiers.md)", () =>
       "await box.fill(account);",
       "expect(signUp.email).toBe(account);",
       "send(first, account, last);",
+      'send(")", account);',
     ].join("\n");
     expect(builtFrom(usedAsItIs, "account")).toEqual([]);
     const builtOn = [
@@ -315,6 +323,10 @@ describe("fitness: the live tier signs in as one account (test-tiers.md)", () =>
       'await box.fill([account, "x"].join(""));',
       "await box.fill(sure ? account : other);",
       "await sign({ email: account });",
+      "const wrapped = (account);",
+      'await box.fill("x" + (account));',
+      'await box.fill([")", account].join(""));',
+      'import { account as renamed } from "./account";',
     ];
     expect(builtFrom(builtOn.join("\n"), "account")).toEqual(builtOn);
   });
@@ -352,9 +364,10 @@ describe("fitness: the live tier makes no other account (test-tiers.md)", () => 
           "await page.keyboard.type(code, { delay: 50 });",
           'await box.pressSequentially(`${"x"}@example.com`);',
           "await page.keyboard.insertText(other);",
+          'await box.fill("a,b");',
         ].join("\n"),
       ),
-    ).toEqual(["account", "code", '`${"x"}@example.com`', "other"]);
+    ).toEqual(["account", "code", '`${"x"}@example.com`', "other", '"a,b"']);
   });
 
   it("types nothing on Clerk's screens but the address and the code 424242", () => {
