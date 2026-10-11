@@ -13,14 +13,24 @@ export function readRepoFile(path: string): string {
 }
 
 // Every file in the repo that git tracks or would track, so nothing ignored.
+// The list is read from git once per test file.
+let files: string[] | undefined;
 export function repoFiles(): string[] {
-  const out = execFileSync(
+  files ??= execFileSync(
     "git",
     ["ls-files", "--cached", "--others", "--exclude-standard"],
     { cwd: root, encoding: "utf8" },
-  );
-  return out.split("\n").filter((path) => path !== "");
+  )
+    .split("\n")
+    .filter((path) => path !== "");
+  return [...files];
 }
+
+// The scripts in package.json, by name.
+export const scripts = (): Record<string, string> =>
+  z
+    .object({ scripts: z.record(z.string(), z.string()) })
+    .parse(JSON.parse(readRepoFile("package.json"))).scripts;
 
 // CloudFormation's short-form functions, such as !Ref and !GetAtt, read as
 // their long form, so a template parses to plain data.
@@ -136,6 +146,10 @@ export const runsIn = (job: Job | undefined): string[] =>
   (job?.steps ?? []).flatMap((step) =>
     step.run === undefined ? [] : [step.run],
   );
+
+export const gatePath = ".github/workflows/gate.yml";
+export const deployPath = ".github/workflows/deploy.yml";
+export const conformancePath = ".github/workflows/conformance.yml";
 
 export const workflowPaths = (): string[] =>
   repoFiles().filter((path) =>

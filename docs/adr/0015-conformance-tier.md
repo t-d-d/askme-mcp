@@ -24,7 +24,7 @@ Checks of setup held outside the repo form their own tier, which runs every day.
 1. **The tier.** A file named `*.conformance.ts` is a conformance test. The tier has its own Vitest project.
 2. **What it checks.** That a setting outside the repo still matches what the project records: a decision record, a constraint file or an issue's closing comment. It does not check the deployed site. That stays the live tier's job.
 3. **When it runs.** Every day, from the `conformance` workflow, which the owner can also start by hand. Not in the gate, and not on deploy.
-4. **What it may touch.** A service's settings, read only. A check may sign in, with the narrowest read-only credential the service offers: the workflow's own GitHub token, an AWS role that can only read, or a read-only key kept as a repo secret that only the conformance workflow uses. Never the deploy role, and never a credential that can write. A new credential needs no new decision, only that scope.
+4. **What it may touch.** A service's settings, read only. A check may sign in, with the narrowest read-only credential the service offers: the workflow's own GitHub token, an AWS role that can only read, or a read-only key kept as a repo secret that only the conformance workflow uses. Never the deploy role, and never a credential that can write. A new credential needs no new decision, as long as it keeps to that scope.
 5. **The live tier narrows** to the deployed site, signed out and read only, as CLAUDE.md already describes it.
 
 ## Alternatives considered
@@ -57,6 +57,7 @@ All three run in CI and block a merge.
 
 - There is a sixth tier to know about.
 - A failed daily run reaches the owner only as GitHub's email about a failed workflow, not through the alarms of [ADR 8](0008-alerting.md).
-- CI can hold more stored secrets, one read-only key for each service checked. Whether a key can only read is checked by hand when it is made. No test can see a key's scope.
+- CI can hold more stored secrets, one read-only key for each service checked. Whether a third-party key can only read is checked by hand when it is made, because no test can see its scope. An AWS role lives in the repo's own templates, where a static test can check it.
+- A repo secret reaches a workflow run from any pushed branch, before the gate. The workflows' own checks keep a key in the conformance workflow on main, but not on a branch someone pushes.
 - The GitHub check reads signed out, which shares a rate limit for each address. It can move to the workflow's own token if that starts to fail.
 - GitHub pauses the scheduled workflows of a public repo after 60 days with no activity. Once the demo goes quiet, the daily check stops without warning.

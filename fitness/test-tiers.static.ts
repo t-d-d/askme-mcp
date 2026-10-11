@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { importRefused } from "../test/lint";
 import {
+  conformancePath,
+  deployPath,
+  gatePath,
   readRepoFile,
   readWorkflow,
   repoFiles,
   runsIn,
+  scripts,
   triggers,
 } from "../test/repo";
 import { tierPattern, tiers } from "../test/tiers";
@@ -27,11 +31,6 @@ const projectsSchema = z.object({
 const projects = async () =>
   projectsSchema.parse((await import("../vitest.config")).default).test
     .projects;
-
-const scripts = () =>
-  z
-    .object({ scripts: z.record(z.string(), z.string()) })
-    .parse(JSON.parse(readRepoFile("package.json"))).scripts;
 
 describe("fitness: tiers stay apart (test-tiers.md)", () => {
   it("gives each tier its own suffix, and none is bare .ts", () => {
@@ -99,29 +98,29 @@ describe("fitness: the gate is offline (test-tiers.md)", () => {
 
 describe("fitness: the gate holds no secrets (test-tiers.md)", () => {
   it("declares no secret in the gate's workflow", () => {
-    expect(readRepoFile(".github/workflows/gate.yml")).not.toMatch(
-      /\bsecrets\b/u,
-    );
+    // GitHub reads context names in any case.
+    expect(readRepoFile(gatePath)).not.toMatch(/\bsecrets\b/iu);
   });
 
   it("passes no secret to the gate when deploying", () => {
-    const { jobs } = readWorkflow(".github/workflows/deploy.yml");
+    const { jobs } = readWorkflow(deployPath);
     expect(jobs.gate?.secrets).toBeUndefined();
   });
 
   it("gives the gate read-only access", () => {
-    expect(readWorkflow(".github/workflows/gate.yml").permissions).toEqual({
+    expect(readWorkflow(gatePath).permissions).toEqual({
       contents: "read",
     });
   });
 });
 
 describe("fitness: conformance runs daily and only reads (test-tiers.md)", () => {
-  const path = ".github/workflows/conformance.yml";
+  const path = conformancePath;
   it("runs the conformance tier every day, and nothing else", () => {
     const workflow = readWorkflow(path);
     expect(workflow.name).toBe("conformance");
     expect(triggers(workflow)).toContain("schedule");
+    expect(Object.keys(workflow.jobs)).toEqual(["conformance"]);
     expect(runsIn(workflow.jobs.conformance)).toEqual([
       "npm ci",
       "npm run conformance",
@@ -131,7 +130,9 @@ describe("fitness: conformance runs daily and only reads (test-tiers.md)", () =>
   it("only reads, and cannot reach the deploy role", () => {
     const workflow = readWorkflow(path);
     expect(workflow.permissions).toEqual({ contents: "read" });
-    expect(workflow.jobs.conformance?.permissions).toBeUndefined();
-    expect(readRepoFile(path)).not.toMatch(/AWS_DEPLOY_ROLE_ARN|id-token/u);
+    for (const [id, job] of Object.entries(workflow.jobs)) {
+      expect(job.permissions, id).toBeUndefined();
+    }
+    expect(readRepoFile(path)).not.toMatch(/AWS_DEPLOY_ROLE_ARN|id-token/iu);
   });
 });

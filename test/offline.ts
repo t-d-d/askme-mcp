@@ -25,9 +25,12 @@ function targetHost(args: unknown[]): string | undefined {
   const [first, second] = args;
   // net.connect() hands its arguments over already normalised, as an array.
   const options: unknown = Array.isArray(first) ? first[0] : first;
+  // Node reads a string as a port when it is a number, and as a path otherwise.
+  const isPort =
+    typeof options === "number" ||
+    (typeof options === "string" && Number(options) >= 0);
+  if (isPort) return typeof second === "string" ? second : "localhost";
   if (typeof options === "string") return undefined;
-  if (typeof options === "number")
-    return typeof second === "string" ? second : "localhost";
   if (typeof options !== "object" || options === null) return "localhost";
   if ("path" in options && typeof options.path === "string") return undefined;
   return "host" in options && typeof options.host === "string"

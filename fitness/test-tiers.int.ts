@@ -1,4 +1,4 @@
-import { connect, createServer, type AddressInfo } from "node:net";
+import { connect, createServer, Socket, type AddressInfo } from "node:net";
 import { once } from "node:events";
 import { describe, expect, it } from "vitest";
 
@@ -8,6 +8,19 @@ describe("fitness: the gate is offline (test-tiers.md)", () => {
       /The gate is offline/u,
     );
     expect(() => connect(443, "example.com")).toThrow(/The gate is offline/u);
+  });
+
+  it("refuses a port written as a string, which Node does not read as a path", () => {
+    const socket = new Socket();
+    // Typed overloads take no string port, but Node accepts one.
+    const connectTo = socket.connect.bind(socket);
+    try {
+      expect(() => {
+        Reflect.apply(connectTo, undefined, ["443", "example.com"]);
+      }).toThrow(/The gate is offline/u);
+    } finally {
+      socket.destroy();
+    }
   });
 
   it("refuses a fetch from the internet", async () => {

@@ -44,6 +44,6 @@ of it can only be read signed in.
   write: it only reads, and the deploy role can change everything.
 
 Judgment: A signed-in path from a real agent to a card is checked by
-hand after a deploy, and a conformance key's scope when it is made.
-No test can see either.
+hand after a deploy, and a third-party conformance key's scope when it
+is made. No test can see either.
 History: [ADR 9](../adr/0009-test-pyramid.md), [ADR 15](../adr/0015-conformance-tier.md)

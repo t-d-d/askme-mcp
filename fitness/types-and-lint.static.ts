@@ -1,9 +1,8 @@
 import { dirname, join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 import { eslint, importRefused, reported, rulesFor } from "../test/lint";
-import { readRepoFile, repoFiles, root } from "../test/repo";
+import { repoFiles, root, scripts } from "../test/repo";
 
 const strictOptions = [
   "strict",
@@ -94,10 +93,7 @@ describe("fitness: the escapes stay closed (types-and-lint.md)", () => {
 
 describe("fitness: no warnings (types-and-lint.md)", () => {
   it("lets lint pass only with no warnings", () => {
-    const { scripts } = z
-      .object({ scripts: z.record(z.string(), z.string()) })
-      .parse(JSON.parse(readRepoFile("package.json")));
-    expect(scripts.lint).toBe("eslint . --max-warnings 0");
+    expect(scripts().lint).toBe("eslint . --max-warnings 0");
   });
 
   it("sets no rule to warn for any file lint reads", async () => {

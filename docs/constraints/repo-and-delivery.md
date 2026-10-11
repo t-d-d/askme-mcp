@@ -18,7 +18,7 @@ environment doubles sign-in and connection setup.
 - A pull request merges only with that gate green.
 - A green merge to main deploys. Nothing else deploys.
 - There is one environment. No staging, no per-PR previews.
-- CI reaches the cloud with short-lived credentials only. Its stored
+- CI reaches AWS with short-lived credentials only. Its stored
   secrets are the Serverless Framework access key, which only the
   deploy uses, and read-only keys that only the conformance workflow
   uses (test-tiers.md).

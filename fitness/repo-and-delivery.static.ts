@@ -1,24 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  conformancePath,
+  deployPath,
+  gatePath,
   readRepoFile,
   readWorkflow,
   readYaml,
   repoFiles,
   runsIn,
+  scripts,
   templateSchema,
   triggers,
   workflowPaths,
   type Job,
 } from "../test/repo";
-
-const deployPath = ".github/workflows/deploy.yml";
-
-const scripts = () =>
-  z
-    .object({ scripts: z.record(z.string(), z.string()) })
-    .parse(JSON.parse(readRepoFile("package.json"))).scripts;
-const gatePath = ".github/workflows/gate.yml";
 
 const allJobs = (): [string, Job][] =>
   workflowPaths().flatMap((path) =>
@@ -212,22 +208,49 @@ describe("fitness: no long-lived keys (repo-and-delivery.md)", () => {
     expect(found).toEqual([]);
   });
 
-  // Besides the Serverless key, only the conformance workflow may hold
-  // secrets: read-only keys for the services it checks (test-tiers.md).
-  it("gives the workflows no secret but the Serverless key, and read keys to conformance", () => {
+  // Only the deploy workflow holds the Serverless key, and only the
+  // conformance workflow holds any other secret: read-only keys for the
+  // services it checks (test-tiers.md).
+  // The workflow as parsed, so comments drop out and every key stays.
+  const parsed = (path: string) =>
+    readYaml(path, z.looseObject({ jobs: z.record(z.string(), z.unknown()) }));
+  // GitHub reads context and secret names in any case.
+  const named = (text: string) =>
+    [...text.matchAll(/\bsecrets\.([A-Za-z0-9_]+)/giu)].map((match) =>
+      (match[1] ?? "").toUpperCase(),
+    );
+
+  it("spots a secret written in any case, and one hidden by name", () => {
+    expect(named("${{ Secrets.serverless_access_key }}")).toEqual([
+      "SERVERLESS_ACCESS_KEY",
+    ]);
+    expect("${{ SECRETS['KEY'] }}".match(/\bsecrets\b/giu)).toHaveLength(1);
+  });
+
+  it("gives the Serverless key only to deploy, and other secrets only to conformance", () => {
     for (const path of workflowPaths()) {
-      const text = readRepoFile(path);
-      const secrets = [...text.matchAll(/\bsecrets\.([A-Za-z0-9_]+)/gu)].map(
-        (match) => match[1],
+      const workflow = parsed(path);
+      const text = JSON.stringify(workflow);
+      const secrets = named(text);
+      // Every use names one secret, so none hides as secrets['NAME'],
+      // toJSON(secrets) or secrets: inherit.
+      expect(text.match(/\bsecrets\b/giu) ?? [], path).toHaveLength(
+        secrets.length,
       );
-      if (path === ".github/workflows/conformance.yml") {
-        expect(secrets, path).not.toContain("SERVERLESS_ACCESS_KEY");
-      } else {
+      if (path === deployPath) {
         expect(new Set(secrets), path).toEqual(
           new Set(secrets.length === 0 ? [] : ["SERVERLESS_ACCESS_KEY"]),
         );
+        // Only the deploy job holds it, not the gate or the live check.
+        const outside = { ...workflow, jobs: { ...workflow.jobs } };
+        delete outside.jobs.deploy;
+        expect(JSON.stringify(outside), path).not.toMatch(/\bsecrets\b/iu);
+      } else if (path === conformancePath) {
+        expect(secrets, path).not.toContain("SERVERLESS_ACCESS_KEY");
+      } else {
+        expect(secrets, path).toEqual([]);
       }
-      expect(text, path).not.toMatch(
+      expect(readRepoFile(path), path).not.toMatch(
         /aws-access-key-id|aws-secret-access-key|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN/u,
       );
     }
