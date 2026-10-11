@@ -1,0 +1,27 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding-bottom: var(--space-26);
+}
+
+.note {
+  margin: var(--space-6) var(--space-text) 0;
+  color: var(--text-3);
+  font-size: var(--size-note);
+  line-height: var(--leading-note);
+}
+
+/* At desktop width the content is at most 1080px wide, and centred. */
+@media (min-width: 768px) {
+  .screen {
+    width: 90%;
+    max-width: var(--content-width);
+    margin: 0 auto;
+  }
+
+  .note {
+    margin-right: 0;
+    margin-left: 0;
+  }
+}

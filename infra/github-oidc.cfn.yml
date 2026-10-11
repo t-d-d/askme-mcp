@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  askme bootstrap: the GitHub Actions OIDC provider and the role a push to
+  main assumes to deploy. Stack askme, in us-east-1.
+
+# The owner applied this stack once by hand (issue #1), because nothing can
+# assume a role that does not exist yet. From then on the deploy job applies
+# it on every green merge to main, so main stays the only way in.
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Default: t-d-d
+    Description: The repo's owner, by name.
+
+  GitHubOwnerId:
+    Type: String
+    AllowedPattern: "[0-9]+"
+    Description: The repo owner's numeric id, github.repository_owner_id on any run.
+
+  GitHubRepo:
+    Type: String
+    Default: askme-mcp
+    Description: The repo's name, without the owner.
+
+  GitHubRepoId:
+    Type: String
+    AllowedPattern: "[0-9]+"
+    Description: The repo's numeric id, github.repository_id on any run.
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      # IAM checks GitHub's certificate against its own trusted roots and
+      # ignores this value, but the API still accepts one.
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: askme-github-deploy
+      Description: Assumed by GitHub Actions on a push to main, to deploy askme
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !GetAtt GitHubOidcProvider.Arn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # The repo was created after 15 July 2026, so GitHub signs its
+                # tokens with the subject that names the owner and repo by id
+                # as well as by name. A new repo that takes either name later
+                # gets a different id, so it cannot assume this role.
+                #
+                # Only a job on main matches. A job that names a GitHub
+                # environment gets an environment subject instead and is
+                # refused, so the deploy job sets none.
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepo}@${GitHubRepoId}:ref:refs/heads/main"
+      # Administrator access, by the owner's decision in issue #1. The account
+      # holds askme and nothing else. What guards it is the trust above, the
+      # owner being the only one who merges, and the gate a merge needs.
+      #
+      # A policy scoped to askme's resources was dropped: the role must create
+      # roles for its functions, and a role that can do that can make itself
+      # an administrator. A Deny list was dropped for the same reason: an
+      # administrator can remove it, or create a role without it.
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AdministratorAccess"
+
+Outputs:
+  DeployRoleArn:
+    Description: The value of the repo variable AWS_DEPLOY_ROLE_ARN
+    Value: !GetAtt DeployRole.Arn

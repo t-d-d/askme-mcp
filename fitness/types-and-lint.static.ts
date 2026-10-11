@@ -1,0 +1,226 @@
+import { dirname, join } from "node:path";
+import ts from "typescript";
+import { beforeAll, describe, expect, it } from "vitest";
+import type { ToolDefinition } from "../service/src/tools";
+import { eslint, importRefused, reported, rulesFor } from "../test/lint";
+import { repoFiles, root, scripts } from "../test/repo";
+
+const strictOptions = [
+  "strict",
+  "noUncheckedIndexedAccess",
+  "exactOptionalPropertyTypes",
+  "noImplicitOverride",
+  "noImplicitReturns",
+  "noFallthroughCasesInSwitch",
+  "noUnusedLocals",
+  "noUnusedParameters",
+] as const;
+
+const configs = () =>
+  repoFiles().filter((path) => /(?:^|\/)tsconfig[^/]*\.json$/u.test(path));
+
+describe("fitness: strict options stay on (types-and-lint.md)", () => {
+  it("finds the compiler configurations", () => {
+    expect(configs()).toEqual(
+      expect.arrayContaining([
+        "tsconfig.base.json",
+        "tsconfig.json",
+        "web/tsconfig.json",
+      ]),
+    );
+  });
+
+  it.each(configs())("keeps every strictness option on in %s", (path) => {
+    const file = join(root, path);
+    const read = ts.readConfigFile(file, (name) => ts.sys.readFile(name));
+    const config: unknown = read.config;
+    const { options } = ts.parseJsonConfigFileContent(
+      config,
+      ts.sys,
+      dirname(file),
+    );
+    for (const name of strictOptions) expect(options[name], name).toBe(true);
+    expect(options.allowUnreachableCode).toBe(false);
+    expect(options.allowUnusedLabels).toBe(false);
+  });
+});
+
+describe("fitness: the escapes stay closed (types-and-lint.md)", () => {
+  const escapes = [
+    ["any", "export const a: any = 1;\n", "@typescript-eslint/no-explicit-any"],
+    [
+      "a non-null assertion",
+      "export const b = [1].at(0)!;\n",
+      "@typescript-eslint/no-non-null-assertion",
+    ],
+    [
+      "@ts-ignore",
+      "// @ts-ignore\nexport const c: number = 1;\n",
+      "@typescript-eslint/ban-ts-comment",
+    ],
+    [
+      "@ts-expect-error with no reason",
+      '// @ts-expect-error\nexport const d: number = "1";\n',
+      "@typescript-eslint/ban-ts-comment",
+    ],
+    [
+      "an unsafe assertion",
+      "const e: unknown = 1;\nexport const f = e as number;\n",
+      "@typescript-eslint/no-unsafe-type-assertion",
+    ],
+    [
+      "a rule switched off with no reason",
+      "// eslint-disable-next-line @typescript-eslint/no-explicit-any\nexport const g: any = 1;\n",
+      "@eslint-community/eslint-comments/require-description",
+    ],
+    [
+      "a rule switched off for the whole file",
+      "/* eslint-disable @typescript-eslint/no-explicit-any -- a reason */\nexport const h: any = 1;\n",
+      "@eslint-community/eslint-comments/disable-enable-pair",
+    ],
+    [
+      "a floating promise",
+      "async function i(): Promise<void> {}\nexport function j(): void {\n  i();\n}\n",
+      "@typescript-eslint/no-floating-promises",
+    ],
+  ] as const;
+
+  const paths = ["web/src/main.tsx", "test/repo.ts"];
+
+  // The first type-aware lint of a file loads its project, which takes longer
+  // than one test may.
+  beforeAll(async () => {
+    for (const path of paths) await reported("", path);
+  }, 60_000);
+
+  for (const path of paths) {
+    it.each(escapes)(`refuses %s in ${path}`, async (_, code, rule) => {
+      expect(await reported(code, path)).toContain(rule);
+    });
+  }
+});
+
+describe("fitness: no warnings (types-and-lint.md)", () => {
+  it("lets lint pass only with no warnings", () => {
+    expect(scripts().lint).toBe("eslint . --max-warnings 0");
+  });
+
+  it("sets no rule to warn for any file lint reads", async () => {
+    const linted = [];
+    for (const path of repoFiles().filter((file) => /\.[jt]sx?$/u.test(file))) {
+      if (!(await eslint.isPathIgnored(join(root, path)))) linted.push(path);
+    }
+    expect(linted).toContain("web/src/main.tsx");
+    const warned = [];
+    for (const path of linted) {
+      for (const [rule, entry] of Object.entries(await rulesFor(path))) {
+        const level = Array.isArray(entry) ? entry[0] : entry;
+        if (level === 1 || level === "warn") warned.push(`${rule} in ${path}`);
+      }
+    }
+    expect(warned).toEqual([]);
+  });
+});
+
+describe("fitness: boundaries are parsed (types-and-lint.md)", () => {
+  const servicePath = "service/src/ask.ts";
+
+  it.each([
+    [
+      "process.env.CLERK_ISSUER",
+      "export const a = process.env.CLERK_ISSUER;\n",
+    ],
+    ["process.env destructured", "export const { env } = process;\n"],
+  ])("refuses reading %s outside the environment module", async (_, code) => {
+    expect(await reported(code, servicePath)).toContain(
+      "no-restricted-properties",
+    );
+  });
+
+  it.each(["node:process", "process"])(
+    "refuses importing env from %s outside the environment module",
+    async (name) => {
+      expect(
+        await importRefused(
+          `import { env } from "${name}";\nexport const a = env.CLERK_ISSUER;\n`,
+          servicePath,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    [
+      "an event's body",
+      "export const b = (event: { body: string }) => event.body;\n",
+    ],
+    [
+      "a body destructured",
+      "export const c = (event: { body: string }) => {\n  const { body } = event;\n  return body;\n};\n",
+    ],
+    [
+      "a request read as JSON",
+      "export const d = (request: Request) => request.json();\n",
+    ],
+    [
+      "a request read as text",
+      "export const e = (request: Request) => request.text();\n",
+    ],
+  ])("refuses reading %s outside the HTTP module", async (_, code) => {
+    expect(await reported(code, servicePath)).toContain("no-restricted-syntax");
+  });
+
+  it("refuses registering a tool around the wrapper that carries its schemas", async () => {
+    const code =
+      'import { McpServer } from "@modelcontextprotocol/server";\n' +
+      'export const f = (server: McpServer) => server.registerTool("x", {}, () => ({ content: [] }));\n';
+    expect(await reported(code, servicePath)).toContain(
+      "no-restricted-properties",
+    );
+  });
+
+  it("cannot define a tool without its schemas", () => {
+    const run = () => Promise.resolve({ id: "x", status: "posted" as const });
+    // @ts-expect-error -- a tool with no input or output schema does not compile
+    const missing: ToolDefinition = { name: "x", description: "x", run };
+    expect(missing.name).toBe("x");
+  });
+});
+
+describe("fitness: layers stay apart (types-and-lint.md)", () => {
+  it("refuses an import of the service from the page", async () => {
+    expect(
+      await importRefused(
+        'import { handler } from "../../service/src/api";\nexport { handler };\n',
+        "web/src/main.tsx",
+      ),
+    ).toBe(true);
+  });
+
+  it("refuses an import of the page from the service", async () => {
+    expect(
+      await importRefused(
+        'import { App } from "../../web/src/App";\nexport { App };\n',
+        "service/src/index.ts",
+      ),
+    ).toBe(true);
+  });
+
+  it("lets the page import its own modules", async () => {
+    expect(
+      await importRefused(
+        'import { palette } from "./palette";\nexport { palette };\n',
+        "web/src/main.tsx",
+      ),
+    ).toBe(false);
+  });
+
+  it("lets the service use the web streams API from Node", async () => {
+    expect(
+      await importRefused(
+        'import { ReadableStream } from "node:stream/web";\nexport { ReadableStream };\n',
+        "service/src/index.ts",
+      ),
+    ).toBe(false);
+  });
+});

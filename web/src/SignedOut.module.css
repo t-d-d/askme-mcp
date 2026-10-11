@@ -1,0 +1,84 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: var(--content-width);
+  margin: 0 auto;
+}
+
+.header {
+  box-sizing: content-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--tap);
+  padding: var(--space-18) var(--space-text) var(--space-6);
+}
+
+.signIn {
+  min-height: var(--tap);
+  padding: 0 var(--space-4);
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: var(--weight-label);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* A screen with no hashtag in play uses ink. */
+.signUp {
+  align-self: flex-start;
+  min-height: var(--button-height);
+  padding: 0 var(--space-26);
+  border: 0;
+  border-radius: var(--radius-button);
+  background: var(--ink);
+  color: var(--ground);
+  font-size: var(--size-row);
+  font-weight: var(--weight-strong);
+  cursor: pointer;
+}
+
+.wordmark {
+  font-size: var(--size-wordmark);
+  line-height: var(--leading-wordmark);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wordmark);
+}
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-14);
+  padding: var(--space-18) var(--space-text) 0;
+}
+
+.headline {
+  max-width: var(--measure);
+  margin: 0;
+  font-size: var(--size-headline);
+  line-height: var(--leading-headline);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-headline);
+}
+
+.about {
+  max-width: var(--measure);
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--size-row);
+  line-height: var(--leading-body);
+}
+
+.footer {
+  margin-top: auto;
+}
+
+.notice {
+  max-width: var(--measure);
+  margin: var(--space-26) var(--space-text) var(--space-14);
+  color: var(--text-3);
+  font-size: var(--size-meta-small);
+  line-height: var(--leading-note);
+}

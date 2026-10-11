@@ -1,0 +1,71 @@
+# ADR 16: After each deploy, one test account signs in on the live page
+
+Decided on 11 October 2026: after each deploy, the live tier signs in on the deployed page as one fixed test account, through Clerk's own screens, and checks that the signed-in page loads the account's list. The account's address is written in the repo, and the check makes the account itself the first time. It uses the test mode of Clerk's development instance, so it needs no stored secret, no inbox and nothing set up by hand. It writes nothing to askme's store. This replaces rule 8 of [ADR 9](0009-test-pyramid.md), and the words "signed out" in point 6 of [ADR 15](0015-conformance-tier.md). The rest of that point stands, so the live tier still checks the deployed site and nothing else.
+
+Parent PRD: [PRD](../../PRD.md)
+
+## Constraint-set delta
+
+- Edits [`docs/constraints/test-tiers.md`](../constraints/test-tiers.md): the live tier may sign in, as the one test account and no other, with no stored secret, and may sign up with that one address when the account is missing. It still writes nothing to askme's store. Three new "Do not" entries: no account made with any other address, no account deleted, and no Clerk secret key in the live tier.
+
+## Context
+
+- **Part of the gap ADR 9 named is now in the way.** ADR 9 said that nothing automated proves a signed-in path from a real agent to a card, and called it the largest gap. The page's own sign-in is part of that path. Issue #5 put the page's sign-in, its API behind CloudFront and the check of session tokens live at once. Two of its risks only show signed in: Clerk's session tokens passing the service's check, and Clerk sending a person back to the page after signing in. The third, CloudFront passing the `Authorization` header on, shows signed out only in part: a made-up token refused as invalid, not as missing, proves the header arrived, but not that a real one passes.
+- **ADR 9 weighed a different option.** It rejected end-to-end tests as the main safety net, in place of the gate: with one environment they can only run after a merge, they need secrets, and they are slow. That still holds. One signed-in check after each deploy, beside the gate, was never weighed. The rule that the live tier signs in to nothing came with that decision, without a case of its own.
+- **Clerk's development instance has a test mode, on by default.** An address with the `+clerk_test` subaddress is verified with the code 424242, and Clerk sends it no email. A sign-in needs no inbox and no key.
+- **Anyone can sign up.** The instance's access mode is Open, as the PRD wants. The owner checked it in Clerk's dashboard on 11 October 2026. With test mode on, anyone can make an account with a made-up `+clerk_test` address. So a test account needs no invitation and no setup by hand, and keeping its address hidden would protect very little.
+- **A real agent's connection is a different matter.** The agent's own app, such as Claude, runs the OAuth sign-in, and a person approves Clerk's consent screen. No test can do that, so it stays a hand check ([ADR 6](0006-identity.md)).
+- **ADR 15 already lets CI sign in,** for conformance checks. That tier reads settings every day and does not check the site, so a check of the deployed page belongs in the live tier.
+
+## Decision
+
+One fixed test account signs in on the live page after each deploy, and the check passes only when the signed-in page loads its list.
+
+1. **The account.** There is one, with a fixed address that carries `+clerk_test`. It is one of the instance's 100. No test makes an account with any other address, and none deletes one.
+2. **Its address.** One constant, in one file of the live tier, written in the repo. Every live check that signs in uses that constant as it is. It is not a secret: anyone who reads it can sign in as the test account, so the account holds nothing that matters.
+3. **How it signs in.** As a person does. It presses Sign in on the live page, gives the address and the code on Clerk's own screens, and lands back on the page. If Clerk says the account does not exist, the check signs up with the same address and code, and then goes on. Any other answer from Clerk fails the check, and it does not sign up. So the first run makes the account, and a run after someone deletes it makes it again. That covers the trip to Clerk and back, which a helper that signs in from inside the page would skip.
+4. **What it checks.** The page leaves the signed-out screen and shows one of its signed-in screens: the list, the new-account card or All clear, and not "Not connected. Trying again." Connect your agents then shows the MCP address the deploy published. Any of the three screens passes, so asks left in the account do not fail the check.
+5. **What it touches.** The live site, signed in as the test account. It writes nothing to askme's store. It posts no ask and changes no rule. Its only writes are Clerk's. Clerk records each sign-in, and the run that signs up makes the account.
+6. **What it holds.** No stored secret. If Clerk's bot protection ever blocks the automated sign-in or sign-up, getting past it takes a testing token, and that needs the instance's secret key. The key can change anything in the instance, so using it here is a new decision.
+7. **Where it runs.** In the deploy workflow's live job, after the deploy, with the rest of the tier. A failure fails the run. As with every live check, the merge has already happened.
+8. **Agents.** A real agent connecting stays a hand check, with the checklist in [ADR 6](0006-identity.md).
+
+## Alternatives considered
+
+1. **Keep the live tier signed out,** as ADR 9 set it. Rejected: the risks that matter most now sit on the signed-in path, and a hand check depends on someone running it after every deploy.
+2. **Sign in with `@clerk/testing`'s server-side helper,** which creates a sign-in token through Clerk's Backend API and skips verification. It is the least code, and Clerk's docs lead with it. Rejected: it needs the instance's secret key, which can create and delete users and change every setting. An implementer is likely to reach for this, so it becomes a "Do not" in the constraint file.
+3. **Sign in from inside the page,** with Clerk's client-side helper and an email code, skipping Clerk's screens. It breaks less often when Clerk changes its screens. Rejected as the first choice: it skips the trip to Clerk and back, one of the three things the check is for. If Clerk's screens prove too brittle, this is the fallback. It needs a new decision, because the constraint file says the sign-in goes through Clerk's own screens, and because `@clerk/testing`'s helpers may need a testing token, which needs the secret key.
+4. **Make a fresh account on each run.** It would prove sign-up every time. Rejected: the instance holds 100 accounts, and a run on every deploy would use them up. Deleting them again from a test needs the secret key. An implementer is likely to reach for this, so it becomes a "Do not" in the constraint file.
+5. **The owner makes the account in the dashboard, and the address lives in a repo variable,** masked in the run's log. It keeps the address off public pages. Rejected: with the access mode Open and test mode on, anyone can make a test account of their own, so hiding ours only stops a stranger tampering with it. A stranger could post junk to it, which the check ignores, or delete it, which the next run undoes. A stranger could also lock it, for example by adding a second factor in Clerk's account screen, and then only the owner can clear it. Hiding the address makes that less likely, but costs a step by hand and a masked log on every run.
+6. **A second environment, with its own Clerk instance, for signed-in tests.** Rejected in [ADR 4](0004-repo-and-delivery.md): it doubles the identity and connection setup.
+7. **Run it in the conformance tier, every day.** Rejected: it checks the deployed site, which changes on a deploy, and [ADR 15](0015-conformance-tier.md) keeps the tiers apart by what they touch.
+
+## Fitness functions
+
+The first two run in the gate and block a merge. The third is the live check itself, after each deploy. They land with the issue that builds the check.
+
+| Check | What it asserts | What it catches |
+| --- | --- | --- |
+| The live tier signs in as one account | The test account's address is one constant, carrying `+clerk_test`, in one file. No other address appears in a `*.live.ts` file or any file one imports, and none is built from the constant. The deploy workflow's live job names no secret. | A second account, or a secret, reaching the live tier. |
+| The live tier makes no other account | Every address that a `*.live.ts` file, or a file one imports, types on Clerk's screens is the constant itself. | A run that uses up the 100 accounts. |
+| A person can sign in on the live page | After each deploy, the test account signs in through Clerk's screens and the signed-in page loads its list and the MCP address. | CloudFront dropping the token, a session token the service refuses, or Clerk not sending the person back. |
+
+## Consequences
+
+**Easier**
+
+- A deploy that breaks sign-in, or the signed-in page's first read, shows within minutes of the merge.
+- The three risks left open by issue #5 are checked on every deploy.
+- A signed-in round trip on the page no longer rests on a hand check. The hand checklist keeps real agents connecting.
+
+**Harder, and accepted**
+
+- The check depends on Clerk's test mode staying on, and on the access mode staying Open. Test mode also lets anyone sign up with a made-up `+clerk_test` address and no real email, so a script could fill the 100 accounts. That was already true. Now a check depends on it too. A production instance would need a new decision.
+- Anyone who reads the repo can sign in as the test account, and could connect an agent to it or delete it. It holds nothing that matters. Asks posted to it do not fail the check, and the next run makes a deleted account again, as long as the instance has room. If all 100 accounts are taken, or a stranger locks the account, the check stays red until the owner clears it in Clerk's dashboard.
+- The first run, and any run after the account is deleted, also proves that sign-up works. The others prove sign-in only.
+- Clerk's bot protection guards sign-up. If it blocks the run that makes the account, the check cannot go on without a step in the dashboard or a new decision. The same holds if Clerk's sign-up screen ever asks for more than the address and the code.
+- A new account starts with example rules (PRD). If the service ever stores them when an account first loads, the run that makes the account would write to askme's store, which this record does not allow. The issue that builds that has to keep it apart from this check, or ask for a new decision.
+- The check drives Clerk's screens, which Clerk can change. A change there fails the check with nothing wrong in askme.
+- It runs after the merge, as every live check does. It finds a broken deploy, and it does not prevent one. Rolling back is reverting the pull request ([ADR 4](0004-repo-and-delivery.md)).
+- Each run leaves a session in Clerk until it expires, because the page has no way to sign out yet (#28).
+- Once "Send sample asks" exists (#17), pressing it would prove a card reaches the page. It writes asks, so that needs a new decision.

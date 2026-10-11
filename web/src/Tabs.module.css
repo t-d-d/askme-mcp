@@ -1,0 +1,30 @@
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  padding: 0 var(--space-outside-card);
+}
+
+.tab {
+  min-height: var(--tap);
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: var(--weight-label);
+  cursor: pointer;
+}
+
+/* Selected, Everything is ink with ground-colour text. */
+.everything {
+  padding: var(--space-6) var(--space-12);
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--ground);
+}
+
+@media (min-width: 768px) {
+  .tabs {
+    padding: 0;
+  }
+}

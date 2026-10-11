@@ -1,0 +1,85 @@
+/*
+ * A top card drawn smaller, as the signed-out mockup has it: the summary
+ * takes the wordmark's size, and the buttons the settings height.
+ */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-14);
+  max-width: var(--measure);
+  margin: var(--space-26) var(--space-outside-card) 0;
+  padding: var(--space-20) var(--space-inside-card) var(--space-18);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pill {
+  padding: var(--space-4) var(--space-10);
+  border-radius: var(--radius-pill);
+  background: var(--tag-tint);
+  color: var(--tag-ink);
+  font-size: var(--size-meta);
+  line-height: var(--leading-meta);
+  font-weight: var(--weight-label);
+}
+
+.age {
+  color: var(--text-3);
+  font-size: var(--size-meta);
+  line-height: var(--leading-meta);
+}
+
+.summary {
+  margin: 0;
+  font-size: var(--size-wordmark);
+  line-height: var(--leading-title);
+  font-weight: var(--weight-strong);
+  letter-spacing: var(--tracking-title);
+}
+
+.buttons {
+  display: flex;
+  gap: var(--gap-buttons);
+}
+
+/* A strong fill carries white text, which is the surface colour. */
+.main {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  justify-content: center;
+  min-height: var(--button-height-settings);
+  padding: var(--space-8) var(--space-18);
+  border-radius: var(--radius-button);
+  background: var(--tag-strong);
+  color: var(--surface);
+}
+
+.label {
+  font-size: var(--size-body);
+  line-height: var(--leading-row);
+  font-weight: var(--weight-strong);
+}
+
+.site {
+  font-size: var(--size-meta-small);
+  line-height: var(--leading-meta);
+}
+
+.listen {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--button-height-settings);
+  height: var(--button-height-settings);
+  border-radius: var(--radius-button);
+  background: var(--tag-tint);
+  color: var(--tag-ink);
+}

@@ -1,0 +1,31 @@
+/* The document itself. Each component styles its own parts in a CSS Module. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--size-body);
+  line-height: var(--leading-body);
+}
+
+/* Focus is always visible: a 2px ink outline, 2px away from the control. */
+:focus-visible {
+  outline: var(--focus-width) solid var(--ink);
+  outline-offset: var(--focus-width);
+}
+
+/* Buttons and fields take the page's type, not the browser's. */
+button,
+input {
+  font: inherit;
+}
