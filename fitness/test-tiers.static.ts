@@ -405,11 +405,18 @@ describe("fitness: the live tier makes no other account (test-tiers.md)", () => 
       'await page.evaluate((url) => fetch(url, { method: "POST" }), signUpUrl);',
       'await page.route("**/v1/client/sign_ups", (route) => route.continue({ postData }));',
       'await fetch(new URL(clerkSignUps, frontendApi), { method: "POST" });',
+      'await fetch(frontendApi + picked, { method: "POST" });',
     ];
+    const fromDefault = 'return fetch(url, { method: "PATCH" });';
     const sources = {
       "web/a.live.ts": [
         'import { clerkSignUps } from "../shared/paths";',
         'const signUps = "/v1/client/sign_ups";',
+        'const { picked } = { picked: "/v1/client/sign_ups" };',
+        'async function patchDefault(url = "/v1/client/sign_ups") {',
+        `  ${fromDefault}`,
+        "}",
+        "await patchDefault();",
         "const signUpUrl = frontendApi + signUps;",
         "async function post(url: string) {",
         '  return fetch(url, { method: "POST" });',
@@ -426,7 +433,7 @@ describe("fitness: the live tier makes no other account (test-tiers.md)", () => 
       "shared/paths.ts": 'export const clerkSignUps = "/v1/client/sign_ups";',
     };
     expect(signUpRequests(sources)).toEqual(
-      sends.map((line) => `web/a.live.ts: ${line}`),
+      [fromDefault, ...sends].map((line) => `web/a.live.ts: ${line}`),
     );
   });
 
@@ -446,6 +453,7 @@ describe("fitness: the live tier makes no other account (test-tiers.md)", () => 
       'await page.addInitScript(() => document.execCommand("insertText", false, "x"));',
       "await page.addScriptTag({ content: \"document.forms[0].email.value = 'x'\" });",
       'await page.waitForFunction(() => { document.querySelector("input").value = "x"; return true; });',
+      'await field.evaluate((input) => Object.assign(input, { value: "x" }));',
     ];
     const text = [
       "function setValue(input: HTMLInputElement, value: string) {",

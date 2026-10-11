@@ -173,12 +173,11 @@ const signUpPath = "sign_ups";
 // imports. So waiting for the answer to Clerk's own screens is not sending.
 export function signUpRequests(sources: Record<string, string>): string[] {
   const { files, checker } = readProgram(sources);
-  const sends = sendsIn(checker);
   return files.flatMap((file) =>
     callsIn(file)
       .filter(
         (call) =>
-          sends(call) &&
+          sends(call, checker) &&
           reach(call.arguments, checker).some((node) =>
             names(node, signUpPath),
           ),
@@ -203,35 +202,27 @@ export function valuesSetInPage(sources: Record<string, string>): string[] {
   );
 }
 
-// Whether a call sends a request, worked out once for each call. A call
-// still being worked out counts as not sending, so a function that calls
-// itself ends.
-function sendsIn(
-  checker: ts.TypeChecker,
-): (call: ts.CallExpression) => boolean {
-  const known = new Map<ts.CallExpression, boolean>();
-  const sends = (call: ts.CallExpression): boolean => {
-    const name = calleeName(call.expression);
-    if (name !== undefined && sending.has(name)) return true;
-    const answer = known.get(call);
-    if (answer !== undefined) return answer;
-    known.set(call, false);
-    const runs =
-      name !== undefined && inPage.has(name)
-        ? call.arguments
-        : [call.expression];
-    const result = reach(runs, checker).some((node) =>
-      callsIn(node).some(sends),
-    );
-    known.set(call, result);
-    return result;
-  };
-  return sends;
+// Whether a call sends a request: it is one of the sending calls, or the
+// code it runs makes one. That code is what its callee names or, for a call
+// that runs code in the page, what it is given. Reach follows every name
+// in it however deep, so a sending call anywhere below is among what it
+// finds.
+function sends(call: ts.CallExpression, checker: ts.TypeChecker): boolean {
+  if (isSending(call)) return true;
+  const name = calleeName(call.expression);
+  const runs =
+    name !== undefined && inPage.has(name) ? call.arguments : [call.expression];
+  return reach(runs, checker).some((node) => callsIn(node).some(isSending));
+}
+
+function isSending(call: ts.CallExpression): boolean {
+  return sending.has(calleeName(call.expression) ?? "");
 }
 
 // The nodes given, and what every name in them is declared as, however
-// deep: a constant's value or a function's body. A parameter is not
-// followed.
+// deep: a constant's value, a function's body, the value a destructured
+// name is taken from, and a parameter's default. A parameter is followed
+// no further than its default.
 function reach(nodes: readonly ts.Node[], checker: ts.TypeChecker): ts.Node[] {
   const found = new Set<ts.Node>();
   const follow = (node: ts.Node): void => {
@@ -254,16 +245,29 @@ function declaredAs(name: ts.Identifier, checker: ts.TypeChecker): ts.Node[] {
       ? checker.getAliasedSymbol(symbol)
       : symbol;
   return (target?.declarations ?? []).flatMap((declaration): ts.Node[] => {
-    if (ts.isVariableDeclaration(declaration)) {
-      return declaration.initializer === undefined
-        ? []
-        : [declaration.initializer];
-    }
     if (ts.isFunctionDeclaration(declaration)) {
       return declaration.body === undefined ? [] : [declaration.body];
     }
-    return [];
+    return initializers(declaration);
   });
+}
+
+// The values a declared name is given: a constant's or a parameter's, and
+// for a name destructured from one, its own default and the value of each
+// pattern it sits in.
+function initializers(declaration: ts.Node): ts.Node[] {
+  if (
+    !ts.isVariableDeclaration(declaration) &&
+    !ts.isParameter(declaration) &&
+    !ts.isBindingElement(declaration)
+  ) {
+    return [];
+  }
+  const own =
+    declaration.initializer === undefined ? [] : [declaration.initializer];
+  return ts.isBindingElement(declaration)
+    ? [...own, ...initializers(declaration.parent.parent)]
+    : own;
 }
 
 // Whether a string written anywhere in a node holds the text.
@@ -292,6 +296,10 @@ const writingByName = new Set([
   "getOwnPropertyDescriptor",
 ]);
 
+// The calls that write each property of an object they are given:
+// Object.assign and defineProperties.
+const writingByObject = new Set(["assign", "defineProperties"]);
+
 // The browser's own calls that put text into a field.
 const inserting = new Set(["execCommand", "setRangeText"]);
 
@@ -319,12 +327,34 @@ function setsValue(node: ts.Node): boolean {
     ) {
       return true;
     }
+    if (
+      writingByObject.has(name) &&
+      node.arguments.some(
+        (argument) =>
+          ts.isObjectLiteralExpression(argument) &&
+          argument.properties.some((property) =>
+            valueNames.has(keyOf(property) ?? ""),
+          ),
+      )
+    ) {
+      return true;
+    }
   }
   const script = scriptIn(node);
   if (script !== undefined && setsValue(parse(script))) return true;
   return (
     ts.forEachChild(node, (child) => setsValue(child) || undefined) ?? false
   );
+}
+
+// The key a property in an object literal is written under, when it is
+// written as a name or a string.
+function keyOf(property: ts.ObjectLiteralElementLike): string | undefined {
+  const { name } = property;
+  return name !== undefined &&
+    (ts.isIdentifier(name) || ts.isStringLiteralLike(name))
+    ? name.text
+    : undefined;
 }
 
 // The text of a string, with each substitution in a template read as a
