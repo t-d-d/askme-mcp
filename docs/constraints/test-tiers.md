@@ -4,9 +4,10 @@ Decision: Six tiers kept apart by file suffix; static, unit, integration and bro
 
 Why: Agents write the code, so the gate is the reviewer, and it must
 run the same on a laptop and a standard runner. There is one
-environment, so nothing deployed can be tested before a merge. Setup
-held outside the repo can drift with no pull request at all, and most
-of it can only be read signed in.
+environment, so nothing deployed can be tested before a merge, and
+only a signed-in check after the deploy sees sign-in work end to end.
+Setup held outside the repo can drift with no pull request at all, and
+most of it can only be read signed in.
 
 ## Rules
 
@@ -23,8 +24,13 @@ of it can only be read signed in.
   verification code.
 - MCP is tested through the official client.
 - One runner for the repo. Playwright is used as a library.
-- The live tier checks the deployed site. It signs in to nothing and
-  writes nothing.
+- The live tier checks the deployed site, and writes nothing to
+  askme's store. It may sign in as the one test account and no other,
+  through Clerk's own screens, using Clerk's test mode and no stored
+  secret. The account's address carries +clerk_test and is one
+  constant, in one file, used as it is. When Clerk says the account
+  does not exist, the check signs up with that address, and no other.
+  Any other answer from Clerk fails the check.
 - The conformance tier checks that setup held outside the repo, such
   as GitHub's settings, still matches what the repo records. It runs
   every day and writes nothing. It may sign in, with the narrowest
@@ -48,8 +54,14 @@ of it can only be read signed in.
   deploy role can change everything.
 - Give a conformance check a key that can write when the service
   offers one that only reads.
+- Make an account in the live tier with any address but the one test
+  address: the instance holds 100 accounts, and a run on every deploy
+  would use them up.
+- Delete an account from the live tier: it takes Clerk's secret key.
+- Give the live tier Clerk's secret key, as @clerk/testing's
+  server-side sign-in needs: it can change anything in the instance.
 
-Judgment: A signed-in path from a real agent to a card is checked by
-hand after a deploy, and how narrow a third-party conformance key is
-when it is made. No test can see either.
-History: [ADR 9](../adr/0009-test-pyramid.md), [ADR 15](../adr/0015-conformance-tier.md)
+Judgment: A real agent connecting and its ask reaching a card is
+checked by hand after a deploy, and how narrow a third-party
+conformance key is when it is made. No test can see either.
+History: [ADR 9](../adr/0009-test-pyramid.md), [ADR 15](../adr/0015-conformance-tier.md), [ADR 16](../adr/0016-live-sign-in.md)
