@@ -14,10 +14,21 @@ import { z } from "zod";
 // The one scope an agent's token carries (ADR 2). It covers every tool.
 export const askScope = "asks:create";
 
+// An account id, as only a verified token can give it (ADR 13). The brand is
+// a symbol this module keeps to itself, so no other code can make one, and
+// the store's keys take nothing else. Clerk's user ids are short and plain.
+declare const accountBrand: unique symbol; // eslint-disable-line @typescript-eslint/no-unused-vars -- a symbol that exists only as a type, so no other module can name the brand
+const accountIdSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]{1,64}$/u)
+  .brand<typeof accountBrand>();
+
+export type AccountId = z.output<typeof accountIdSchema>;
+
 // The claims the service reads from Clerk's OAuth access tokens. Clerk puts
 // the scopes in scp as a list, or in scope as one string, and reads either.
 const claimsSchema = z.object({
-  sub: z.string().min(1),
+  sub: accountIdSchema,
   exp: z.number(),
   client_id: z.string().optional(),
   scp: z.array(z.string()).optional(),
@@ -26,14 +37,14 @@ const claimsSchema = z.object({
 
 // Who is calling: the account comes from the verified token and nowhere else.
 export interface Caller {
-  accountId: string;
+  accountId: AccountId;
   scopes: string[];
   // API Gateway's id for the request, for the log lines it causes.
   requestId: string;
 }
 
 const extraSchema = z.object({
-  accountId: z.string().min(1),
+  accountId: accountIdSchema,
   requestId: z.string().min(1),
 });
 
@@ -77,35 +88,52 @@ function reasonOf(error: errors.JOSEError): string {
     : error.code;
 }
 
-// Verifies Clerk's OAuth access tokens against the keys the issuer
-// publishes. The keys are public, so the service holds no Clerk secret.
+// The keys the issuer publishes. They are public, so the service holds no
+// Clerk secret. One set serves both kinds of token, and caches what it fetches.
+export type KeySet = ReturnType<typeof createRemoteJWKSet>;
+
+export function keySet(issuer: string): KeySet {
+  return createRemoteJWKSet(new URL("/.well-known/jwks.json", issuer));
+}
+
+// A token signed by the issuer and naming it as iss. A fault of the token's
+// own is a TokenRejected. Failing to fetch the keys is not, and is thrown on.
+async function signedByIssuer(
+  token: string,
+  keys: KeySet,
+  issuer: string,
+  typ?: string,
+) {
+  return jwtVerify(token, keys, {
+    issuer,
+    ...(typ === undefined ? {} : { typ }),
+    algorithms: ["RS256"],
+    clockTolerance: 5,
+  }).catch((error: unknown) => {
+    if (
+      error instanceof errors.JOSEError &&
+      tokenFaults.some((fault) => error instanceof fault)
+    ) {
+      throw new TokenRejected(reasonOf(error));
+    }
+    throw error;
+  });
+}
+
+// Verifies Clerk's OAuth access tokens, which agents send.
 //
 // Each token must be signed by the issuer, name it as iss, be typed as an
 // OAuth access token (at+jwt), so a sign-in session token from the page is
 // refused, and name an account. The audience is not checked: Clerk's
 // "Include audience" setting is off, so its tokens carry none, and this
 // Clerk instance issues tokens for askme alone (issue #1).
-export function tokenVerifier(issuer: string): OAuthTokenVerifier {
-  const keys = createRemoteJWKSet(new URL("/.well-known/jwks.json", issuer));
+export function tokenVerifier(
+  issuer: string,
+  keys: KeySet = keySet(issuer),
+): OAuthTokenVerifier {
   return {
     async verifyAccessToken(token) {
-      const payload = await jwtVerify(token, keys, {
-        issuer,
-        typ: "at+jwt",
-        algorithms: ["RS256"],
-        clockTolerance: 5,
-      }).then(
-        (verified) => verified.payload,
-        (error: unknown) => {
-          if (
-            error instanceof errors.JOSEError &&
-            tokenFaults.some((fault) => error instanceof fault)
-          ) {
-            throw new TokenRejected(reasonOf(error));
-          }
-          throw error;
-        },
-      );
+      const { payload } = await signedByIssuer(token, keys, issuer, "at+jwt");
       const claims = claimsSchema.safeParse(payload);
       if (!claims.success) throw new TokenRejected("claims");
       const { sub, exp, client_id, scp, scope } = claims.data;
@@ -117,6 +145,51 @@ export function tokenVerifier(issuer: string): OAuthTokenVerifier {
         extra: { accountId: sub },
       };
     },
+  };
+}
+
+// A verified token that an agent was given. It may post asks and read
+// nothing (ADR 2), so the page's routes refuse it.
+export class AgentToken extends Error {
+  constructor() {
+    super("An agent's token cannot read anything from askme.");
+    this.name = "AgentToken";
+  }
+}
+
+// The claims the service reads from Clerk's session tokens, which the page
+// sends. Only a session token names a sign-in session, in sid.
+const sessionClaimsSchema = z.object({
+  sub: accountIdSchema,
+  sid: z.string().min(1),
+});
+
+// Verifies the session tokens Clerk gives the page once a person signs in,
+// and gives the account they name.
+//
+// A token typed as an OAuth access token, or carrying a scope, is an
+// agent's: it is refused with AgentToken, whatever scope it holds. Session
+// tokens carry no scope.
+export function sessionVerifier(
+  issuer: string,
+  keys: KeySet = keySet(issuer),
+): (token: string) => Promise<AccountId> {
+  return async (token) => {
+    const { payload, protectedHeader } = await signedByIssuer(
+      token,
+      keys,
+      issuer,
+    );
+    if (
+      protectedHeader.typ?.toLowerCase() === "at+jwt" ||
+      "scope" in payload ||
+      "scp" in payload
+    ) {
+      throw new AgentToken();
+    }
+    const claims = sessionClaimsSchema.safeParse(payload);
+    if (!claims.success) throw new TokenRejected("claims");
+    return claims.data.sub;
   };
 }
 

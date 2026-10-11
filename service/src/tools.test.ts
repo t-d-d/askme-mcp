@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { captureLogs, lineText } from "../../test/logs";
 import { refusalOf } from "../../test/mcp";
+import { callerOf } from "./identity";
+import type { Store } from "./store/store";
 import { addTool, type ToolDefinition } from "./tools";
 
 let capture: ReturnType<typeof captureLogs>;
@@ -16,6 +18,14 @@ afterEach(() => {
 
 const input = z.strictObject({});
 const output = z.object({ id: z.string().min(3) });
+
+// A store this tool never reaches.
+const unused = () => Promise.reject(new Error("The store is not used here."));
+const store: Store = {
+  postAsk: unused,
+  openAsks: unused,
+  close: () => undefined,
+};
 
 // A tool whose answer passes its type but not its schema, as a bug in a
 // later store read might give.
@@ -30,11 +40,17 @@ const brokenTool: ToolDefinition<typeof input, typeof output> = {
 describe("a tool whose answer breaks its own schema", () => {
   it("is refused as service_unavailable, and logged as a failure", async () => {
     const server = new McpServer({ name: "askme", version: "1.0.0" });
-    addTool(server, brokenTool, {
-      accountId: "user_1",
-      requestId: "req-1",
-      scopes: ["asks:create"],
-    });
+    addTool(
+      server,
+      brokenTool,
+      callerOf({
+        token: "test",
+        clientId: "test",
+        scopes: ["asks:create"],
+        extra: { accountId: "user_1", requestId: "req-1" },
+      }),
+      store,
+    );
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     await server.connect(serverSide);
     const client = new Client({ name: "askme-test", version: "1.0.0" });

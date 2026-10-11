@@ -1,8 +1,16 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { handler, routes } from "../service/src/handler";
+import { asksAnswer, pagePaths } from "../shared/page-api";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
-import { connect, mcpUrl, metadataUrl, origin } from "../test/mcp";
+import { connect, mcpUrl, metadataUrl, origin, refusalOf } from "../test/mcp";
+
+const ask = {
+  summary: "Approve the plan for the kitchen rewiring",
+  area: "Home renovation",
+  spoken_detail: "The electrician needs a yes or no before Friday.",
+};
 
 let issuer: FakeIssuer;
 let otherIssuer: FakeIssuer;
@@ -19,7 +27,12 @@ afterAll(async () => {
 
 // Every route but the metadata, as "METHOD /path".
 const checked = Object.entries(routes)
-  .filter(([, access]) => access === "token")
+  .filter(([, access]) => access !== "public")
+  .map(([route]) => route);
+
+// The routes an agent calls, whose 401 starts its sign-in.
+const agentRoutes = Object.entries(routes)
+  .filter(([, access]) => access === "agent")
   .map(([route]) => route);
 
 function call(route: string, token?: string): Promise<Response> {
@@ -41,7 +54,13 @@ function call(route: string, token?: string): Promise<Response> {
 describe("fitness: every route checks a token (identity.md)", () => {
   it("finds the routes", () => {
     expect(checked).toEqual(
-      expect.arrayContaining(["POST /mcp", "GET /mcp", "DELETE /mcp"]),
+      expect.arrayContaining([
+        "POST /mcp",
+        "GET /mcp",
+        "DELETE /mcp",
+        "GET /api/asks",
+        "GET /api/connection",
+      ]),
     );
   });
 
@@ -53,8 +72,13 @@ describe("fitness: every route checks a token (identity.md)", () => {
   it.each(checked)(
     "refuses %s with a token another Clerk instance issued",
     async (route) => {
-      const response = await call(route, await otherIssuer.token());
-      expect(response.status).toBe(401);
+      for (const token of [
+        await otherIssuer.token(),
+        await otherIssuer.sessionToken(),
+      ]) {
+        const response = await call(route, token);
+        expect(response.status).toBe(401);
+      }
     },
   );
 
@@ -93,15 +117,18 @@ describe("fitness: every route checks a token (identity.md)", () => {
 });
 
 describe("fitness: the metadata is served (identity.md)", () => {
-  it.each(checked)("points the 401 from %s to the metadata", async (route) => {
-    const response = await call(route);
-    expect(response.headers.get("www-authenticate")).toMatch(
-      new RegExp(
-        `^Bearer error="invalid_token".*, scope="asks:create", resource_metadata="${metadataUrl}"$`,
-        "u",
-      ),
-    );
-  });
+  it.each(agentRoutes)(
+    "points the 401 from %s to the metadata",
+    async (route) => {
+      const response = await call(route);
+      expect(response.headers.get("www-authenticate")).toMatch(
+        new RegExp(
+          `^Bearer error="invalid_token".*, scope="asks:create", resource_metadata="${metadataUrl}"$`,
+          "u",
+        ),
+      );
+    },
+  );
 
   it("serves the metadata with no token, naming the authorisation server", async () => {
     const response = await invoke(handler, new Request(metadataUrl));
@@ -112,5 +139,55 @@ describe("fitness: the metadata is served (identity.md)", () => {
       resource: mcpUrl,
       authorization_servers: [issuer.issuer],
     });
+  });
+});
+
+describe("fitness: the account comes from the token (identity.md)", () => {
+  const sub = () => `user_${randomUUID().slice(0, 8)}`;
+
+  it("lists the caller's own asks, whatever account the request names", async () => {
+    const [owner, caller] = [sub(), sub()];
+    const agent = await connect(handler, {
+      token: await issuer.token({ claims: { sub: owner } }),
+    });
+    await agent.callTool({ name: "ask", arguments: ask });
+    await agent.close();
+
+    const response = await invoke(
+      handler,
+      new Request(`${origin}${pagePaths.asks}?account=${owner}&sub=${owner}`, {
+        headers: {
+          authorization: `Bearer ${await issuer.sessionToken({ claims: { sub: caller } })}`,
+          "x-account-id": owner,
+          "x-user-id": owner,
+        },
+      }),
+    );
+    expect(asksAnswer.parse(await response.json()).asks).toEqual([]);
+  });
+
+  it("refuses an ask that names an account, and stores nothing for it", async () => {
+    const [owner, caller] = [sub(), sub()];
+    const agent = await connect(handler, {
+      token: await issuer.token({ claims: { sub: caller } }),
+    });
+    const refusal = refusalOf(
+      await agent.callTool({
+        name: "ask",
+        arguments: { ...ask, account: owner },
+      }),
+    );
+    expect(refusal.code).toBe("invalid_input");
+    await agent.close();
+
+    const response = await invoke(
+      handler,
+      new Request(`${origin}${pagePaths.asks}`, {
+        headers: {
+          authorization: `Bearer ${await issuer.sessionToken({ claims: { sub: owner } })}`,
+        },
+      }),
+    );
+    expect(asksAnswer.parse(await response.json()).everAsked).toBe(false);
   });
 });

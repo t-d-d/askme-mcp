@@ -9,12 +9,16 @@ import { z } from "zod";
 
 // Every event the service logs. Count by event, never by level.
 export const events = [
-  // A call to the MCP endpoint carried no token. Expected: it starts sign-in.
+  // A call that needs a token carried none. Expected: on the MCP endpoint it
+  // starts sign-in.
   "token-missing",
   // A token failed verification: expired, malformed, or not Clerk's.
   "token-rejected",
   // A verified token lacked asks:create, so a tool refused it.
   "scope-missing",
+  // A route of the page's API got an agent's token, which reads nothing
+  // (ADR 2), so it refused it.
+  "agent-token-refused",
   // A tool's arguments failed its schema.
   "input-invalid",
   // An ask was accepted and answered with its id.
