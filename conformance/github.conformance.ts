@@ -1,6 +1,5 @@
-// Branch protection lives in the repository's settings, which no pull request
-// can see and the offline gate cannot reach. This runs on a schedule and after
-// each deploy, signed out, against GitHub's public API.
+// Conformance checks for GitHub (ADR 15). They read the repo's settings,
+// which no pull request can see, signed out and read only.
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 

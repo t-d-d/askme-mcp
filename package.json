@@ -12,7 +12,7 @@
     "types": "tsc -p web && tsc -p .",
     "test": "vitest run --project static --project unit --project int --project browser",
     "test:live": "vitest run --project live",
-    "check:main": "vitest run --project live fitness/main-protected.live.ts",
+    "conformance": "vitest run --project conformance",
     "build": "vite build web"
   },
   "devDependencies": {

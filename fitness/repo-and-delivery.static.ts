@@ -124,19 +124,11 @@ describe("fitness: only main can assume the deploy role (repo-and-delivery.md)",
 });
 
 describe("fitness: main is protected (repo-and-delivery.md)", () => {
-  // The check itself reads the repo's settings, so it is a live test
-  // (fitness/main-protected.live.ts). This keeps it scheduled.
-  it("checks branch protection every day, signed out", () => {
-    const path = ".github/workflows/main-protected.yml";
-    const workflow = readWorkflow(path);
-    expect(triggers(workflow)).toContain("schedule");
-    expect(runsIn(workflow.jobs["main-protected"])).toEqual([
-      "npm ci",
-      "npm run check:main",
-    ]);
-    expect(readRepoFile(path)).not.toMatch(/\bsecrets\b|GITHUB_TOKEN/u);
-    expect(scripts()["check:main"]).toBe(
-      "vitest run --project live fitness/main-protected.live.ts",
+  // The check reads the repo's settings, which the offline gate cannot reach,
+  // so it is a conformance test and runs every day (ADR 15).
+  it("is a conformance check", () => {
+    expect(readRepoFile("conformance/github.conformance.ts")).toContain(
+      'describe("fitness: main is protected (repo-and-delivery.md)"',
     );
   });
 });

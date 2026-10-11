@@ -1,6 +1,6 @@
 // Read-only access to the repo's own files, for static tests.
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse, type Tags } from "yaml";
@@ -12,14 +12,17 @@ export function readRepoFile(path: string): string {
   return readFileSync(join(root, path), "utf8");
 }
 
-// Every file in the repo that git tracks or would track, so nothing ignored.
+// Every file in the repo that git tracks or would track, so nothing ignored,
+// and nothing deleted but not yet committed.
 export function repoFiles(): string[] {
   const out = execFileSync(
     "git",
     ["ls-files", "--cached", "--others", "--exclude-standard"],
     { cwd: root, encoding: "utf8" },
   );
-  return out.split("\n").filter((path) => path !== "");
+  return out
+    .split("\n")
+    .filter((path) => path !== "" && existsSync(join(root, path)));
 }
 
 // CloudFormation's short-form functions, such as !Ref and !GetAtt, read as

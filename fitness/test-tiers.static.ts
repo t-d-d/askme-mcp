@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { importRefused } from "../test/lint";
-import { readRepoFile, readWorkflow, repoFiles } from "../test/repo";
+import {
+  readRepoFile,
+  readWorkflow,
+  repoFiles,
+  triggers,
+  type Job,
+} from "../test/repo";
 import { tierPattern, tiers } from "../test/tiers";
 
 const projectsSchema = z.object({
@@ -38,7 +44,7 @@ describe("fitness: tiers stay apart (test-tiers.md)", () => {
     const misplaced = repoFiles()
       .filter((path) => /\.(?:[a-z]+)\.[cm]?[jt]sx?$/u.test(path))
       .filter((path) =>
-        /\.(?:static|test|spec|int|browser|live|e2e)\.[cm]?[jt]sx?$/u.test(
+        /\.(?:static|test|spec|int|browser|live|conformance|e2e)\.[cm]?[jt]sx?$/u.test(
           path,
         ),
       )
@@ -55,12 +61,19 @@ describe("fitness: tiers stay apart (test-tiers.md)", () => {
     ).toEqual(tiers.map((tier) => [tier.name, [tierPattern(tier)]]));
   });
 
-  it("runs every tier but live in the gate, and live on its own", () => {
+  it("keeps live and conformance out of the gate", () => {
+    expect(
+      tiers.filter((tier) => !tier.inGate).map((tier) => tier.suffix),
+    ).toEqual([".live.ts", ".conformance.ts"]);
+  });
+
+  it("runs the gate's tiers in the gate, and the others on their own", () => {
     const gateTiers = tiers.filter((tier) => tier.inGate);
     expect(scripts().test).toBe(
       `vitest run ${gateTiers.map((tier) => `--project ${tier.name}`).join(" ")}`,
     );
     expect(scripts()["test:live"]).toBe("vitest run --project live");
+    expect(scripts().conformance).toBe("vitest run --project conformance");
   });
 });
 
@@ -100,5 +113,28 @@ describe("fitness: the gate holds no secrets (test-tiers.md)", () => {
     expect(readWorkflow(".github/workflows/gate.yml").permissions).toEqual({
       contents: "read",
     });
+  });
+});
+
+describe("fitness: conformance runs daily, signed out (test-tiers.md)", () => {
+  const path = ".github/workflows/conformance.yml";
+  const runsIn = (job: Job | undefined): string[] =>
+    (job?.steps ?? []).flatMap((step) =>
+      step.run === undefined ? [] : [step.run],
+    );
+
+  it("runs the conformance tier every day, and nothing else", () => {
+    const workflow = readWorkflow(path);
+    expect(workflow.name).toBe("conformance");
+    expect(triggers(workflow)).toContain("schedule");
+    expect(runsIn(workflow.jobs.conformance)).toEqual([
+      "npm ci",
+      "npm run conformance",
+    ]);
+  });
+
+  it("holds no secret and only reads", () => {
+    expect(readRepoFile(path)).not.toMatch(/\bsecrets\b|GITHUB_TOKEN/u);
+    expect(readWorkflow(path).permissions).toEqual({ contents: "read" });
   });
 });

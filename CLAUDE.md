@@ -20,7 +20,7 @@ askme.mcp is one place where all of a person's AI agents ask for their input, so
 ## Tests first
 
 - Write the failing test first. Watch it fail for the reason you expect, then write the code.
-- A test's file name sets its tier ([ADR 9](docs/adr/0009-test-pyramid.md)).
+- A test's file name sets its tier ([ADR 9](docs/adr/0009-test-pyramid.md), [ADR 15](docs/adr/0015-conformance-tier.md)).
 
 | Tier | File name | May touch |
 | --- | --- | --- |
@@ -29,6 +29,7 @@ askme.mcp is one place where all of a person's AI agents ask for their input, so
 | Integration | `*.int.ts` | Loopback: the local database, the fake model, test-key tokens |
 | Browser | `*.browser.ts` | Loopback, with the API faked |
 | Live | `*.live.ts` | The deployed site, signed out, read only |
+| Conformance | `*.conformance.ts` | Setup outside the repo, such as GitHub's settings, signed out, read only |
 
 - An assertion goes in the lowest tier that can see it.
 - A fitness function names its constraint file in its describe name: `fitness: <what it asserts> (<file>.md)`.

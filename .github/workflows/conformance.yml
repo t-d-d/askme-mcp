@@ -1,6 +1,7 @@
-# Branch protection lives in the repo's settings, where no pull request can see
-# it (repo-and-delivery.md). This checks it every day, signed out.
-name: main is protected
+# The conformance tier (ADR 15): checks that setup held outside the repo, such
+# as GitHub's settings, still matches what the repo records. No pull request
+# can see that setup, so this runs every day, signed out and read only.
+name: conformance
 
 on:
   schedule:
@@ -11,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  main-protected:
+  conformance:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -20,4 +21,4 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - run: npm run check:main
+      - run: npm run conformance
