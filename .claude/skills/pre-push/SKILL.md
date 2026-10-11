@@ -1,6 +1,6 @@
 ---
 name: pre-push
-description: "Catch up to origin/main, run the gate on the merged tree, run the code-review gate, then push and raise or update the pull request. Run before every push."
+description: "Catch up to origin/main, run the gate on the merged tree, review the diff with code-review, then push and raise or update the pull request. Run before every push."
 ---
 
 # Pre-push
@@ -23,30 +23,38 @@ Order: catch up, check, review, push. A check only counts against the merged tre
   meaning does not change without one. A change of wording only needs
   none.
 
-## 3. Run the code-review gate
+## 3. Review the diff
 
-Run the `code-review` skill at `high --fix` over the branch diff against
-main. At high effort it also reports findings it is unsure of, so judge
-each one.
+Run the `code-review` skill at `high --fix`, and tell it to review
+`git diff origin/main...HEAD`. Without that range the skill reviews only
+the commits since the last push, or compares against a local `main` that
+step 1 did not update.
+
+At high effort the skill also reports findings it is unsure of, and
+`--fix` applies them all to the working tree before you judge them. It
+reads neither the issue nor `docs/constraints/`. Judge each finding
+against both, then read `git diff` and revert every fix you dismiss or
+file.
 
 If the skill is not available, start two sub-agents with a fresh context
-over the branch diff, one for correctness and one for conventions and
-test quality. Give both the issue text and the matching constraint files.
-Judge their findings and apply them yourself.
+over the same range, one for correctness and one for conventions and test
+quality. Give both the issue text and the constraint files from step 2.
+Judge their findings and apply the ones you fix yourself.
 
 Every finding ends one of three ways:
 
-- **Dismissed** as wrong. A finding that names a failure is dismissed only
-  after you traced it through the code or ran it, and it did not happen.
-  Saying it is wrong, or pointing at a line, is not enough.
+- **Dismissed** as wrong. Dismiss a finding that names a failure only
+  after you have traced it through the code or run it, and it did not
+  happen. Saying it is wrong, or pointing at a line, is not enough.
 - **Fixed** in this branch.
-- **Filed** as an issue, when it is real but unrelated to the branch or
-  too big for a review fix. File it before pushing and link it under
-  *Left for later*, saying that it is real and why it waits, so nobody
-  reads it as declined. A finding that exists only in a pull request body
-  is lost at merge.
+- **Filed** as an issue, when it is real but the branch did not cause it,
+  or it is too big for a review fix. File it before pushing and link it
+  under *Left for later*, saying that it is real and why it waits, so
+  nobody reads it as declined. A finding that exists only in a pull
+  request body is lost at merge.
 
-If the review changed code, run the gate again.
+If the review changed code, commit the fixes and run `npm run gate`
+again.
 
 ## 4. Push
 
