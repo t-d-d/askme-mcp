@@ -20,7 +20,7 @@ askme.mcp is one place where all of a person's AI agents ask for their input, so
 ## Tests first
 
 - Write the failing test first. Watch it fail for the reason you expect, then write the code.
-- A test's file name sets its tier ([ADR 9](docs/adr/0009-test-pyramid.md), [ADR 15](docs/adr/0015-conformance-tier.md)).
+- A test's file name sets its tier ([ADR 9](docs/adr/0009-test-pyramid.md), [ADR 15](docs/adr/0015-conformance-tier.md), [ADR 16](docs/adr/0016-live-sign-in.md)).
 
 | Tier | File name | May touch |
 | --- | --- | --- |
@@ -28,7 +28,7 @@ askme.mcp is one place where all of a person's AI agents ask for their input, so
 | Unit | `*.test.ts` | Memory only |
 | Integration | `*.int.ts` | Loopback: the local database, the fake model, test-key tokens |
 | Browser | `*.browser.ts` | Loopback, with the API faked |
-| Live | `*.live.ts` | The deployed site, signed out, read only |
+| Live | `*.live.ts` | The deployed site, read only, signed in at most as the one test account (ADR 16) |
 | Conformance | `*.conformance.ts` | Setup outside the repo, such as GitHub's settings, read only, signed in where needed (ADR 15) |
 
 - An assertion goes in the lowest tier that can see it.
