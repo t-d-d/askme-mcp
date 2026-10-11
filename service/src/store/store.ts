@@ -8,6 +8,7 @@
 // shows, so it leaves the version alone and an idle poll stays idle
 // (ADR 18). Lint holds every other write out.
 import { randomBytes } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   ConditionalCheckFailedException,
   DynamoDBClient,
@@ -36,6 +37,14 @@ const dayMs = 86_400_000;
 // it. It is only counted inside its own window, so it is never read after
 // it expires (ADR 18).
 const counterLifetimeMs = 3_600_000;
+
+// How many times write() sends a transaction that DynamoDB keeps cancelling
+// because another transaction holds one of its items, as two writes to one
+// account do on META. Before each retry it waits a random time, up to a
+// limit that starts at firstWaitMs and doubles, so that two writes which met
+// once are unlikely to meet again. All the waits together are under 200ms.
+export const writeTries = 4;
+const firstWaitMs = 25;
 
 // An ask as the agent sent it, once its schema has parsed it.
 export interface NewAsk {
@@ -134,13 +143,21 @@ const newAskId = () => randomBytes(18).toString("base64url");
 
 const seconds = (time: number) => Math.floor(time / 1000);
 
+// Whether a transaction was refused with this reason for any of its items.
+const cancelledFor = (error: unknown, code: string) =>
+  error instanceof TransactionCanceledException &&
+  (error.CancellationReasons ?? []).some((reason) => reason.Code === code);
+
 // Whether a transaction was refused because one of its conditions failed,
 // as when another call closed the same ask first.
 const conditionFailed = (error: unknown) =>
-  error instanceof TransactionCanceledException &&
-  (error.CancellationReasons ?? []).some(
-    (reason) => reason.Code === "ConditionalCheckFailed",
-  );
+  cancelledFor(error, "ConditionalCheckFailed");
+
+// Whether a transaction was refused only because another transaction held
+// one of its items. DynamoDB cancels it whole, so sending it again is safe.
+// A failed condition is an answer, and sending it again would not change it.
+const conflicted = (error: unknown) =>
+  cancelledFor(error, "TransactionConflict") && !conditionFailed(error);
 
 export function createStore(config: {
   tableName: string;
@@ -170,24 +187,30 @@ export function createStore(config: {
     marks: { everAsked?: true } = {},
   ): Promise<void> {
     const set = marks.everAsked === true ? " SET everAsked = :yes" : "";
-    await db.send(
-      new TransactWriteCommand({
-        TransactItems: [
-          ...changes,
-          {
-            Update: {
-              TableName,
-              Key: keys.meta(account),
-              UpdateExpression: `ADD version :one${set}`,
-              ExpressionAttributeValues: {
-                ":one": 1,
-                ...(set === "" ? {} : { ":yes": true }),
-              },
-            },
+    const items: Change[] = [
+      ...changes,
+      {
+        Update: {
+          TableName,
+          Key: keys.meta(account),
+          UpdateExpression: `ADD version :one${set}`,
+          ExpressionAttributeValues: {
+            ":one": 1,
+            ...(set === "" ? {} : { ":yes": true }),
           },
-        ],
-      }),
-    );
+        },
+      },
+    ];
+    // The SDK does not retry a cancelled transaction, so this does.
+    for (let tries = 1; ; tries += 1) {
+      try {
+        await db.send(new TransactWriteCommand({ TransactItems: items }));
+        return;
+      } catch (error) {
+        if (!conflicted(error) || tries === writeTries) throw error;
+      }
+      await sleep(Math.random() * firstWaitMs * 2 ** (tries - 1));
+    }
   }
 
   // Adds one to a rate counter, unless it has reached its limit. One
