@@ -1,0 +1,90 @@
+/*
+ * Every value the page's styles use, named as in docs/design.md (ADR 14).
+ * No other stylesheet holds a colour, a font or a pixel font size.
+ * A hashtag's colour is not here: the palette module sets --tag-strong,
+ * --tag-tint and --tag-ink on the element that shows it.
+ */
+:root {
+  /* Neutral colours */
+  --ground: #eef1ec;
+  --surface: #ffffff;
+  --ink: #16211b;
+  --text-2: #3d4943;
+  --text-3: #55625b;
+  --line: #d3dad2;
+  --border: #c3ccc3;
+  --neutral-tint: #dde2dc;
+
+  /* Type: one family, bundled with the site */
+  --font: "Bricolage Grotesque Variable", sans-serif;
+
+  --size-all-clear: 146px;
+  --size-headline: 42px;
+  --size-top-ask-wide: 48px;
+  --size-title: 31px;
+  --size-wordmark: 26px;
+  --size-all-clear-lines: 21px;
+  --size-section: 20px;
+  --size-spoken: 18px;
+  --size-row: 17px;
+  --size-body: 16px;
+  --size-note: 15px;
+  --size-meta: 14px;
+  --size-meta-small: 13px;
+
+  --leading-all-clear: 0.86;
+  --leading-headline: 1.02;
+  --leading-top-ask-wide: 1.04;
+  --leading-title: 1.1;
+  --leading-wordmark: 1;
+  --leading-all-clear-lines: 1.35;
+  --leading-section: 1.2;
+  --leading-spoken: 1.5;
+  --leading-row: 1.26;
+  --leading-body: 1.45;
+  --leading-note: 1.4;
+  --leading-meta: 1.3;
+
+  --tracking-all-clear: -0.04em;
+  --tracking-headline: -0.035em;
+  --tracking-top-ask-wide: -0.03em;
+  --tracking-title: -0.025em;
+  --tracking-wordmark: -0.03em;
+  --tracking-section: -0.01em;
+
+  --weight-regular: 400;
+  --weight-summary: 550;
+  --weight-label: 600;
+  --weight-strong: 650;
+  --weight-bold: 700;
+
+  /* Shape */
+  --radius-card: 28px;
+  --radius-button: 18px;
+  --radius-pill: 10px;
+  --radius-pill-small: 8px;
+  --tap: 44px;
+  --button-height: 56px;
+  --button-height-settings: 52px;
+
+  /* Space: the steps the mockup uses, then the ones docs/design.md names */
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-14: 14px;
+  --space-16: 16px;
+  --space-18: 18px;
+  --space-20: 20px;
+  --space-22: 22px;
+  --space-26: 26px;
+
+  --space-text: var(--space-20);
+  --space-outside-card: var(--space-16);
+  --space-inside-card: var(--space-22);
+  --gap-buttons: var(--space-8);
+
+  /* Width */
+  --content-width: 1080px;
+  --measure: 34rem;
+}

@@ -18,6 +18,7 @@ Each technical decision that is hard to reverse is recorded here, one file per d
 | [12](0012-untrusted-ask-text.md) | Ask text is data to the sorting model, never instructions | [untrusted-ask-text.md](../constraints/untrusted-ask-text.md) |
 | [13](0013-table-design.md) | One table, with everything keyed by account | [table-design.md](../constraints/table-design.md) |
 | [14](0014-styling.md) | Styles are plain CSS built from one set of tokens | [styling.md](../constraints/styling.md) |
+| [15](0015-conformance-tier.md) | Setup held outside the repo is checked by a tier of its own | [test-tiers.md](../constraints/test-tiers.md), [repo-and-delivery.md](../constraints/repo-and-delivery.md) |
 
 ## How a decision is recorded
 

@@ -1,0 +1,3 @@
+# Prose and the design mockup are written by hand. Prettier checks the code.
+*.md
+docs/

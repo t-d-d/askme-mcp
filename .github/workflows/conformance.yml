@@ -1,0 +1,26 @@
+# The conformance tier (ADR 15): checks that setup held outside the repo, such
+# as GitHub's settings, still matches what the repo records. No pull request
+# can see that setup, so this runs every day. It only reads. A job that signs
+# in runs in the "conformance" environment, never with the deploy role
+# (ADR 15).
+name: conformance
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run conformance

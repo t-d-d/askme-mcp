@@ -104,7 +104,7 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 | Model access | OpenRouter, so several models sit behind one key. The model that sorts is chosen with the eval set. | This PRD |
 | Repo and delivery | GitHub, GitHub Actions on standard runners, and the Serverless Framework | [ADR 4](docs/adr/0004-repo-and-delivery.md) and [ADR 5](docs/adr/0005-hosting.md) |
 | Logs and alerts | CloudWatch: structured logs with no user content, four alarms, alerts by email | [ADR 7](docs/adr/0007-logging.md) and [ADR 8](docs/adr/0008-alerting.md) |
-| Tests | Vitest, Playwright as a library, and a local DynamoDB, in five tiers | [ADR 9](docs/adr/0009-test-pyramid.md) |
+| Tests | Vitest, Playwright as a library, and a local DynamoDB, in six tiers | [ADR 9](docs/adr/0009-test-pyramid.md) and [ADR 15](docs/adr/0015-conformance-tier.md) |
 | Types and lint | TypeScript with every strictness option on, ESLint with type-aware rules, Zod at every boundary, Prettier | [ADR 10](docs/adr/0010-types-and-lint.md) |
 | Design and styling | The design language in [docs/design.md](docs/design.md), written as plain CSS from one set of tokens | [ADR 14](docs/adr/0014-styling.md) |
 
