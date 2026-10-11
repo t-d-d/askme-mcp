@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { importRefused } from "../test/lint";
 import {
+  addressesIn,
+  builtFrom,
+  constantFor,
+  liveTierFiles,
+  typedValues,
+} from "../test/live-tier";
+import {
   conformancePath,
   deployPath,
   gatePath,
@@ -224,5 +231,142 @@ describe("fitness: conformance runs daily and only reads (test-tiers.md)", () =>
       expect(onlyReads(job), id).toBe(true);
     }
     expect(readRepoFile(path)).not.toMatch(/AWS_DEPLOY_ROLE_ARN/iu);
+  });
+});
+
+// The one test account of ADR 16: every address the live tier holds, with
+// the file that holds it.
+const liveAddresses = () =>
+  liveTierFiles().flatMap((path) =>
+    addressesIn(readRepoFile(path)).map((address) => ({ path, address })),
+  );
+
+// The test account's address, the file that holds it, and the names of the
+// constants that hold the address and Clerk's test code.
+function testAccount() {
+  const found = liveAddresses();
+  const [account] = found;
+  if (found.length !== 1 || account === undefined) {
+    throw new Error(
+      `The live tier should hold one address. It holds ${String(found.length)}.`,
+    );
+  }
+  const text = readRepoFile(account.path);
+  return {
+    ...account,
+    text,
+    name: constantFor(text, account.address),
+    code: constantFor(text, "424242"),
+  };
+}
+
+describe("fitness: the live tier signs in as one account (test-tiers.md)", () => {
+  it("reads every live file and each file one imports", () => {
+    expect(liveTierFiles()).toEqual(
+      expect.arrayContaining([
+        "service/api.live.ts",
+        "shared/page-api.ts",
+        "web/signed-in.live.ts",
+      ]),
+    );
+  });
+
+  it("finds every address written in a file", () => {
+    expect(
+      addressesIn(
+        [
+          'import "@scope/package";',
+          'const a = "someone+clerk_test@example.com";',
+          "// Write to help@example.org.",
+        ].join("\n"),
+      ),
+    ).toEqual(["someone+clerk_test@example.com", "help@example.org"]);
+  });
+
+  it("holds one address, carrying +clerk_test, in one live file", () => {
+    const found = liveAddresses();
+    expect(found).toHaveLength(1);
+    for (const { path, address } of found) {
+      expect(path).toMatch(/\.live\.ts$/u);
+      expect(address).toMatch(/^[\w.-]+\+clerk_test@[\w-]+(?:\.[\w-]+)+$/u);
+    }
+  });
+
+  it("writes the address once, as a constant", () => {
+    const { text, address, name } = testAccount();
+    expect(name).toBeDefined();
+    expect(text.split(address)).toHaveLength(2);
+  });
+
+  it("tells a constant used as it is from one built on", () => {
+    const usedAsItIs = [
+      'export const account = "a@example.com";',
+      'import { account, other } from "./account";',
+      "await box.fill(account);",
+      "expect(signUp.email).toBe(account);",
+      "send(first, account, last);",
+    ].join("\n");
+    expect(builtFrom(usedAsItIs, "account")).toEqual([]);
+    const builtOn = [
+      "const copy = account;",
+      "await box.fill(`x${account}`);",
+      'await box.fill(account.replace("a", "b"));',
+      'await box.fill("x" + account);',
+      'await box.fill([account, "x"].join(""));',
+      "await box.fill(sure ? account : other);",
+      "await sign({ email: account });",
+    ];
+    expect(builtFrom(builtOn.join("\n"), "account")).toEqual(builtOn);
+  });
+
+  it("builds no address from the constant", () => {
+    const { name } = testAccount();
+    expect(name).toBeDefined();
+    for (const path of liveTierFiles()) {
+      expect(builtFrom(readRepoFile(path), name ?? ""), path).toEqual([]);
+    }
+  });
+
+  it("names no secret in the deploy workflow's live job", () => {
+    const { live } = readWorkflow(deployPath).jobs;
+    expect(live).toBeDefined();
+    // GitHub reads context names in any case.
+    expect(JSON.stringify(live)).not.toMatch(/\bsecrets\b/iu);
+  });
+
+  it("gives the live tier no Clerk secret key, and no helper that needs one", () => {
+    for (const path of liveTierFiles()) {
+      expect(readRepoFile(path), path).not.toMatch(
+        /CLERK_SECRET_KEY|\bsk_(?:test|live)_|@clerk\/(?:testing|backend)/u,
+      );
+    }
+  });
+});
+
+describe("fitness: the live tier makes no other account (test-tiers.md)", () => {
+  it("finds the value each call types", () => {
+    expect(
+      typedValues(
+        [
+          'await page.locator("#a").fill(account);',
+          "await page.keyboard.type(code, { delay: 50 });",
+          'await box.pressSequentially(`${"x"}@example.com`);',
+          "await page.keyboard.insertText(other);",
+        ].join("\n"),
+      ),
+    ).toEqual(["account", "code", '`${"x"}@example.com`', "other"]);
+  });
+
+  it("types nothing on Clerk's screens but the address and the code 424242", () => {
+    const { name, code } = testAccount();
+    expect(name).toBeDefined();
+    expect(code).toBeDefined();
+    const typed = liveTierFiles().flatMap((path) =>
+      typedValues(readRepoFile(path)).map((value) => ({ path, value })),
+    );
+    expect(typed.map(({ value }) => value)).toContain(name);
+    expect(
+      typed.filter(({ value }) => value !== name && value !== code),
+    ).toEqual([]);
   });
 });
