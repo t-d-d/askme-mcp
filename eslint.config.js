@@ -155,6 +155,7 @@ export default defineConfig(
     rules: {
       "askme/no-hand-built-key": "error",
       "askme/no-scan": "error",
+      "askme/write-functions": "error",
     },
   },
   {

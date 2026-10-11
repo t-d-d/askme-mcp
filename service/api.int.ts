@@ -116,6 +116,22 @@ describe("the list of open asks", () => {
   });
 });
 
+describe("a poll for the list", () => {
+  it.each(["abc", "-1", "1.5", ""])(
+    "refuses a version that is not a whole number, %j, as invalid_input",
+    async (since) => {
+      const response = await get(
+        `${pagePaths.asks}?since=${since}`,
+        await issuer.sessionToken({ claims: { sub: newAccount() } }),
+      );
+      expect(response.status).toBe(400);
+      const refusal = refusalSchema.parse(await response.json());
+      expect(refusal.code).toBe("invalid_input");
+      expect(refusal.class).toBe("do not retry");
+    },
+  );
+});
+
 describe("the connection details", () => {
   it("give the MCP server's address", async () => {
     const response = await get(
