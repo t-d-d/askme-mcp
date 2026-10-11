@@ -1,6 +1,6 @@
 ---
 name: pre-push
-description: "Catch up to origin/main, run the gate on the merged tree, have the diff reviewed, then push and raise or update the pull request. Run before every push."
+description: "Catch up to origin/main, run the gate on the merged tree, run the code-review gate, then push and raise or update the pull request. Run before every push."
 ---
 
 # Pre-push
@@ -23,20 +23,28 @@ Order: catch up, check, review, push. A check only counts against the merged tre
   meaning does not change without one. A change of wording only needs
   none.
 
-## 3. Have the diff reviewed
+## 3. Run the code-review gate
 
-Start one sub-agent with a fresh context. Give it the branch diff, the
-issue text and the matching constraint files. Ask for two things:
-correctness, and whether the change is more complicated than the issue
-needs.
+Run the `code-review` skill at `high --fix` over the branch diff against
+main. At high effort it also reports findings it is unsure of, so judge
+each one.
+
+If the skill is not available, start two sub-agents with a fresh context
+over the branch diff, one for correctness and one for conventions and
+test quality. Give both the issue text and the matching constraint files.
+Judge their findings and apply them yourself.
 
 Every finding ends one of three ways:
 
-- **Dismissed** as wrong.
+- **Dismissed** as wrong. A finding that names a failure is dismissed only
+  after you traced it through the code or ran it, and it did not happen.
+  Saying it is wrong, or pointing at a line, is not enough.
 - **Fixed** in this branch.
-- **Filed** as an issue, when it is unrelated to the branch or too big for
-  a review fix. File it before pushing and link it under *Left for later*.
-  A finding that exists only in a pull request body is lost at merge.
+- **Filed** as an issue, when it is real but unrelated to the branch or
+  too big for a review fix. File it before pushing and link it under
+  *Left for later*, saying that it is real and why it waits, so nobody
+  reads it as declined. A finding that exists only in a pull request body
+  is lost at merge.
 
 If the review changed code, run the gate again.
 
