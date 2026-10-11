@@ -94,13 +94,17 @@ describe("fitness: an agent's token reads nothing from the page's API (agents-wr
     .map(([route]) => route);
 
   // A token that carries asks:create and nothing else, in the form Clerk
-  // gives agents, and in the form of a session token.
+  // gives agents, and in the form of a session token. Then an OpenID ID
+  // token, which Clerk can give an agent's OAuth client with no scope at
+  // all: it names its client as its audience, which a session token never
+  // has.
   const agentTokens = () =>
     Promise.all([
       issuer.token({ claims: { scope: "asks:create" } }),
       issuer.token({ claims: { scope: undefined, scp: ["asks:create"] } }),
       issuer.token({ typ: "JWT", claims: { scope: "asks:create" } }),
       issuer.sessionToken({ claims: { scope: "asks:create" } }),
+      issuer.sessionToken({ claims: { aud: "client_test" } }),
     ]);
 
   it("finds the page's routes", () => {
@@ -110,7 +114,7 @@ describe("fitness: an agent's token reads nothing from the page's API (agents-wr
   });
 
   it.each(pageRoutes)(
-    "refuses a token carrying only asks:create on %s",
+    "refuses an agent's token on %s, such as one carrying only asks:create",
     async (route) => {
       const [method = "", path = ""] = route.split(" ");
       for (const token of await agentTokens()) {

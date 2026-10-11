@@ -25,6 +25,7 @@ interface Claims {
   scope: string;
   scp: string[];
   sid: string;
+  aud: string;
   iat: number;
   exp: number;
 }

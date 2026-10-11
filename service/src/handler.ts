@@ -21,7 +21,13 @@ import {
 import { servePage, unavailable as pageUnavailable } from "./api";
 import { askTool } from "./ask";
 import { readEnv } from "./env";
-import { incoming, result, type Incoming, type Result } from "./http";
+import {
+  authorizationOf,
+  incoming,
+  result,
+  type Incoming,
+  type Result,
+} from "./http";
 import {
   askScope,
   callerOf,
@@ -123,8 +129,7 @@ async function serve(
     });
   }
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(resource);
-  // API Gateway joins a repeated header with commas. Only the first counts.
-  const authorization = request.headers.get("authorization")?.split(",")[0];
+  const authorization = authorizationOf(request);
   let authInfo: AuthInfo;
   try {
     authInfo = await verifyBearerToken(authorization, {

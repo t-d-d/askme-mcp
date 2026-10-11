@@ -168,8 +168,9 @@ const sessionClaimsSchema = z.object({
 // and gives the account they name.
 //
 // A token typed as an OAuth access token, or carrying a scope, is an
-// agent's: it is refused with AgentToken, whatever scope it holds. Session
-// tokens carry no scope.
+// agent's: it is refused with AgentToken, whatever scope it holds. So is a
+// token with an audience, such as an OpenID ID token, which Clerk gives an
+// agent's OAuth client. Session tokens carry no scope and no audience.
 export function sessionVerifier(
   issuer: string,
   keys: KeySet = keySet(issuer),
@@ -183,7 +184,8 @@ export function sessionVerifier(
     if (
       protectedHeader.typ?.toLowerCase() === "at+jwt" ||
       "scope" in payload ||
-      "scp" in payload
+      "scp" in payload ||
+      "aud" in payload
     ) {
       throw new AgentToken();
     }

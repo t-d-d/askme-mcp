@@ -185,11 +185,12 @@ export function createStore(config: {
       return id;
     },
 
+    // The version is read before the asks, never alongside them, so it is
+    // never newer than the list it comes with. A write that lands between
+    // the two reads raises the version again, and the page reads once more.
     async openAsks(account, now) {
-      const [{ version, everAsked }, asks] = await Promise.all([
-        meta(account),
-        storedAsks(account, now),
-      ]);
+      const { version, everAsked } = await meta(account);
+      const asks = await storedAsks(account, now);
       return { version, everAsked: everAsked ?? false, asks };
     },
 

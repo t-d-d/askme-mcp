@@ -5,6 +5,7 @@
 // a missing or bad token is refused with a bare 401.
 import { asksAnswer, connectionAnswer } from "../../shared/page-api";
 import { pageRefusal } from "./errors";
+import { authorizationOf } from "./http";
 import { AgentToken, TokenRejected, type AccountId } from "./identity";
 import { errorClass, type Logger } from "./log";
 import { mcpPath, type PageRoute } from "./routes";
@@ -35,11 +36,9 @@ export function unavailable(): Response {
   );
 }
 
-// The bearer token in a request, if it has one. API Gateway joins a repeated
-// header with commas, and only the first counts.
+// The bearer token in a request, if it has one.
 function bearerToken(request: Request): string | undefined {
-  const authorization = request.headers.get("authorization")?.split(",")[0];
-  const match = /^Bearer\s+(\S+)\s*$/iu.exec(authorization ?? "");
+  const match = /^Bearer\s+(\S+)\s*$/iu.exec(authorizationOf(request) ?? "");
   return match?.[1];
 }
 
