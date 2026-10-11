@@ -36,9 +36,12 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      # Build before the job holds any AWS credentials.
+      # Build before the job holds any AWS credentials. Clerk's publishable
+      # key is public, and the page needs it to sign people in (ADR 6).
       - name: Build the page
         run: npm run build
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
       - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}

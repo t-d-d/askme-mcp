@@ -17,3 +17,15 @@ body {
   font-size: var(--size-body);
   line-height: var(--leading-body);
 }
+
+/* Focus is always visible: a 2px ink outline, 2px away from the control. */
+:focus-visible {
+  outline: var(--focus-width) solid var(--ink);
+  outline-offset: var(--focus-width);
+}
+
+/* Buttons and fields take the page's type, not the browser's. */
+button,
+input {
+  font: inherit;
+}

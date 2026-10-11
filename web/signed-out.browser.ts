@@ -45,10 +45,33 @@ describe.each([
     expect(await open.page.getByText(notice).isVisible()).toBe(true);
   });
 
-  it("has no sign-up button yet", async () => {
+  it("offers Sign up, and Sign in for someone who has an account", async () => {
     const { page } = open;
-    expect(await page.getByRole("button").count()).toBe(0);
+    const buttons = await page.getByRole("button").allInnerTexts();
+    expect(buttons.sort()).toEqual(["Sign in", "Sign up"]);
     expect(await page.getByRole("link").count()).toBe(0);
+  });
+
+  it("sends the person to Clerk's own sign-up screen", async () => {
+    await open.page.getByRole("button", { name: "Sign up" }).click();
+    expect(await open.askedFor()).toBe("sign-up");
+  });
+
+  it("sends the person to Clerk's own sign-in screen", async () => {
+    await open.page.getByRole("button", { name: "Sign in" }).click();
+    expect(await open.askedFor()).toBe("sign-in");
+  });
+
+  it("makes each button big enough to tap", async () => {
+    for (const button of await open.page.getByRole("button").all()) {
+      const box = await button.boundingBox();
+      expect(box?.width).toBeGreaterThanOrEqual(44);
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  it("asks the page's API for nothing", () => {
+    expect(open.apiCalls).toEqual([]);
   });
 
   it("scrolls only up and down", async () => {
