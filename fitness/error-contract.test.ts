@@ -19,6 +19,7 @@ const store: Store = {
   openAsks: unused,
   asksSince: unused,
   countPoll: unused,
+  countAsk: unused,
   close: () => undefined,
 };
 

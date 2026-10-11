@@ -3,7 +3,7 @@
 
 // A sort key the table uses (ADR 13), written as a whole string or as the
 // start of one.
-const sortKey = /^(?:META|RULES)$|^(?:OPEN|CLOSED|DEDUPE|USAGE|POLL)#/u;
+const sortKey = /^(?:META|RULES)$|^(?:OPEN|CLOSED|DEDUPE|USAGE|POLL|RATE)#/u;
 
 const noHandBuiltKey = {
   meta: {
