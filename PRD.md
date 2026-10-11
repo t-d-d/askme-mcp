@@ -61,7 +61,7 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 | --- | --- | --- |
 | Summary | Sending agent | One or two lines for the card. Hard character limit, rejected if longer. |
 | Area | Sending agent | Required. One short line naming the project or part of life the ask belongs to. Broad, not the task in hand. It helps sorting and is not shown. |
-| Spoken detail | Sending agent | Plain sentences written to be heard. No markdown, code, file paths or raw URLs. About a minute of speech at most. When the action can only be taken in one place, such as a browser tab on one machine, it says where. |
+| Spoken detail | Sending agent | Plain sentences written to be heard. No markdown, code, file paths or raw URLs. About a minute of speech at most. When the user can take the action in one place only, such as a browser tab on one machine, it says where. |
 | Action link | Sending agent, optional | Where the user takes the action when that is not the session, such as a pull request or a ticket. Must be https. |
 | Session link | Sending agent, optional | Back to the agent's session, for when the user needs to reply to the agent. Must be https. |
 | Replaces | Sending agent, optional | The id of an earlier ask that this one takes over from. |
