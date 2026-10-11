@@ -4,9 +4,10 @@
 // posted in the last ten minutes is answered with the first one's id, and
 // an account over its daily cap or its rate is refused.
 //
-// Each limit is a constant here, and the schema, the field's description and
-// the refusal's message all take it from here, so the three cannot disagree
-// (ADR 11).
+// Each field's limit is a constant here, and the schema, the field's
+// description and the refusal's message all take it from here, so the three
+// cannot disagree (ADR 11). The daily cap and the rate are the store's
+// constants, which the refusals' messages take from there.
 import { z } from "zod";
 import { Refused, retryBudget } from "./errors";
 import { guidance } from "./instructions";
