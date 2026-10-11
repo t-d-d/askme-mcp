@@ -138,13 +138,19 @@ describe("fitness: MCP goes through a real client (test-tiers.md)", () => {
     expect(handWritten).toEqual([]);
   });
 
-  // An integration test that calls the service's handler, by its import.
+  // An integration test that calls the service's handler, by its import,
+  // and reaches its MCP endpoint. A test of the page's API alone never
+  // speaks MCP.
   function mcpTests(): string[] {
     return repoFiles()
       .filter((path) => path.endsWith(".int.ts"))
-      .filter((path) =>
-        /from "[./]*(?:service\/)?src\/handler"/u.test(readRepoFile(path)),
-      );
+      .filter((path) => {
+        const text = readRepoFile(path);
+        return (
+          /from "[./]*(?:service\/)?src\/handler"/u.test(text) &&
+          /\bmcpUrl\b|\bconnect\(|["'`}]\/mcp\b/u.test(text)
+        );
+      });
   }
 });
 

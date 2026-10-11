@@ -7,8 +7,14 @@ import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, lineText } from "../test/logs";
 import { connect, eras, mcpUrl, metadataUrl, refusalOf } from "../test/mcp";
-import { fixedAskId } from "./src/ask";
+import { limits } from "./src/ask";
 import { handler } from "./src/handler";
+
+// What a posted ask answers: a long random id, and nothing about the account.
+const posted = z.strictObject({
+  id: z.string().regex(/^[A-Za-z0-9_-]{24}$/u),
+  status: z.literal("posted"),
+});
 
 let issuer: FakeIssuer;
 beforeAll(async () => {
@@ -85,17 +91,70 @@ describe.each(eras)(
       await client.close();
     });
 
-    it("gets the fixed id back from ask", async () => {
+    it("gets a new id back from each ask", async () => {
       const client = await connect(handler, {
         token: await issuer.token(),
         era,
       });
-      const result = await client.callTool({ name: "ask", arguments: ask });
-      expect(result.isError).not.toBe(true);
-      expect(result.structuredContent).toEqual({
-        id: fixedAskId,
-        status: "posted",
+      const post = async () => {
+        const result = await client.callTool({ name: "ask", arguments: ask });
+        expect(result.isError).not.toBe(true);
+        return posted.parse(result.structuredContent).id;
+      };
+      const ids = [await post(), await post()];
+      expect(new Set(ids).size).toBe(2);
+      await client.close();
+    });
+
+    it("refuses an ask that breaks a limit, naming every field and its limit", async () => {
+      const client = await connect(handler, {
+        token: await issuer.token(),
+        era,
       });
+      const over = (limit: number) => "x".repeat(limit + 1);
+      const result = await client.callTool({
+        name: "ask",
+        arguments: {
+          summary: over(limits.summary),
+          area: over(limits.area),
+          spoken_detail: over(limits.spokenDetail),
+          action_link: `https://example.com/${over(limits.link)}`,
+          session_link: "https://claude.ai/code/session_1",
+        },
+      });
+      const refusal = refusalOf(result);
+      expect(refusal.code).toBe("invalid_input");
+      expect(refusal.class).toBe("do not retry");
+      expect(refusal.message).toContain(
+        `summary: is longer than ${String(limits.summary)} characters`,
+      );
+      expect(refusal.message).toContain(
+        `area: is longer than ${String(limits.area)} characters`,
+      );
+      expect(refusal.message).toContain(
+        `spoken_detail: is longer than ${String(limits.spokenDetail)} characters`,
+      );
+      expect(refusal.message).toContain(
+        `action_link: is longer than ${String(limits.link)} characters`,
+      );
+      expect(refusal.message).not.toContain("session_link");
+      await client.close();
+    });
+
+    it("refuses an ask whose text is empty or only spaces", async () => {
+      const client = await connect(handler, {
+        token: await issuer.token(),
+        era,
+      });
+      const refusal = refusalOf(
+        await client.callTool({
+          name: "ask",
+          arguments: { ...ask, summary: "   ", area: "" },
+        }),
+      );
+      expect(refusal.code).toBe("invalid_input");
+      expect(refusal.message).toContain("summary: is empty");
+      expect(refusal.message).toContain("area: is empty");
       await client.close();
     });
 
@@ -152,10 +211,7 @@ describe("a verified token without asks:create", () => {
       }),
     });
     const result = await client.callTool({ name: "ask", arguments: ask });
-    expect(result.structuredContent).toEqual({
-      id: fixedAskId,
-      status: "posted",
-    });
+    expect(posted.safeParse(result.structuredContent).success).toBe(true);
     await client.close();
   });
 });

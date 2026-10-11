@@ -57,6 +57,12 @@ export function incoming(event: unknown): Incoming | undefined {
   };
 }
 
+// The Authorization header, if the request has one. API Gateway joins a
+// repeated header with commas, and only the first counts.
+export function authorizationOf(request: Request): string | undefined {
+  return request.headers.get("authorization")?.split(",")[0];
+}
+
 export interface Result {
   statusCode: number;
   headers: Record<string, string>;

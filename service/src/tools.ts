@@ -9,10 +9,12 @@ import type { z } from "zod";
 import { refusal, retryBudget } from "./errors";
 import { askScope, type Caller } from "./identity";
 import { createLogger, errorClass, type Logger } from "./log";
+import type { Store } from "./store/store";
 
 export interface ToolContext {
   caller: Caller;
   log: Logger;
+  store: Store;
 }
 
 export interface ToolDefinition<
@@ -59,6 +61,7 @@ export function addTool<Input extends z.ZodObject, Output extends z.ZodObject>(
   server: McpServer,
   tool: ToolDefinition<Input, Output>,
   caller: Caller,
+  store: Store,
 ): void {
   const log = createLogger(caller.requestId);
   const at = { accountId: caller.accountId, tool: tool.name };
@@ -91,7 +94,7 @@ export function addTool<Input extends z.ZodObject, Output extends z.ZodObject>(
         // breaks it is a failure under the error contract, not the SDK's
         // own error text.
         const output = tool.output.parse(
-          await tool.run(parsed.data, { caller, log }),
+          await tool.run(parsed.data, { caller, log, store }),
         );
         return {
           content: [{ type: "text", text: JSON.stringify(output) }],

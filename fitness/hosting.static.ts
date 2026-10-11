@@ -112,6 +112,11 @@ describe("fitness: nothing runs continuously (hosting.md)", () => {
     "AWS::S3::BucketPolicy",
   ]);
 
+  // A table costs nothing while idle only when it is billed per request.
+  const onDemandTable = (resource: z.infer<typeof resourceSchema>) =>
+    resource.Type === "AWS::DynamoDB::Table" &&
+    resource.Properties?.BillingMode === "PAY_PER_REQUEST";
+
   it("declares only resources that cost nothing while idle", () => {
     const declared = [
       ...Object.entries(definition().resources.Resources),
@@ -120,9 +125,28 @@ describe("fitness: nothing runs continuously (hosting.md)", () => {
       ),
     ];
     const standing = declared
-      .filter(([, resource]) => !onDemand.has(resource.Type))
+      .filter(
+        ([, resource]) =>
+          !onDemand.has(resource.Type) && !onDemandTable(resource),
+      )
       .map(([id, resource]) => `${id}: ${resource.Type}`);
     expect(standing).toEqual([]);
+  });
+
+  it("tells a table billed per request from one with set capacity", () => {
+    expect(
+      onDemandTable({
+        Type: "AWS::DynamoDB::Table",
+        Properties: { BillingMode: "PAY_PER_REQUEST" },
+      }),
+    ).toBe(true);
+    expect(
+      onDemandTable({
+        Type: "AWS::DynamoDB::Table",
+        Properties: { BillingMode: "PROVISIONED" },
+      }),
+    ).toBe(false);
+    expect(onDemandTable({ Type: "AWS::DynamoDB::Table" })).toBe(false);
   });
 
   it("gives no function a live connection or reserved capacity", () => {

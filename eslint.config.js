@@ -7,6 +7,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import { defineConfig, globalIgnores } from "eslint/config";
 import globals from "globals";
 import tseslint from "typescript-eslint";
+import askme from "./lint-rules/index.js";
 
 // The page and the service never import each other (ADR 10).
 const layerPattern = (other) => ({
@@ -14,8 +15,44 @@ const layerPattern = (other) => ({
   message: `The page and the service never import each other. Shared types go in their own module.`,
 });
 
+// One store module is the only code that reads or writes the table
+// (ADR 13), so the database client is imported there and nowhere else. The
+// test setup that starts the local database is the one other place.
+const databaseClients = [
+  "@aws-sdk/client-dynamodb",
+  "@aws-sdk/lib-dynamodb",
+  "@aws-sdk/util-dynamodb",
+];
+const databaseMessage =
+  "Only the store module, service/src/store/store.ts, reads or writes the table (ADR 13).";
+const databasePaths = databaseClients.map((name) => ({
+  name,
+  message: databaseMessage,
+}));
+const databasePatterns = [
+  {
+    group: databaseClients.map((name) => `${name}/*`),
+    message: databaseMessage,
+  },
+];
+
+// Every block below that sets no-restricted-imports replaces this one for
+// its files, so each carries the database rule as well.
+const databaseImports = {
+  "no-restricted-imports": [
+    "error",
+    { paths: databasePaths, patterns: databasePatterns },
+  ],
+};
+
 const layer = (other) => ({
-  "no-restricted-imports": ["error", { patterns: [layerPattern(other)] }],
+  "no-restricted-imports": [
+    "error",
+    {
+      patterns: [layerPattern(other), ...databasePatterns],
+      paths: databasePaths,
+    },
+  ],
 });
 
 // The shared logger in service/src/log.ts is the only way to log (ADR 7).
@@ -37,8 +74,8 @@ const otherLoggers = [
 }));
 
 const serviceImports = {
-  patterns: [layerPattern("web")],
-  paths: otherLoggers,
+  patterns: [layerPattern("web"), ...databasePatterns],
+  paths: [...otherLoggers, ...databasePaths],
 };
 
 // Importing env, stdout or stderr from the process module would get round
@@ -112,6 +149,19 @@ export default defineConfig(
   tseslint.configs.strictTypeChecked,
   comments.recommended,
   {
+    // The project's own rules, from the decision records (ADR 10).
+    files: ["**/*.{js,ts,tsx}"],
+    plugins: { askme },
+    rules: {
+      "askme/no-hand-built-key": "error",
+      "askme/no-scan": "error",
+    },
+  },
+  {
+    files: ["**/*.{ts,tsx}"],
+    rules: databaseImports,
+  },
+  {
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -174,6 +224,41 @@ export default defineConfig(
     rules: boundaries,
   },
   {
+    // The key module is where every key is written (ADR 13).
+    files: ["service/src/store/keys.ts"],
+    rules: { "askme/no-hand-built-key": "off" },
+  },
+  {
+    // The store module is the one place the database client is imported.
+    files: ["service/src/store/store.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [layerPattern("web")],
+          paths: [...otherLoggers, ...processImports],
+        },
+      ],
+    },
+  },
+  {
+    // The local database for the integration tier is started and its table
+    // made here, outside the service (ADR 9).
+    files: ["test/dynamodb.ts"],
+    rules: { "no-restricted-imports": "off" },
+  },
+  {
+    // Every refusal comes from the one table of codes in errors.ts (ADR 11).
+    files: ["service/**/*.ts"],
+    ignores: [
+      "service/src/errors.ts",
+      "**/*.test.ts",
+      "**/*.int.ts",
+      "**/*.live.ts",
+    ],
+    rules: { "askme/refusal-from-table": "error" },
+  },
+  {
     // The gate is offline (ADR 9). test/browser.ts refuses every request
     // that is not to loopback, so browser tests open pages only through it.
     files: ["**/*.browser.ts"],
@@ -187,7 +272,9 @@ export default defineConfig(
               message:
                 "Open pages with openPage from test/browser.ts, which keeps the browser offline.",
             },
+            ...databasePaths,
           ],
+          patterns: databasePatterns,
         },
       ],
     },

@@ -1,9 +1,11 @@
 // The Lambda function behind API Gateway's HTTP API (ADR 5): the MCP
-// endpoint and the metadata that tells a client where to sign in.
+// endpoint, the metadata that tells a client where to sign in, and the
+// page's API.
 //
-// Every route but the metadata checks a token first (ADR 6). A call with no
-// token, or one the service cannot verify, gets a 401 that points to the
-// metadata. Anything after that, refusals included, is the MCP server's.
+// Every route but the metadata checks a token first (ADR 6). On the MCP
+// endpoint, a call with no token, or one the service cannot verify, gets a
+// 401 that points to the metadata. Anything after that, refusals included,
+// is the MCP server's. The page's routes are served in api.ts.
 import {
   bearerAuthChallengeResponse,
   createMcpHandler,
@@ -16,33 +18,32 @@ import {
   type McpRequestContext,
   type OAuthTokenVerifier,
 } from "@modelcontextprotocol/server";
+import { servePage, unavailable as pageUnavailable } from "./api";
 import { askTool } from "./ask";
 import { readEnv } from "./env";
-import { incoming, result, type Incoming, type Result } from "./http";
+import {
+  authorizationOf,
+  incoming,
+  result,
+  type Incoming,
+  type Result,
+} from "./http";
 import {
   askScope,
   callerOf,
+  keySet,
   resourceMetadata,
+  sessionVerifier,
   tokenVerifier,
   TokenRejected,
+  type AccountId,
 } from "./identity";
 import { createLogger, errorClass, type Logger } from "./log";
+import { isPageRoute, isRoute, mcpPath, routes } from "./routes";
+import { createStore, type Store } from "./store/store";
 import { addTool } from "./tools";
 
-const mcpPath = "/mcp";
-
-// The routes API Gateway sends here, and who may call each. serverless.yml
-// declares the same routes, and a static test keeps the two the same.
-export const routes = {
-  "POST /mcp": "token",
-  "GET /mcp": "token",
-  "DELETE /mcp": "token",
-  "GET /.well-known/oauth-protected-resource/mcp": "public",
-} as const satisfies Record<string, "token" | "public">;
-
-type Route = keyof typeof routes;
-
-const isRoute = (route: string): route is Route => Object.hasOwn(routes, route);
+export { routes };
 
 // OAuthError's code is typed as any string, so compare it as one.
 const invalidToken: string = OAuthErrorCode.InvalidToken;
@@ -51,7 +52,7 @@ const invalidToken: string = OAuthErrorCode.InvalidToken;
 // It sees the caller the token check verified.
 function buildServer(context: McpRequestContext): McpServer {
   const server = new McpServer({ name: "askme", version: "1.0.0" });
-  addTool(server, askTool, callerOf(context.authInfo));
+  addTool(server, askTool, callerOf(context.authInfo), ready().store);
   return server;
 }
 
@@ -60,12 +61,30 @@ function buildServer(context: McpRequestContext): McpServer {
 // with no subscriptions allowed it is refused at once.
 const mcp = createMcpHandler(buildServer, { maxSubscriptions: 0 });
 
-// Read on the first request, so that a test can set the environment first.
-let identity: { issuer: string; verifier: OAuthTokenVerifier } | undefined;
+interface Services {
+  issuer: string;
+  // Checks an agent's OAuth access token.
+  verifier: OAuthTokenVerifier;
+  // Checks the page's session token.
+  verifySession: (token: string) => Promise<AccountId>;
+  store: Store;
+}
 
-function setUp() {
-  const { clerkIssuer } = readEnv();
-  return { issuer: clerkIssuer, verifier: tokenVerifier(clerkIssuer) };
+// Set up on the first request, so that a test can set the environment first.
+let services: Services | undefined;
+
+function ready(): Services {
+  if (services === undefined) {
+    const { clerkIssuer, tableName, databaseEndpoint } = readEnv();
+    const keys = keySet(clerkIssuer);
+    services = {
+      issuer: clerkIssuer,
+      verifier: tokenVerifier(clerkIssuer, keys),
+      verifySession: sessionVerifier(clerkIssuer, keys),
+      store: createStore({ tableName, endpoint: databaseEndpoint }),
+    };
+  }
+  return services;
 }
 
 export async function handler(event: unknown): Promise<Result> {
@@ -82,7 +101,10 @@ export async function handler(event: unknown): Promise<Result> {
     return await result(await serve(request, log));
   } catch (error) {
     log.error("request-failed", { errorClass: errorClass(error) });
-    return result(unavailable());
+    const { route } = request;
+    return result(
+      isRoute(route) && isPageRoute(route) ? pageUnavailable() : unavailable(),
+    );
   }
 }
 
@@ -91,20 +113,27 @@ async function serve(
   log: Logger,
 ): Promise<Response> {
   if (!isRoute(route)) return new Response(null, { status: 404 });
-  identity ??= setUp();
+  const { issuer, verifier, verifySession, store } = ready();
+  if (isPageRoute(route)) {
+    return servePage(route, request, {
+      origin,
+      verify: verifySession,
+      store,
+      log,
+    });
+  }
   const resource = new URL(mcpPath, origin);
   if (routes[route] === "public") {
-    return Response.json(resourceMetadata(resource, identity.issuer), {
+    return Response.json(resourceMetadata(resource, issuer), {
       headers: { "access-control-allow-origin": "*" },
     });
   }
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(resource);
-  // API Gateway joins a repeated header with commas. Only the first counts.
-  const authorization = request.headers.get("authorization")?.split(",")[0];
+  const authorization = authorizationOf(request);
   let authInfo: AuthInfo;
   try {
     authInfo = await verifyBearerToken(authorization, {
-      verifier: identity.verifier,
+      verifier,
       resourceMetadataUrl,
     });
   } catch (error) {
@@ -136,8 +165,9 @@ async function serve(
   return response;
 }
 
-// Any failure the service did not expect. It is service_unavailable, which
-// tells the caller to try again (ADR 11), and it says nothing more.
+// Any failure the service did not expect, outside the page's routes. It is
+// service_unavailable, which tells the caller to try again (ADR 11), and it
+// says nothing more.
 function unavailable(): Response {
   return Response.json(
     {

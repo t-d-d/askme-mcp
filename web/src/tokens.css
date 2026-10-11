@@ -63,21 +63,31 @@
   --radius-button: 18px;
   --radius-pill: 10px;
   --radius-pill-small: 8px;
+  --hairline: 1px;
+  --border-width: 1.5px;
+  --focus-width: 2px;
   --tap: 44px;
   --button-height: 56px;
   --button-height-settings: 52px;
 
   /* Space: the steps the mockup uses, then the ones docs/design.md names */
+  --space-2: 2px;
   --space-4: 4px;
   --space-6: 6px;
   --space-8: 8px;
   --space-10: 10px;
+  --space-11: 11px;
+  --space-12: 12px;
   --space-14: 14px;
   --space-16: 16px;
   --space-18: 18px;
   --space-20: 20px;
   --space-22: 22px;
   --space-26: 26px;
+  --space-30: 30px;
+  --space-32: 32px;
+  --space-34: 34px;
+  --space-all-clear: 130px;
 
   --space-text: var(--space-20);
   --space-outside-card: var(--space-16);

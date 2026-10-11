@@ -1,5 +1,8 @@
 // Global setup for the browser tier: build the page into a temporary folder
 // and serve it on loopback. Tests read the address with inject("pageUrl").
+//
+// The gate cannot reach Clerk (ADR 9), so the page is built with the
+// stand-in in test/page/fake-clerk.tsx in place of web/src/clerk.tsx.
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,6 +18,9 @@ declare module "vitest" {
 }
 
 const web = fileURLToPath(new URL("../web", import.meta.url));
+const fakeClerk = fileURLToPath(
+  new URL("./page/fake-clerk.tsx", import.meta.url),
+);
 
 export default async function setup(
   project: TestProject,
@@ -24,6 +30,7 @@ export default async function setup(
     root: web,
     logLevel: "warn",
     build: { outDir, emptyOutDir: true },
+    resolve: { alias: [{ find: /^\.\/clerk$/u, replacement: fakeClerk }] },
   });
   const server = await preview({
     root: web,

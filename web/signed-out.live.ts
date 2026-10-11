@@ -26,6 +26,13 @@ describe("live: the page loads", () => {
           .getByText("This is a demo. Every ask is deleted")
           .isVisible(),
       ).toBe(true);
+      // The page shows these only once Clerk has said nobody is signed in.
+      expect(
+        await page.getByRole("button", { name: "Sign up" }).isVisible(),
+      ).toBe(true);
+      expect(
+        await page.getByRole("button", { name: "Sign in" }).isVisible(),
+      ).toBe(true);
     } finally {
       await browser.close();
     }
