@@ -20,6 +20,7 @@ Each technical decision that is hard to reverse is recorded here, one file per d
 | [14](0014-styling.md) | Styles are plain CSS built from one set of tokens | [styling.md](../constraints/styling.md) |
 | [15](0015-conformance-tier.md) | Setup held outside the repo is checked by a tier of its own | [test-tiers.md](../constraints/test-tiers.md), [repo-and-delivery.md](../constraints/repo-and-delivery.md) |
 | [16](0016-live-sign-in.md) | After each deploy, one test account signs in on the live page | [test-tiers.md](../constraints/test-tiers.md) |
+| [17](0017-spend-reads-the-bill.md) | The spend alarm reads the account's bill | [alerting.md](../constraints/alerting.md) |
 
 ## How a decision is recorded
 

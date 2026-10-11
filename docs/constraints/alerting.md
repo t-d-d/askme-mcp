@@ -11,7 +11,10 @@ error line covers new code by construction (logging.md).
 - The alarm set is exactly: error lines, function failures, server
   errors, spend.
 - Every alarm publishes to the one alert topic.
-- No alarm reads an account-wide metric.
+- No alarm reads an account-wide metric, except spend, which reads
+  the account's bill in US dollars and nothing else.
+- The AWS account holds askme and nothing else, so its bill is
+  askme's.
 - An alarm description starts [tripwire] or [rate] and names the
   first query to run.
 - Warnings are counted by query, never alarmed.
@@ -24,7 +27,12 @@ error line covers new code by construction (logging.md).
 - Route alerts through askme itself: an alert that askme is down
   cannot depend on askme.
 - Fix a noisy alarm by weakening it. Change the level of the line.
+- Scope spend with a budget filtered by a tag: the tag needs switching
+  on by hand, and the budget misses costs AWS cannot tag.
+- Put another system in askme's AWS account: its cost would trip the
+  spend alarm.
 
-Judgment: The email subscription is confirmed by hand and no check
-can see it.
-History: [ADR 8](../adr/0008-alerting.md)
+Judgment: The owner confirms the email subscription and switches on
+the account's billing alerts by hand. No check can see either, or that
+the account holds nothing else.
+History: [ADR 8](../adr/0008-alerting.md), [ADR 17](../adr/0017-spend-reads-the-bill.md)
