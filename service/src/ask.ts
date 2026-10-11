@@ -64,7 +64,7 @@ const askInput = z.strictObject({
   replaces: text(limits.id)
     .optional()
     .describe(
-      "Optional. The id of an earlier ask that this one takes over from. That ask closes, and this one takes its place. An id askme does not know is ignored, and this ask is posted as new.",
+      "Optional. The id of an earlier ask that this one takes over from. That ask closes, and this one takes its place. An id askme does not know, or one whose ask is already closed, is ignored, and this ask is posted as new.",
     ),
 });
 
@@ -82,7 +82,8 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
     guidance.post,
     guidance.several,
     guidance.resolve,
-    "Resolve it with the resolve tool and its id. When an ask changes, post the new one with replaces set to the old one's id.",
+    "Resolve it with the resolve tool and its id.",
+    guidance.replace,
     guidance.ownSession,
     `If askme refuses with a code marked retry, send the same call again at most ${String(retryBudget)} times, then carry on without askme.`,
   ].join(" "),

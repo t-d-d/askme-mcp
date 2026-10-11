@@ -82,7 +82,7 @@ export function addTool<Input extends z.ZodObject, Output extends z.ZodObject>(
         log.info("scope-missing", at);
         return refusal(
           "insufficient_scope",
-          `This connection to askme is not allowed to post asks: its token lacks the ${askScope} scope. Do not retry. Tell the person that askme needs its connection approved again, and ask your question in your own session meanwhile.`,
+          `This connection to askme is not allowed to post or resolve asks: its token lacks the ${askScope} scope. Do not retry. Tell the person that askme needs its connection approved again, and ask your question in your own session meanwhile.`,
         );
       }
       const parsed = tool.input.safeParse(args);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { askTool } from "./ask";
-import { instructions } from "./instructions";
+import { guidance, instructions } from "./instructions";
 import { resolveTool } from "./resolve";
 
 // The four things every agent is told (PRD, "MCP server"), each by the
@@ -22,7 +22,7 @@ describe("the server's instructions", () => {
   });
 
   it("say how to replace an ask", () => {
-    expect(instructions).toContain("replaces");
+    expect(instructions).toContain(guidance.replace);
   });
 });
 
@@ -35,6 +35,10 @@ describe("the ask tool's description", () => {
 
   it("names the tool that resolves an ask", () => {
     expect(askTool.description).toContain("the resolve tool");
+  });
+
+  it("says how to replace an ask, in the instructions' own words", () => {
+    expect(askTool.description).toContain(guidance.replace);
   });
 });
 

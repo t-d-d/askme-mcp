@@ -8,6 +8,8 @@ export const guidance = {
   several: "One session may hold several open asks, so keep the id of each.",
   resolve:
     "Resolve each ask as soon as its wait is over, before doing anything else, whether the person replied or the thing you were waiting for happened, such as a pull request being merged.",
+  replace:
+    "When an ask changes, post the new one with replaces set to the old one's id, and the old one closes.",
   ownSession:
     "Whatever askme answers, still ask your question in your own session.",
 } as const;
@@ -17,6 +19,6 @@ export const instructions = [
   guidance.post,
   guidance.several,
   guidance.resolve,
-  "When an ask changes, post the new one with replaces set to the old one's id, and the old one closes.",
+  guidance.replace,
   guidance.ownSession,
 ].join(" ");
