@@ -100,8 +100,9 @@ describe("fitness: only main can assume the deploy role (repo-and-delivery.md)",
   });
 
   it("takes the owner and repo ids as numbers, with no default", () => {
+    const parameters = template().Parameters;
     for (const name of ["GitHubOwnerId", "GitHubRepoId"]) {
-      const parameter = template().Parameters?.[name];
+      const parameter = parameters?.[name];
       expect(parameter?.AllowedPattern, name).toBe("[0-9]+");
       expect(parameter?.Default, name).toBeUndefined();
     }
@@ -171,6 +172,11 @@ describe("fitness: one environment (repo-and-delivery.md)", () => {
     expect(inConformanceEnvironment(conformancePath, inEnvironment)).toBe(true);
     expect(inConformanceEnvironment(deployPath, inEnvironment)).toBe(false);
     expect(inConformanceEnvironment(conformancePath, {})).toBe(false);
+    expect(
+      inConformanceEnvironment(conformancePath, {
+        environment: { name: "Conformance", url: "https://example.com" },
+      }),
+    ).toBe(true);
   });
 });
 
@@ -261,6 +267,14 @@ describe("fitness: no long-lived keys (repo-and-delivery.md)", () => {
         expect(JSON.stringify(outside), path).not.toMatch(/\bsecrets\b/iu);
       } else if (path === conformancePath) {
         expect(secrets, path).not.toContain("SERVERLESS_ACCESS_KEY");
+        // A key is a secret of the conformance environment, so only a job
+        // in that environment may name one (ADR 15).
+        const outside = { ...workflow, jobs: {} };
+        expect(JSON.stringify(outside), path).not.toMatch(/\bsecrets\b/iu);
+        for (const [id, job] of Object.entries(readWorkflow(path).jobs)) {
+          if (!/\bsecrets\b/iu.test(JSON.stringify(job))) continue;
+          expect(inConformanceEnvironment(path, job), id).toBe(true);
+        }
       } else {
         expect(secrets, path).toEqual([]);
       }

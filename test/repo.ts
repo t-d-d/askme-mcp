@@ -154,8 +154,22 @@ export const conformancePath = ".github/workflows/conformance.yml";
 // A conformance job that signs in runs in the GitHub environment
 // "conformance". Its token then names that environment, which the deploy
 // role does not trust, and its keys are that environment's secrets (ADR 15).
-export const inConformanceEnvironment = (path: string, job: Job): boolean =>
-  path === conformancePath && job.environment === "conformance";
+// GitHub reads an environment's name in any case, written alone or as
+// { name, url }.
+export const inConformanceEnvironment = (path: string, job: Job): boolean => {
+  const { environment } = job;
+  const name =
+    typeof environment === "object" &&
+    environment !== null &&
+    "name" in environment
+      ? environment.name
+      : environment;
+  return (
+    path === conformancePath &&
+    typeof name === "string" &&
+    name.toLowerCase() === "conformance"
+  );
+};
 
 export const workflowPaths = (): string[] =>
   repoFiles().filter((path) =>

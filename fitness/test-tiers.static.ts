@@ -12,6 +12,7 @@ import {
   scripts,
   triggers,
   inConformanceEnvironment,
+  type Job,
 } from "../test/repo";
 import { tierPattern, tiers } from "../test/tiers";
 
@@ -120,7 +121,7 @@ describe("fitness: conformance runs daily and only reads (test-tiers.md)", () =>
   it("runs the conformance tier every day, and nothing else", () => {
     const workflow = readWorkflow(path);
     expect(workflow.name).toBe("conformance");
-    expect(triggers(workflow)).toContain("schedule");
+    expect(triggers(workflow)).toEqual(["schedule", "workflow_dispatch"]);
     expect(Object.keys(workflow.jobs)).toEqual(["conformance"]);
     expect(runsIn(workflow.jobs.conformance)).toEqual([
       "npm ci",
@@ -128,18 +129,43 @@ describe("fitness: conformance runs daily and only reads (test-tiers.md)", () =>
     ]);
   });
 
+  // A job may read less than the workflow allows. The one thing it may
+  // write is a token request, and only in the conformance environment,
+  // whose token the deploy role refuses (ADR 15).
+  const onlyReads = (job: Job): boolean => {
+    const { permissions } = job;
+    if (permissions === undefined || permissions === "read-all") return true;
+    if (typeof permissions === "string") return false;
+    return Object.entries(permissions).every(
+      ([scope, level]) =>
+        level === "read" ||
+        level === "none" ||
+        (scope === "id-token" &&
+          level === "write" &&
+          inConformanceEnvironment(path, job)),
+    );
+  };
+
+  it("tells a job that only reads from one that could write", () => {
+    expect(onlyReads({})).toBe(true);
+    expect(onlyReads({ permissions: {} })).toBe(true);
+    expect(onlyReads({ permissions: { contents: "read" } })).toBe(true);
+    expect(onlyReads({ permissions: { contents: "write" } })).toBe(false);
+    expect(onlyReads({ permissions: "write-all" })).toBe(false);
+    expect(onlyReads({ permissions: { "id-token": "write" } })).toBe(false);
+    expect(
+      onlyReads({
+        permissions: { "id-token": "write" },
+        environment: "conformance",
+      }),
+    ).toBe(true);
+  });
+
   it("only reads, and cannot reach the deploy role", () => {
     const workflow = readWorkflow(path);
     expect(workflow.permissions).toEqual({ contents: "read" });
     for (const [id, job] of Object.entries(workflow.jobs)) {
-      if (job.permissions === undefined) continue;
-      // A job that reads AWS asks for a token, and runs in the conformance
-      // environment, whose token the deploy role refuses (ADR 15).
-      expect(job.permissions, id).toEqual({
-        contents: "read",
-        "id-token": "write",
-      });
-      expect(inConformanceEnvironment(path, job), id).toBe(true);
+      expect(onlyReads(job), id).toBe(true);
     }
     expect(readRepoFile(path)).not.toMatch(/AWS_DEPLOY_ROLE_ARN/iu);
   });

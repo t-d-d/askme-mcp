@@ -29,8 +29,10 @@ of it can only be read signed in.
   as GitHub's settings, still matches what the repo records. It runs
   every day and writes nothing. It may sign in, with the narrowest
   credential the service offers: one that only reads where there is
-  one. A job that signs in runs in the GitHub environment
-  "conformance", and its keys are that environment's secrets.
+  one. A job that uses a stored key or an AWS token runs in the GitHub
+  environment "conformance", which only main may use, and its keys are
+  that environment's secrets. The workflow's own read-only token needs
+  no environment.
 - The eval set is not in the gate.
 
 ## Do not
