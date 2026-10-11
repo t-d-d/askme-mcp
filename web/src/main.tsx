@@ -3,13 +3,16 @@ import "./tokens.css";
 import "./base.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { SignedOut } from "./SignedOut";
+import { App } from "./App";
+import { ClerkAuth } from "./clerk";
 
 const root = document.getElementById("root");
 if (root === null) throw new Error("The page has no root element.");
 
 createRoot(root).render(
   <StrictMode>
-    <SignedOut />
+    <ClerkAuth>
+      <App />
+    </ClerkAuth>
   </StrictMode>,
 );

@@ -1,0 +1,22 @@
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  .list {
+    flex-flow: row wrap;
+    align-items: flex-start;
+    gap: var(--space-32);
+    padding-top: var(--space-10);
+  }
+
+  .list > :first-child {
+    flex: 999 1 28rem;
+    min-width: 0;
+  }
+
+  .list > :last-child:not(:first-child) {
+    flex: 1 1 20rem;
+  }
+}

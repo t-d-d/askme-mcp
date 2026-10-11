@@ -27,10 +27,27 @@ const issuerSchema = z
   )
   .transform((url) => url.origin);
 
-const envSchema = z.object({ CLERK_ISSUER: issuerSchema });
+// The local DynamoDB that the integration tier runs (ADR 9). In production
+// it is unset, and the client finds the region's endpoint itself.
+const databaseEndpointSchema = z
+  .url({ error: "DYNAMODB_ENDPOINT must be an address." })
+  .refine(
+    (value) => URL.canParse(value) && loopback.has(new URL(value).hostname),
+    {
+      error: "DYNAMODB_ENDPOINT may only point to this machine.",
+    },
+  );
+
+const envSchema = z.object({
+  CLERK_ISSUER: issuerSchema,
+  TABLE_NAME: z.string().min(1, { error: "TABLE_NAME must name the table." }),
+  DYNAMODB_ENDPOINT: databaseEndpointSchema.optional(),
+});
 
 export interface Env {
   clerkIssuer: string;
+  tableName: string;
+  databaseEndpoint?: string;
 }
 
 export function readEnv(
@@ -45,5 +62,12 @@ export function readEnv(
         .join("; ")}`,
     );
   }
-  return { clerkIssuer: parsed.data.CLERK_ISSUER };
+  const { CLERK_ISSUER, TABLE_NAME, DYNAMODB_ENDPOINT } = parsed.data;
+  return {
+    clerkIssuer: CLERK_ISSUER,
+    tableName: TABLE_NAME,
+    ...(DYNAMODB_ENDPOINT === undefined
+      ? {}
+      : { databaseEndpoint: DYNAMODB_ENDPOINT }),
+  };
 }

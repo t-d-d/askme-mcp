@@ -1,45 +1,73 @@
-// The ask tool. For the first test (issue #3) it parses an ask with the real
-// schema and answers with a fixed id. Nothing is stored yet.
+// The ask tool: an agent posts something it needs the person for. The ask
+// is checked against its limits, stored, and answered with its id.
+//
+// Each limit is a constant here, and the schema, the field's description and
+// the refusal's message all take it from here, so the three cannot disagree
+// (ADR 11).
 import { z } from "zod";
 import { retryBudget } from "./errors";
 import type { ToolDefinition } from "./tools";
 
-export const fixedAskId = "first-test";
+// The most characters each field may hold. A summary is one or two lines on
+// a phone. The spoken detail is about a minute of speech.
+export const limits = {
+  summary: 80,
+  area: 60,
+  spokenDetail: 900,
+  link: 2000,
+  replaces: 64,
+} as const;
 
-const httpsLink = z.url({
-  protocol: /^https$/u,
-  error: "must be an https URL",
-});
+// A field's problem in words a model can act on. It names the limit, never
+// the value sent.
+const required = {
+  error: (issue: { input?: unknown }) =>
+    issue.input === undefined ? "is missing" : "must be text",
+};
+
+const text = (limit: number) =>
+  z
+    .string(required)
+    .trim()
+    .min(1, { error: "is empty" })
+    .max(limit, { error: `is longer than ${String(limit)} characters` });
+
+const httpsLink = z
+  .url({ protocol: /^https$/u, error: "must be an https URL" })
+  .max(limits.link, {
+    error: `is longer than ${String(limits.link)} characters`,
+  });
 
 const askInput = z.strictObject({
-  summary: z.string().describe("One or two lines for the person's list."),
-  area: z
-    .string()
-    .describe(
-      "One short line naming the project or part of life this ask belongs to. Broad, not the task in hand.",
-    ),
-  spoken_detail: z
-    .string()
-    .describe(
-      "Plain sentences written to be heard, about a minute of speech at most. No markdown, code, file paths or raw URLs.",
-    ),
+  summary: text(limits.summary).describe(
+    `One or two lines for the person's list, at most ${String(limits.summary)} characters. Say what you need from them.`,
+  ),
+  area: text(limits.area).describe(
+    `Required. One short line, at most ${String(limits.area)} characters, naming the project or part of life this ask belongs to. Broad, not the task in hand. It helps askme sort the ask and is not shown.`,
+  ),
+  spoken_detail: text(limits.spokenDetail).describe(
+    `Plain sentences written to be heard, at most ${String(limits.spokenDetail)} characters, which is about a minute of speech. No markdown, code, file paths or raw URLs. When the thing waiting for the person is in one place only, say where, such as a browser tab on one machine.`,
+  ),
   action_link: httpsLink
     .optional()
     .describe(
-      "Where the person takes the action, when that is not your session: a pull request or a ticket, say.",
+      `Optional. Where the person takes the action, when that is not your session: a pull request or a ticket, say. An https URL, at most ${String(limits.link)} characters.`,
     ),
   session_link: httpsLink
     .optional()
     .describe(
-      "A link back to your session, for when the person needs to reply to you.",
+      `Optional. A link back to your session, for when the person needs to reply to you. An https URL, at most ${String(limits.link)} characters.`,
     ),
-  replaces: z
-    .string()
+  replaces: text(limits.replaces)
     .optional()
-    .describe("The id of an earlier ask that this one takes over from."),
+    .describe(
+      "Optional. The id of an earlier ask that this one takes over from.",
+    ),
 });
 
-const askOutput = z.object({
+// What an agent gets back: the id and a status, and nothing about the
+// account (ADR 2).
+const askOutput = z.strictObject({
   id: z.string(),
   status: z.literal("posted"),
 });
@@ -49,8 +77,24 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
   description: `Post an ask: something you need the person to decide, answer or do before your work can go on. It joins their askme list and returns the ask's id. Ask the same question in your own session as well. If askme refuses with a code marked retry, send the same call again at most ${String(retryBudget)} times, then carry on without askme.`,
   input: askInput,
   output: askOutput,
-  run(_input, { caller, log }) {
-    log.info("ask-posted", { accountId: caller.accountId, askId: fixedAskId });
-    return Promise.resolve({ id: fixedAskId, status: "posted" });
+  async run(input, { caller, log, store }) {
+    const id = await store.postAsk(
+      caller.accountId,
+      {
+        summary: input.summary,
+        area: input.area,
+        spokenDetail: input.spoken_detail,
+        ...(input.action_link === undefined
+          ? {}
+          : { actionLink: input.action_link }),
+        ...(input.session_link === undefined
+          ? {}
+          : { sessionLink: input.session_link }),
+        ...(input.replaces === undefined ? {} : { replaces: input.replaces }),
+      },
+      new Date(),
+    );
+    log.info("ask-posted", { accountId: caller.accountId, askId: id });
+    return { id, status: "posted" };
   },
 };

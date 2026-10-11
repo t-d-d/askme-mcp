@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { ToolDefinition } from "../service/src/tools";
 import { eslint, importRefused, reported, rulesFor } from "../test/lint";
 import { repoFiles, root, scripts } from "../test/repo";
@@ -85,7 +85,15 @@ describe("fitness: the escapes stay closed (types-and-lint.md)", () => {
     ],
   ] as const;
 
-  for (const path of ["web/src/main.tsx", "test/repo.ts"]) {
+  const paths = ["web/src/main.tsx", "test/repo.ts"];
+
+  // The first type-aware lint of a file loads its project, which takes longer
+  // than one test may.
+  beforeAll(async () => {
+    for (const path of paths) await reported("", path);
+  }, 60_000);
+
+  for (const path of paths) {
     it.each(escapes)(`refuses %s in ${path}`, async (_, code, rule) => {
       expect(await reported(code, path)).toContain(rule);
     });

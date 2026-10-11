@@ -24,6 +24,8 @@ interface Claims {
   client_id: string;
   scope: string;
   scp: string[];
+  sid: string;
+  aud: string;
   iat: number;
   exp: number;
 }
@@ -31,7 +33,11 @@ interface Claims {
 export interface FakeIssuer {
   // The issuer's address, as CLERK_ISSUER holds it.
   issuer: string;
+  // An OAuth access token, as an agent holds after signing in.
   token(options?: TokenOptions): Promise<string>;
+  // A session token, as the page holds once a person signs in. It names a
+  // session and carries no scope.
+  sessionToken(options?: TokenOptions): Promise<string>;
   // While set, the key set answers 500, as an outage would.
   failing: boolean;
   close(): Promise<void>;
@@ -58,6 +64,29 @@ export async function startFakeIssuer(): Promise<FakeIssuer> {
   const { port } = portOf(server.address());
   const issuer = `http://127.0.0.1:${String(port)}`;
 
+  async function token(options: TokenOptions = {}) {
+    const now = Math.floor(Date.now() / 1000);
+    const claims: Record<string, unknown> = {
+      iss: issuer,
+      sub: testAccount,
+      client_id: "client_test",
+      scope: "asks:create",
+      iat: now,
+      exp: now + 3600,
+      ...options.claims,
+    };
+    const payload: JWTPayload = Object.fromEntries(
+      Object.entries(claims).filter(([, value]) => value !== undefined),
+    );
+    return new SignJWT(payload)
+      .setProtectedHeader({
+        alg: "RS256",
+        kid: options.foreignKey === true ? "foreign-key" : "test-key",
+        typ: options.typ ?? "at+jwt",
+      })
+      .sign(options.foreignKey === true ? foreign.privateKey : own.privateKey);
+  }
+
   return {
     issuer,
     get failing() {
@@ -66,30 +95,18 @@ export async function startFakeIssuer(): Promise<FakeIssuer> {
     set failing(value: boolean) {
       state.failing = value;
     },
-    async token(options = {}) {
-      const now = Math.floor(Date.now() / 1000);
-      const claims: Record<string, unknown> = {
-        iss: issuer,
-        sub: testAccount,
-        client_id: "client_test",
-        scope: "asks:create",
-        iat: now,
-        exp: now + 3600,
-        ...options.claims,
-      };
-      const payload: JWTPayload = Object.fromEntries(
-        Object.entries(claims).filter(([, value]) => value !== undefined),
-      );
-      return new SignJWT(payload)
-        .setProtectedHeader({
-          alg: "RS256",
-          kid: options.foreignKey === true ? "foreign-key" : "test-key",
-          typ: options.typ ?? "at+jwt",
-        })
-        .sign(
-          options.foreignKey === true ? foreign.privateKey : own.privateKey,
-        );
-    },
+    token,
+    sessionToken: (options = {}) =>
+      token({
+        ...options,
+        typ: options.typ ?? "JWT",
+        claims: {
+          client_id: undefined,
+          scope: undefined,
+          sid: "sess_test",
+          ...options.claims,
+        },
+      }),
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((error) => {

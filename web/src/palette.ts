@@ -13,7 +13,19 @@ export const palette = {
   gold: { strong: "#8A5A00", tint: "#F6E4BF", ink: "#6B4600" },
 } as const;
 
-export type HashtagColour = (typeof palette)[keyof typeof palette];
+export interface HashtagColour {
+  strong: string;
+  tint: string;
+  ink: string;
+}
+
+// An ask that is not sorted yet has no colour (docs/design.md): its main
+// button is --text-2, and its pill and second button --neutral-tint.
+export const unsorted: HashtagColour = {
+  strong: "var(--text-2)",
+  tint: "var(--neutral-tint)",
+  ink: "var(--text-2)",
+};
 
 // The only custom properties an inline style may set (ADR 14).
 declare module "react" {

@@ -3,10 +3,11 @@ import { z } from "zod";
 import { askTool } from "../service/src/ask";
 import { handler } from "../service/src/handler";
 import { events } from "../service/src/log";
+import { pagePaths } from "../shared/page-api";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, lineText } from "../test/logs";
-import { connect, eras, mcpUrl, refusalOf } from "../test/mcp";
+import { connect, eras, mcpUrl, origin, refusalOf } from "../test/mcp";
 
 // A string no code would write by itself. It goes into every field an agent
 // writes, and into tokens, and must never reach a log line.
@@ -127,6 +128,27 @@ describe("fitness: no content reaches the output (logging.md)", () => {
     }
   });
 
+  it("runs the paths of the page's API", async () => {
+    const call = (token?: string) =>
+      invoke(
+        handler,
+        new Request(`${origin}${pagePaths.asks}?note=${marker}`, {
+          headers:
+            token === undefined ? {} : { authorization: `Bearer ${token}` },
+        }),
+      );
+    expect((await call()).status).toBe(401);
+    tokens.push(`not-a-token-${marker}`);
+    expect((await call(`not-a-token-${marker}`)).status).toBe(401);
+    expect((await call(await token())).status).toBe(403);
+    const session = await issuer.sessionToken();
+    tokens.push(session);
+    const response = await call(session);
+    expect(response.status).toBe(200);
+    // The page's list holds what the agent wrote, and the log does not.
+    expect(await response.text()).toContain(marker);
+  });
+
   it("wrote lines on those paths", () => {
     const written = new Set(
       capture.lines.map((line) => JSON.stringify(line.args[0] ?? {})),
@@ -137,6 +159,7 @@ describe("fitness: no content reaches the output (logging.md)", () => {
       "scope-missing",
       "input-invalid",
       "ask-posted",
+      "agent-token-refused",
       "request-failed",
     ]) {
       expect(
