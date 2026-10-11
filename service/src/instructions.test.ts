@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { askTool } from "./ask";
+import { retryBudget } from "./errors";
 import { guidance, instructions } from "./instructions";
 import { resolveTool } from "./resolve";
 
-// The four things every agent is told (PRD, "MCP server"), each by the
-// words that carry it.
+// The five things every agent is told (PRD, "MCP server"), each by the
+// words that carry it. The retry budget is the error contract's own.
 const points = {
   "post whenever work stops to wait for the person":
     /Post an ask whenever your work stops to wait for the person/u,
@@ -12,6 +13,11 @@ const points = {
     /One session may hold several open asks/u,
   "resolve as soon as the wait is over":
     /Resolve each ask as soon as its wait is over, before doing anything else/u,
+  "if a call times out, send the same ask again unchanged, at most twice":
+    new RegExp(
+      `If a call times out, send the same ask again unchanged, at most ${String(retryBudget)} times`,
+      "u",
+    ),
   "whatever askme answers, still ask in your own session":
     /Whatever askme answers, still ask your question in your own session/u,
 };
@@ -48,6 +54,12 @@ describe("the resolve tool's description", () => {
     "whatever askme answers, still ask in your own session",
   ] as const)("repeats: %s", (point) => {
     expect(resolveTool.description).toMatch(points[point]);
+  });
+
+  it("says a resolve that times out may be sent again unchanged, at most twice", () => {
+    expect(resolveTool.description).toContain(
+      `If a call times out, send the same resolve again unchanged, at most ${String(retryBudget)} times`,
+    );
   });
 
   it("says that resolving an ask already closed succeeds", () => {

@@ -23,6 +23,13 @@ export const events = [
   "input-invalid",
   // An ask was accepted and answered with its id.
   "ask-posted",
+  // An ask matched one the account posted in the last ten minutes, and was
+  // answered with that one's id. Counted to tune the window (ADR 3).
+  "ask-deduplicated",
+  // An ask was refused because the account had posted its asks for the day.
+  "cap-reached",
+  // An ask was refused because the account had posted too many this minute.
+  "rate-limited",
   // A new ask took the place of an open one, which closed as replaced. The
   // id is the old ask's.
   "ask-replaced",
