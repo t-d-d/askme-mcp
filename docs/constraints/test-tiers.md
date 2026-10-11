@@ -28,7 +28,9 @@ of it can only be read signed in.
 - The conformance tier checks that setup held outside the repo, such
   as GitHub's settings, still matches what the repo records. It runs
   every day and writes nothing. It may sign in, with the narrowest
-  read-only credential the service offers.
+  credential the service offers: one that only reads where there is
+  one. A job that signs in runs in the GitHub environment
+  "conformance", and its keys are that environment's secrets.
 - The eval set is not in the gate.
 
 ## Do not
@@ -40,10 +42,12 @@ of it can only be read signed in.
 - Add a second test runner.
 - Put a check of outside setup in the live tier: the live tier is for
   the deployed site, and says what its files touch.
-- Give a conformance check the deploy role, or any credential that can
-  write: it only reads, and the deploy role can change everything.
+- Give a conformance check the deploy role: it only reads, and the
+  deploy role can change everything.
+- Give a conformance check a key that can write when the service
+  offers one that only reads.
 
 Judgment: A signed-in path from a real agent to a card is checked by
-hand after a deploy, and a third-party conformance key's scope when it
-is made. No test can see either.
+hand after a deploy, and how narrow a third-party conformance key is
+when it is made. No test can see either.
 History: [ADR 9](../adr/0009-test-pyramid.md), [ADR 15](../adr/0015-conformance-tier.md)

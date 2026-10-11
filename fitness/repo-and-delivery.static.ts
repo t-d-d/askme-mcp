@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   conformancePath,
   deployPath,
+  inConformanceEnvironment,
   gatePath,
   readRepoFile,
   readWorkflow,
@@ -46,11 +47,12 @@ describe("fitness: deploys come only from main (repo-and-delivery.md)", () => {
     expect(jobs.deploy?.needs).toBe("gate");
   });
 
-  it("lets only the deploy job ask for a cloud token", () => {
+  it("lets only the deploy job, and conformance jobs in their environment, ask for a cloud token", () => {
     const asking = workflowPaths().flatMap((path) => {
       const workflow = readWorkflow(path);
       const jobs = Object.entries(workflow.jobs)
         .filter(([, job]) => asksForCloudToken(job.permissions))
+        .filter(([, job]) => !inConformanceEnvironment(path, job))
         .map(([id]) => `${path} ${id}`);
       return asksForCloudToken(workflow.permissions) ? [path, ...jobs] : jobs;
     });
@@ -152,11 +154,23 @@ describe("fitness: one environment (repo-and-delivery.md)", () => {
     expect(naming).toEqual([]);
   });
 
-  it("sets no GitHub environment on any job", () => {
-    const withEnvironment = allJobs()
-      .filter(([, job]) => job.environment !== undefined)
-      .map(([id]) => id);
+  // The conformance environment only names a conformance job's token, so
+  // the deploy role refuses it. Nothing deploys to it (ADR 15).
+  it("sets no GitHub environment on any job but conformance's", () => {
+    const withEnvironment = workflowPaths().flatMap((path) =>
+      Object.entries(readWorkflow(path).jobs)
+        .filter(([, job]) => job.environment !== undefined)
+        .filter(([, job]) => !inConformanceEnvironment(path, job))
+        .map(([id]) => `${path} ${id}`),
+    );
     expect(withEnvironment).toEqual([]);
+  });
+
+  it("tells a conformance job in its environment from any other job", () => {
+    const inEnvironment = { environment: "conformance" };
+    expect(inConformanceEnvironment(conformancePath, inEnvironment)).toBe(true);
+    expect(inConformanceEnvironment(deployPath, inEnvironment)).toBe(false);
+    expect(inConformanceEnvironment(conformancePath, {})).toBe(false);
   });
 });
 

@@ -17,11 +17,13 @@ environment doubles sign-in and connection setup.
 - CI and deploys run on GitHub Actions, standard hosted runners only.
 - A pull request merges only with that gate green.
 - A green merge to main deploys. Nothing else deploys.
-- There is one environment. No staging, no per-PR previews.
+- There is one environment. No staging, no per-PR previews. The GitHub
+  environment "conformance" labels a token and holds keys. Nothing
+  deploys to it.
 - CI reaches AWS with short-lived credentials only. Its stored
   secrets are the Serverless Framework access key, which only the
-  deploy uses, and read-only keys that only the conformance workflow
-  uses (test-tiers.md).
+  deploy uses, and keys for conformance checks, kept as secrets of the
+  GitHub environment "conformance" (test-tiers.md).
 - Roll back by reverting the pull request.
 
 ## Do not

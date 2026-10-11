@@ -29,7 +29,7 @@ askme.mcp is one place where all of a person's AI agents ask for their input, so
 | Integration | `*.int.ts` | Loopback: the local database, the fake model, test-key tokens |
 | Browser | `*.browser.ts` | Loopback, with the API faked |
 | Live | `*.live.ts` | The deployed site, signed out, read only |
-| Conformance | `*.conformance.ts` | Setup outside the repo, such as GitHub's settings, read only, signed in with a read-only credential where needed |
+| Conformance | `*.conformance.ts` | Setup outside the repo, such as GitHub's settings, read only, signed in where needed (ADR 15) |
 
 - An assertion goes in the lowest tier that can see it.
 - A fitness function names its constraint file in its describe name: `fitness: <what it asserts> (<file>.md)`.

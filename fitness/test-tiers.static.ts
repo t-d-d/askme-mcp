@@ -11,6 +11,7 @@ import {
   runsIn,
   scripts,
   triggers,
+  inConformanceEnvironment,
 } from "../test/repo";
 import { tierPattern, tiers } from "../test/tiers";
 
@@ -131,8 +132,15 @@ describe("fitness: conformance runs daily and only reads (test-tiers.md)", () =>
     const workflow = readWorkflow(path);
     expect(workflow.permissions).toEqual({ contents: "read" });
     for (const [id, job] of Object.entries(workflow.jobs)) {
-      expect(job.permissions, id).toBeUndefined();
+      if (job.permissions === undefined) continue;
+      // A job that reads AWS asks for a token, and runs in the conformance
+      // environment, whose token the deploy role refuses (ADR 15).
+      expect(job.permissions, id).toEqual({
+        contents: "read",
+        "id-token": "write",
+      });
+      expect(inConformanceEnvironment(path, job), id).toBe(true);
     }
-    expect(readRepoFile(path)).not.toMatch(/AWS_DEPLOY_ROLE_ARN|id-token/iu);
+    expect(readRepoFile(path)).not.toMatch(/AWS_DEPLOY_ROLE_ARN/iu);
   });
 });
