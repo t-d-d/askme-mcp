@@ -28,6 +28,21 @@ export const asksAnswer = z.object({
 export type AsksAnswer = z.infer<typeof asksAnswer>;
 export type PageAsk = AsksAnswer["asks"][number];
 
+// A poll carries the version of the last answer in this query parameter, and
+// gets the whole list only when the account's version has moved on (ADR 1).
+export const sinceParam = "since";
+
+// The answer to a poll whose version is still the account's.
+export const asksUnchanged = z.strictObject({
+  version: z.number().int().nonnegative(),
+  unchanged: z.literal(true),
+});
+
+// A poll's answer: nothing new, or the whole list.
+export const pollAnswer = z.union([asksUnchanged, asksAnswer]);
+
+export type PollAnswer = z.infer<typeof pollAnswer>;
+
 // What the page needs to help someone connect an agent.
 export const connectionAnswer = z.object({
   mcpUrl: z.url({ protocol: /^https$/u }),

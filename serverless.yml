@@ -486,6 +486,16 @@ resources:
           filter message.event = "ask-not-found"
           | stats count(*) as calls, count_distinct(message.accountId) as accounts by bin(1d)
 
+    PollLimitedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/poll-limited
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "poll-limited"
+          | stats count(*) as polls, count_distinct(message.accountId) as accounts by bin(1h)
+
     RequestFailedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:

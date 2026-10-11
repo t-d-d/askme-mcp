@@ -6,8 +6,15 @@ import {
   type AsksAnswer,
   type ConnectionAnswer,
 } from "../shared/page-api";
-import { openPage, Status, type OpenPage } from "../test/browser";
+import {
+  Answering,
+  answerPoll,
+  openPage,
+  Status,
+  type OpenPage,
+} from "../test/browser";
 import { cursorInstallLink } from "./src/cursor";
+import { pollMs } from "./src/poll";
 
 const phone = { width: 390, height: 844 };
 const desktop = { width: 1280, height: 800 };
@@ -228,6 +235,94 @@ describe("a list that cannot be loaded", () => {
     try {
       await view.page.getByText("Not connected. Trying again.").waitFor();
       expect(await view.page.getByRole("article").count()).toBe(0);
+    } finally {
+      await view.close();
+    }
+  });
+});
+
+describe("a poll that fails", () => {
+  it("keeps the list, says the page is not connected, and tries again", async () => {
+    let failing = false;
+    const view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: true,
+      api: {
+        [pagePaths.asks]: new Answering((url) =>
+          failing ? new Status(503) : answerPoll(url, five),
+        ),
+        [pagePaths.connection]: connection,
+      },
+    });
+    try {
+      const { page } = view;
+      const note = page.getByText("Not connected. Trying again.");
+      await page.getByRole("article").waitFor();
+      failing = true;
+      await page.clock.fastForward(pollMs);
+      await note.waitFor();
+      expect(await page.getByRole("article").innerText()).toContain(
+        "Merge the fix for checkout rounding? Tests pass.",
+      );
+      expect(await page.getByRole("listitem").count()).toBe(4);
+      failing = false;
+      await page.clock.fastForward(pollMs);
+      await note.waitFor({ state: "detached" });
+      expect(await page.getByRole("article").count()).toBe(1);
+      expect(await page.getByRole("listitem").count()).toBe(4);
+    } finally {
+      await view.close();
+    }
+  });
+});
+
+describe("another account signing in on the same page", () => {
+  // Two accounts at the same version, so a poll carrying one's version
+  // would be answered with nothing new for the other.
+  const first: AsksAnswer = {
+    version: 3,
+    everAsked: true,
+    asks: [ask("a", "Merge the fix for checkout rounding? Tests pass.", 5)],
+  };
+  const second: AsksAnswer = {
+    version: 3,
+    everAsked: true,
+    asks: [ask("b", "Swap Saturday's school run with the Okafors?", 5)],
+  };
+
+  it("sees only its own list, loaded afresh", async () => {
+    const view = await openPage(inject("pageUrl"), phone, {
+      session: "token-first",
+      api: {
+        [pagePaths.asks]: new Answering((url, authorization) =>
+          answerPoll(
+            url,
+            authorization === "Bearer token-second" ? second : first,
+          ),
+        ),
+        [pagePaths.connection]: connection,
+      },
+    });
+    try {
+      const { page } = view;
+      await page
+        .getByRole("article")
+        .filter({ hasText: "Merge the fix" })
+        .waitFor();
+      await view.signInAs(null);
+      await page.getByRole("button", { name: "Sign in" }).waitFor();
+      await view.signInAs("token-second");
+      await page
+        .getByRole("article")
+        .filter({ hasText: "Swap Saturday's school run" })
+        .waitFor({ timeout: 3000 });
+      expect(await page.getByText("Merge the fix").count()).toBe(0);
+      const polls = view.apiCalls.filter(
+        (call) =>
+          call.path === pagePaths.asks &&
+          call.authorization === "Bearer token-second",
+      );
+      expect(polls[0]?.query).toBe("");
     } finally {
       await view.close();
     }

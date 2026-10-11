@@ -11,6 +11,7 @@ export interface Key {
 
 const openAskPrefix = "OPEN#";
 const closedAskPrefix = "CLOSED#";
+const pollCountPrefix = "POLL#";
 
 export const keys = {
   // The account marker, which holds the version.
@@ -27,5 +28,11 @@ export const keys = {
   closedAsk: (account: AccountId, askId: string): Key => ({
     pk: account,
     sk: `${closedAskPrefix}${askId}`,
+  }),
+  // The poll's rate counter for one window, named by the minute it starts
+  // (ADR 18).
+  pollCount: (account: AccountId, window: string): Key => ({
+    pk: account,
+    sk: `${pollCountPrefix}${window}`,
   }),
 };

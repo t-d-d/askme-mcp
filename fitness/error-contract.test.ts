@@ -17,6 +17,8 @@ const store: Store = {
   postAsk: unused,
   resolveAsk: unused,
   openAsks: unused,
+  asksSince: unused,
+  countPoll: unused,
   close: () => undefined,
 };
 

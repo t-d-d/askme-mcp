@@ -19,7 +19,7 @@ export const events = [
   // A route of the page's API got an agent's token, which reads nothing
   // (ADR 2), so it refused it.
   "agent-token-refused",
-  // A tool's arguments failed its schema.
+  // A tool's arguments, or a page API call's query, failed its schema.
   "input-invalid",
   // An ask was accepted and answered with its id.
   "ask-posted",
@@ -32,6 +32,9 @@ export const events = [
   "ask-already-closed",
   // An agent resolved an id its account has no ask for, so it was refused.
   "ask-not-found",
+  // A poll came over the account's limit for the minute, and was refused
+  // with rate_limited. Expected, so logged at info.
+  "poll-limited",
   // Something failed that the service did not expect. Logged at error.
   "request-failed",
 ] as const;
