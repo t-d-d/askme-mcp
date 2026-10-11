@@ -108,9 +108,19 @@ describe("fitness: nothing runs continuously (hosting.md)", () => {
     "AWS::CloudFront::OriginAccessControl",
     "AWS::IAM::OIDCProvider",
     "AWS::IAM::Role",
+    "AWS::Logs::MetricFilter",
+    "AWS::Logs::QueryDefinition",
     "AWS::S3::Bucket",
     "AWS::S3::BucketPolicy",
+    "AWS::SNS::Subscription",
+    "AWS::SNS::Topic",
   ]);
+
+  // An alarm is billed by the month, for each metric it reads, past
+  // CloudWatch's free ten. ADR 8 chose alarms knowing that, and alerting.md
+  // holds the set at four, so they cost nothing at askme's size.
+  const alarm = (resource: z.infer<typeof resourceSchema>) =>
+    resource.Type === "AWS::CloudWatch::Alarm";
 
   // A table costs nothing while idle only when it is billed per request.
   const onDemandTable = (resource: z.infer<typeof resourceSchema>) =>
@@ -127,7 +137,9 @@ describe("fitness: nothing runs continuously (hosting.md)", () => {
     const standing = declared
       .filter(
         ([, resource]) =>
-          !onDemand.has(resource.Type) && !onDemandTable(resource),
+          !onDemand.has(resource.Type) &&
+          !onDemandTable(resource) &&
+          !alarm(resource),
       )
       .map(([id, resource]) => `${id}: ${resource.Type}`);
     expect(standing).toEqual([]);
