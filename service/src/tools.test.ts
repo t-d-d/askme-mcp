@@ -23,6 +23,7 @@ const output = z.object({ id: z.string().min(3) });
 const unused = () => Promise.reject(new Error("The store is not used here."));
 const store: Store = {
   postAsk: unused,
+  resolveAsk: unused,
   openAsks: unused,
   close: () => undefined,
 };
@@ -64,6 +65,35 @@ describe("a tool whose answer breaks its own schema", () => {
     expect(
       capture.lines.some((line) => lineText(line).includes("request-failed")),
     ).toBe(true);
+    await client.close();
+    await server.close();
+  });
+});
+
+describe("a tool called without the asks:create scope", () => {
+  it("is refused in words that fit resolve as well as ask", async () => {
+    const server = new McpServer({ name: "askme", version: "1.0.0" });
+    addTool(
+      server,
+      brokenTool,
+      callerOf({
+        token: "test",
+        clientId: "test",
+        scopes: [],
+        extra: { accountId: "user_1", requestId: "req-1" },
+      }),
+      store,
+    );
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverSide);
+    const client = new Client({ name: "askme-test", version: "1.0.0" });
+    await client.connect(clientSide);
+
+    const refusal = refusalOf(
+      await client.callTool({ name: "broken", arguments: {} }),
+    );
+    expect(refusal.code).toBe("insufficient_scope");
+    expect(refusal.message).toContain("not allowed to post or resolve asks");
     await client.close();
     await server.close();
   });

@@ -4,7 +4,10 @@
 // consistent and checks expiry itself, because DynamoDB removes expired
 // items late (ADR 5).
 import { randomBytes } from "node:crypto";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import {
+  DynamoDBClient,
+  TransactionCanceledException,
+} from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   GetCommand,
@@ -14,7 +17,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
 import type { AccountId } from "../identity";
-import { keys } from "./keys";
+import { keys, type Key } from "./keys";
 
 // Every ask is deleted a month after it is posted (PRD, "Accounts and
 // connection"). The page's demo notice says so.
@@ -47,6 +50,28 @@ const storedAskSchema = z.object({
 
 export type StoredAsk = Omit<z.output<typeof storedAskSchema>, "expiresAt">;
 
+type OpenItem = z.output<typeof storedAskSchema>;
+
+// How an ask ended (PRD, "The ask"). An agent resolved it, or a later ask
+// replaced it.
+export type Ending = "resolved" | "replaced";
+
+// A closed ask is the same ask, plus how and when it ended.
+const closedAskSchema = storedAskSchema.extend({
+  endedAs: z.enum(["resolved", "replaced"] satisfies Ending[]),
+  closedAt: z.iso.datetime(),
+});
+
+// What resolving an ask found: an open ask, which it closed, one that was
+// already closed, or no ask under that id in the account.
+export type Resolution = "resolved" | "already-closed" | "not-found";
+
+// A new ask's id, and whether it took over from an open ask it named.
+export interface Posted {
+  id: string;
+  replaced: boolean;
+}
+
 const metaSchema = z.object({
   version: z.number().int().nonnegative(),
   everAsked: z.boolean().optional(),
@@ -61,8 +86,12 @@ export interface AccountAsks {
 }
 
 export interface Store {
-  // Stores a new ask and gives its id.
-  postAsk(account: AccountId, ask: NewAsk, now: Date): Promise<string>;
+  // Stores a new ask and gives its id. When the ask names an open ask of the
+  // same account in replaces, it takes that ask's place, and that ask closes
+  // as replaced. Otherwise it is posted as new.
+  postAsk(account: AccountId, ask: NewAsk, now: Date): Promise<Posted>;
+  // Closes an open ask as resolved.
+  resolveAsk(account: AccountId, askId: string, now: Date): Promise<Resolution>;
   openAsks(account: AccountId, now: Date): Promise<AccountAsks>;
   close(): void;
 }
@@ -74,6 +103,14 @@ type Change = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
 const newAskId = () => randomBytes(18).toString("base64url");
 
 const seconds = (time: number) => Math.floor(time / 1000);
+
+// Whether a transaction was refused because one of its conditions failed,
+// as when another call closed the same ask first.
+const conditionFailed = (error: unknown) =>
+  error instanceof TransactionCanceledException &&
+  (error.CancellationReasons ?? []).some(
+    (reason) => reason.Code === "ConditionalCheckFailed",
+  );
 
 export function createStore(config: {
   tableName: string;
@@ -136,6 +173,51 @@ export function createStore(config: {
       : metaSchema.parse(Item);
   }
 
+  // The item under one key, unless it is missing or has expired.
+  async function stored<Item extends { expiresAt: number }>(
+    key: Key,
+    schema: z.ZodType<Item>,
+    now: Date,
+  ): Promise<Item | undefined> {
+    const { Item } = await db.send(
+      new GetCommand({ TableName, Key: key, ConsistentRead: true }),
+    );
+    if (Item === undefined) return undefined;
+    const item = schema.parse(Item);
+    return item.expiresAt > seconds(now.getTime()) ? item : undefined;
+  }
+
+  // The changes that close an open ask, for one transaction: the open item
+  // goes, and a closed item takes its place, saying how the ask ended. The
+  // open item must still be there, so one ask cannot be closed twice.
+  function closing(
+    account: AccountId,
+    ask: OpenItem,
+    endedAs: Ending,
+    now: Date,
+  ): Change[] {
+    return [
+      {
+        Delete: {
+          TableName,
+          Key: keys.openAsk(account, ask.id),
+          ConditionExpression: "attribute_exists(sk)",
+        },
+      },
+      {
+        Put: {
+          TableName,
+          Item: {
+            ...keys.closedAsk(account, ask.id),
+            ...ask,
+            endedAs,
+            closedAt: now.toISOString(),
+          },
+        },
+      },
+    ];
+  }
+
   async function storedAsks(account: AccountId, now: Date) {
     const { pk, prefix } = keys.openAsks(account);
     const found: StoredAsk[] = [];
@@ -162,27 +244,73 @@ export function createStore(config: {
   return {
     async postAsk(account, ask, now) {
       const id = newAskId();
-      const item = {
-        ...keys.openAsk(account, id),
-        id,
-        ...ask,
-        postedAt: now.toISOString(),
-        expiresAt: seconds(now.getTime() + askLifetimeDays * dayMs),
-      };
+      const put = (since: Pick<OpenItem, "postedAt" | "expiresAt">) => ({
+        Put: {
+          TableName,
+          Item: { ...keys.openAsk(account, id), id, ...ask, ...since },
+          ConditionExpression: "attribute_not_exists(sk)",
+        },
+      });
+      const old =
+        ask.replaces === undefined
+          ? undefined
+          : await stored(
+              keys.openAsk(account, ask.replaces),
+              storedAskSchema,
+              now,
+            );
+      if (old !== undefined) {
+        // The new ask has waited as long as the one it replaces, and goes
+        // when that one would have (ADR 13).
+        try {
+          await write(
+            account,
+            [
+              put({ postedAt: old.postedAt, expiresAt: old.expiresAt }),
+              ...closing(account, old, "replaced", now),
+            ],
+            { everAsked: true },
+          );
+          return { id, replaced: true };
+        } catch (error) {
+          // The old ask closed after it was read, so this one is new.
+          if (!conditionFailed(error)) throw error;
+        }
+      }
       await write(
         account,
         [
-          {
-            Put: {
-              TableName,
-              Item: item,
-              ConditionExpression: "attribute_not_exists(sk)",
-            },
-          },
+          put({
+            postedAt: now.toISOString(),
+            expiresAt: seconds(now.getTime() + askLifetimeDays * dayMs),
+          }),
         ],
         { everAsked: true },
       );
-      return id;
+      return { id, replaced: false };
+    },
+
+    async resolveAsk(account, askId, now) {
+      const open = await stored(
+        keys.openAsk(account, askId),
+        storedAskSchema,
+        now,
+      );
+      if (open !== undefined) {
+        try {
+          await write(account, closing(account, open, "resolved", now));
+          return "resolved";
+        } catch (error) {
+          // Another call closed it after it was read.
+          if (!conditionFailed(error)) throw error;
+        }
+      }
+      const closed = await stored(
+        keys.closedAsk(account, askId),
+        closedAskSchema,
+        now,
+      );
+      return closed === undefined ? "not-found" : "already-closed";
     },
 
     // The version is read before the asks, never alongside them, so it is

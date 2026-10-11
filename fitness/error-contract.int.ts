@@ -70,6 +70,22 @@ describe("fitness: unknown failures are contained (error-contract.md)", () => {
     }
   }, 15_000);
 
+  it("answers resolve with service_unavailable, saying nothing internal", async () => {
+    const client = await connect(handler, { token: await issuer.token() });
+    try {
+      const result = await client.callTool({
+        name: "resolve",
+        arguments: { id: "AAAAAAAAAAAAAAAAAAAAAAAA" },
+      });
+      const refusal = refusalOf(result);
+      expect(refusal.code).toBe("service_unavailable");
+      expect(refusal.class).toBe("retry");
+      expect(JSON.stringify(result)).not.toMatch(internal);
+    } finally {
+      await client.close();
+    }
+  }, 15_000);
+
   it("answers the page's list with service_unavailable, saying nothing internal", async () => {
     const response = await invoke(
       handler,
@@ -98,6 +114,6 @@ describe("fitness: unknown failures are contained (error-contract.md)", () => {
       (line) =>
         line.method === "error" && lineText(line).includes("request-failed"),
     );
-    expect(failures.length).toBeGreaterThanOrEqual(2);
+    expect(failures.length).toBeGreaterThanOrEqual(3);
   });
 });

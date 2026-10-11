@@ -1,21 +1,24 @@
 // The ask tool: an agent posts something it needs the person for. The ask
-// is checked against its limits, stored, and answered with its id.
+// is checked against its limits, stored, and answered with its id. An ask
+// that names an earlier one in replaces takes its place.
 //
 // Each limit is a constant here, and the schema, the field's description and
 // the refusal's message all take it from here, so the three cannot disagree
 // (ADR 11).
 import { z } from "zod";
 import { retryBudget } from "./errors";
+import { guidance } from "./instructions";
 import type { ToolDefinition } from "./tools";
 
 // The most characters each field may hold. A summary is one or two lines on
-// a phone. The spoken detail is about a minute of speech.
+// a phone. The spoken detail is about a minute of speech. An id is one that
+// ask gave back, in replaces or for resolve.
 export const limits = {
   summary: 80,
   area: 60,
   spokenDetail: 900,
   link: 2000,
-  replaces: 64,
+  id: 64,
 } as const;
 
 // A field's problem in words a model can act on. It names the limit, never
@@ -25,7 +28,7 @@ const required = {
     issue.input === undefined ? "is missing" : "must be text",
 };
 
-const text = (limit: number) =>
+export const text = (limit: number) =>
   z
     .string(required)
     .trim()
@@ -58,10 +61,10 @@ const askInput = z.strictObject({
     .describe(
       `Optional. A link back to your session, for when the person needs to reply to you. An https URL, at most ${String(limits.link)} characters.`,
     ),
-  replaces: text(limits.replaces)
+  replaces: text(limits.id)
     .optional()
     .describe(
-      "Optional. The id of an earlier ask that this one takes over from.",
+      "Optional. The id of an earlier ask that this one takes over from. That ask closes, and this one takes its place. An id askme does not know, or one whose ask is already closed, is ignored, and this ask is posted as new.",
     ),
 });
 
@@ -74,11 +77,20 @@ const askOutput = z.strictObject({
 
 export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
   name: "ask",
-  description: `Post an ask: something you need the person to decide, answer or do before your work can go on. It joins their askme list and returns the ask's id. Ask the same question in your own session as well. If askme refuses with a code marked retry, send the same call again at most ${String(retryBudget)} times, then carry on without askme.`,
+  description: [
+    "Post an ask: something you need the person to decide, answer or do before your work can go on. It joins their askme list and returns the ask's id.",
+    guidance.post,
+    guidance.several,
+    guidance.resolve,
+    "Resolve it with the resolve tool and its id.",
+    guidance.replace,
+    guidance.ownSession,
+    `If askme refuses with a code marked retry, send the same call again at most ${String(retryBudget)} times, then carry on without askme.`,
+  ].join(" "),
   input: askInput,
   output: askOutput,
   async run(input, { caller, log, store }) {
-    const id = await store.postAsk(
+    const { id, replaced } = await store.postAsk(
       caller.accountId,
       {
         summary: input.summary,
@@ -94,6 +106,12 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
       },
       new Date(),
     );
+    if (replaced && input.replaces !== undefined) {
+      log.info("ask-replaced", {
+        accountId: caller.accountId,
+        askId: input.replaces,
+      });
+    }
     log.info("ask-posted", { accountId: caller.accountId, askId: id });
     return { id, status: "posted" };
   },

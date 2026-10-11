@@ -58,4 +58,10 @@ describe("the ask tool's description of its fields", () => {
       );
     }
   });
+
+  it("says an ask already closed in replaces posts this one as new", () => {
+    expect(advertised.properties.replaces?.description).toContain(
+      "An id askme does not know, or one whose ask is already closed, is ignored",
+    );
+  });
 });

@@ -6,7 +6,7 @@ import type {
   StandardSchemaWithJSON,
 } from "@modelcontextprotocol/server";
 import type { z } from "zod";
-import { refusal, retryBudget } from "./errors";
+import { refusal, Refused, retryBudget } from "./errors";
 import { askScope, type Caller } from "./identity";
 import { createLogger, errorClass, type Logger } from "./log";
 import type { Store } from "./store/store";
@@ -25,7 +25,11 @@ export interface ToolDefinition<
   description: string;
   input: Input;
   output: Output;
-  run(input: z.output<Input>, context: ToolContext): Promise<z.output<Output>>;
+  // The tool's answer, or a refusal it decided on as it ran.
+  run(
+    input: z.output<Input>,
+    context: ToolContext,
+  ): Promise<z.output<Output> | Refused>;
 }
 
 // The tool's own schema as the client sees it, with a check that lets every
@@ -78,7 +82,7 @@ export function addTool<Input extends z.ZodObject, Output extends z.ZodObject>(
         log.info("scope-missing", at);
         return refusal(
           "insufficient_scope",
-          `This connection to askme is not allowed to post asks: its token lacks the ${askScope} scope. Do not retry. Tell the person that askme needs its connection approved again, and ask your question in your own session meanwhile.`,
+          `This connection to askme is not allowed to post or resolve asks: its token lacks the ${askScope} scope. Do not retry. Tell the person that askme needs its connection approved again, and ask your question in your own session meanwhile.`,
         );
       }
       const parsed = tool.input.safeParse(args);
@@ -90,12 +94,14 @@ export function addTool<Input extends z.ZodObject, Output extends z.ZodObject>(
         );
       }
       try {
+        const answer = await tool.run(parsed.data, { caller, log, store });
+        if (answer instanceof Refused) {
+          return refusal(answer.code, answer.message);
+        }
         // The answer is parsed by the tool's own schema here, so one that
         // breaks it is a failure under the error contract, not the SDK's
         // own error text.
-        const output = tool.output.parse(
-          await tool.run(parsed.data, { caller, log, store }),
-        );
+        const output = tool.output.parse(answer);
         return {
           content: [{ type: "text", text: JSON.stringify(output) }],
           structuredContent: output,
