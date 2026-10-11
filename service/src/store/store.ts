@@ -227,6 +227,26 @@ export function createStore(config: {
     );
   }
 
+  // The update that adds one to a counter while it is under its limit, and
+  // sets when the item expires the first time it is counted. A rate counter
+  // makes it alone, through count(), and the day's count makes it as part of
+  // posting's transaction, through write().
+  function counting(key: Key, limit: number, expiresAt: number) {
+    return {
+      TableName,
+      Key: key,
+      UpdateExpression:
+        "ADD #count :one SET expiresAt = if_not_exists(expiresAt, :expiresAt)",
+      ConditionExpression: "attribute_not_exists(#count) OR #count < :limit",
+      ExpressionAttributeNames: { "#count": "count" },
+      ExpressionAttributeValues: {
+        ":one": 1,
+        ":limit": limit,
+        ":expiresAt": expiresAt,
+      },
+    };
+  }
+
   // Adds one to a rate counter, unless it has reached its limit. One
   // conditional update, which never raises the version (ADR 18).
   async function count(
@@ -235,27 +255,30 @@ export function createStore(config: {
     expiresAt: number,
   ): Promise<boolean> {
     try {
-      await db.send(
-        new UpdateCommand({
-          TableName,
-          Key: key,
-          UpdateExpression:
-            "ADD #count :one SET expiresAt = if_not_exists(expiresAt, :expiresAt)",
-          ConditionExpression:
-            "attribute_not_exists(#count) OR #count < :limit",
-          ExpressionAttributeNames: { "#count": "count" },
-          ExpressionAttributeValues: {
-            ":one": 1,
-            ":limit": limit,
-            ":expiresAt": expiresAt,
-          },
-        }),
-      );
+      await db.send(new UpdateCommand(counting(key, limit, expiresAt)));
       return true;
     } catch (error) {
       if (error instanceof ConditionalCheckFailedException) return false;
       throw error;
     }
+  }
+
+  // Counts a call against a limit for the window it falls in.
+  async function countIn(
+    key: (window: string) => Key,
+    limit: number,
+    windowMinutes: number,
+    now: Date,
+  ): Promise<Counted> {
+    const window = windowOf(now, windowMinutes);
+    const counted = await count(
+      key(window.name),
+      limit,
+      seconds(window.endsAt + counterLifetimeMs),
+    );
+    return counted
+      ? { counted: true }
+      : { counted: false, secondsLeft: secondsLeft(window, now) };
   }
 
   async function meta(account: AccountId) {
@@ -323,19 +346,11 @@ export function createStore(config: {
   // day, before it expires.
   function countingTheDay(account: AccountId, now: Date): Change {
     return {
-      Update: {
-        TableName,
-        Key: keys.usage(account, now),
-        UpdateExpression:
-          "ADD #count :one SET expiresAt = if_not_exists(expiresAt, :expiresAt)",
-        ConditionExpression: "attribute_not_exists(#count) OR #count < :cap",
-        ExpressionAttributeNames: { "#count": "count" },
-        ExpressionAttributeValues: {
-          ":one": 1,
-          ":cap": dailyAskCap,
-          ":expiresAt": seconds(nextDay(now) + usageKeptDays * dayMs),
-        },
-      },
+      Update: counting(
+        keys.usage(account, now),
+        dailyAskCap,
+        seconds(nextDay(now) + usageKeptDays * dayMs),
+      ),
     };
   }
 
@@ -510,27 +525,21 @@ export function createStore(config: {
     },
 
     async countPoll(account, now) {
-      const window = windowOf(now, pollLimit.windowMinutes);
-      const counted = await count(
-        keys.pollCount(account, window.name),
+      return countIn(
+        (window) => keys.pollCount(account, window),
         pollLimit.polls,
-        seconds(window.endsAt + counterLifetimeMs),
+        pollLimit.windowMinutes,
+        now,
       );
-      return counted
-        ? { counted: true }
-        : { counted: false, secondsLeft: secondsLeft(window, now) };
     },
 
     async countAsk(account, now) {
-      const window = windowOf(now, askLimit.windowMinutes);
-      const counted = await count(
-        keys.askCount(account, window.name),
+      return countIn(
+        (window) => keys.askCount(account, window),
         askLimit.asks,
-        seconds(window.endsAt + counterLifetimeMs),
+        askLimit.windowMinutes,
+        now,
       );
-      return counted
-        ? { counted: true }
-        : { counted: false, secondsLeft: secondsLeft(window, now) };
     },
 
     close() {

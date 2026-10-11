@@ -4,6 +4,11 @@
 // for every account (ADR 2), so it is written once, here, as constants.
 import { retryBudget } from "./errors";
 
+// What to do when a call to a tool times out: send it again, unchanged,
+// within the retry budget (ADR 11).
+export const resendAfterTimeout = (tool: "ask" | "resolve") =>
+  `If a call times out, send the same ${tool} again unchanged, at most ${String(retryBudget)} times.`;
+
 export const guidance = {
   post: "Post an ask whenever your work stops to wait for the person. An ask that is cleared costs them nothing, so post freely.",
   several: "One session may hold several open asks, so keep the id of each.",
@@ -12,7 +17,7 @@ export const guidance = {
   replace:
     "When an ask changes, post the new one with replaces set to the old one's id, and the old one closes.",
   // A repeat is matched by its content (ADR 3), so it must be unchanged.
-  retry: `If a call times out, send the same ask again unchanged, at most ${String(retryBudget)} times. askme matches the repeat, so it makes no second card.`,
+  retry: `${resendAfterTimeout("ask")} askme matches the repeat, so it makes no second card.`,
   ownSession:
     "Whatever askme answers, still ask your question in your own session.",
 } as const;

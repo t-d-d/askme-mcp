@@ -11,6 +11,8 @@ export interface Key {
 
 const openAskPrefix = "OPEN#";
 const closedAskPrefix = "CLOSED#";
+const dedupePrefix = "DEDUPE#";
+const usagePrefix = "USAGE#";
 const pollCountPrefix = "POLL#";
 const askCountPrefix = "RATE#";
 
@@ -34,13 +36,13 @@ export const keys = {
   // id while a repeat of it is matched (ADR 3).
   dedupe: (account: AccountId, fingerprint: string): Key => ({
     pk: account,
-    sk: `DEDUPE#${fingerprint}`,
+    sk: `${dedupePrefix}${fingerprint}`,
   }),
   // How many asks the account has posted in the UTC day of a moment, named
   // by the day, as 2026-10-11.
   usage: (account: AccountId, at: Date): Key => ({
     pk: account,
-    sk: `USAGE#${at.toISOString().slice(0, 10)}`,
+    sk: `${usagePrefix}${at.toISOString().slice(0, 10)}`,
   }),
   // The poll's rate counter for one window, named by the minute it starts
   // (ADR 18).

@@ -148,9 +148,13 @@ function capReached(resetsAt: Date): Refused {
 }
 
 function rateLimited(waitSeconds: number): Refused {
+  const perWindow =
+    askLimit.windowMinutes === 1
+      ? "a minute"
+      : `in ${String(askLimit.windowMinutes)} minutes`;
   const wait = `${String(waitSeconds)} ${waitSeconds === 1 ? "second" : "seconds"}`;
   return new Refused(
     "rate_limited",
-    `This account is posting asks too fast. askme takes at most ${String(askLimit.asks)} asks a minute. Wait ${wait}, then send the same call again, at most ${String(retryBudget)} times in all. If it is still refused, carry on without askme.`,
+    `This account is posting asks too fast. askme takes at most ${String(askLimit.asks)} asks ${perWindow}. Wait ${wait}, then send the same call again, at most ${String(retryBudget)} times in all. If it is still refused, carry on without askme.`,
   );
 }
