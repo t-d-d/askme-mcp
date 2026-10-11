@@ -1,0 +1,91 @@
+# A green merge to main deploys (ADR 4), and nothing else does. This runs only
+# on a push to main, deploys only once the gate passes on the merged code, and
+# reaches AWS only by assuming the deploy role through OIDC.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    uses: ./.github/workflows/gate.yml
+
+  deploy:
+    needs: gate
+    runs-on: ubuntu-24.04
+    # No GitHub environment: the role trusts only the subject for main, and a
+    # job that names an environment is given a different one.
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      url: ${{ steps.page.outputs.url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      # Build before the job holds any AWS credentials.
+      - name: Build the page
+        run: npm run build
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Apply the deploy role's stack
+        run: >-
+          aws cloudformation deploy
+          --stack-name askme
+          --template-file infra/github-oidc.cfn.yml
+          --capabilities CAPABILITY_NAMED_IAM
+          --no-fail-on-empty-changeset
+          --parameter-overrides
+          GitHubOwnerId=${{ github.repository_owner_id }}
+          GitHubRepoId=${{ github.repository_id }}
+      - name: Deploy the stack
+        run: npx --yes serverless@4.43.0 deploy
+        env:
+          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }}
+      - name: Publish the page
+        id: page
+        run: |
+          output() {
+            aws cloudformation describe-stacks --stack-name askme-prod \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" \
+              --output text
+          }
+          bucket=$(output WebBucketName)
+          url=$(output WebUrl)
+          # The hashed files first, then the page that names them. The page is
+          # revalidated on every load, so a deploy shows at once.
+          aws s3 sync web/dist "s3://$bucket" --exclude index.html \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 cp web/dist/index.html "s3://$bucket/index.html" \
+            --cache-control "no-cache"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "The page is live at $url" >> "$GITHUB_STEP_SUMMARY"
+
+  live:
+    needs: deploy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:live
+        env:
+          ASKME_URL: ${{ needs.deploy.outputs.url }}
