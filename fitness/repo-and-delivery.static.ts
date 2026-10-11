@@ -212,15 +212,21 @@ describe("fitness: no long-lived keys (repo-and-delivery.md)", () => {
     expect(found).toEqual([]);
   });
 
-  it("gives the workflows no secret but the Serverless Framework access key", () => {
+  // Besides the Serverless key, only the conformance workflow may hold
+  // secrets: read-only keys for the services it checks (test-tiers.md).
+  it("gives the workflows no secret but the Serverless key, and read keys to conformance", () => {
     for (const path of workflowPaths()) {
       const text = readRepoFile(path);
       const secrets = [...text.matchAll(/\bsecrets\.([A-Za-z0-9_]+)/gu)].map(
         (match) => match[1],
       );
-      expect(new Set(secrets), path).toEqual(
-        new Set(secrets.length === 0 ? [] : ["SERVERLESS_ACCESS_KEY"]),
-      );
+      if (path === ".github/workflows/conformance.yml") {
+        expect(secrets, path).not.toContain("SERVERLESS_ACCESS_KEY");
+      } else {
+        expect(new Set(secrets), path).toEqual(
+          new Set(secrets.length === 0 ? [] : ["SERVERLESS_ACCESS_KEY"]),
+        );
+      }
       expect(text, path).not.toMatch(
         /aws-access-key-id|aws-secret-access-key|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN/u,
       );

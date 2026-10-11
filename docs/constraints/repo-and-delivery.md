@@ -18,7 +18,10 @@ environment doubles sign-in and connection setup.
 - A pull request merges only with that gate green.
 - A green merge to main deploys. Nothing else deploys.
 - There is one environment. No staging, no per-PR previews.
-- CI reaches the cloud with short-lived credentials only. Its one stored secret is the Serverless Framework access key.
+- CI reaches the cloud with short-lived credentials only. Its stored
+  secrets are the Serverless Framework access key, which only the
+  deploy uses, and read-only keys that only the conformance workflow
+  uses (test-tiers.md).
 - Roll back by reverting the pull request.
 
 ## Do not
@@ -33,4 +36,4 @@ environment doubles sign-in and connection setup.
 
 Judgment: Branch protection lives in repository settings, which no
 pull request can see. A scheduled check covers it.
-History: [ADR 4](../adr/0004-repo-and-delivery.md)
+History: [ADR 4](../adr/0004-repo-and-delivery.md), [ADR 15](../adr/0015-conformance-tier.md)

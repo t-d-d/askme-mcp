@@ -5,7 +5,8 @@ Decision: Six tiers kept apart by file suffix; static, unit, integration and bro
 Why: Agents write the code, so the gate is the reviewer, and it must
 run the same on a laptop and a standard runner. There is one
 environment, so nothing deployed can be tested before a merge. Setup
-held outside the repo can drift with no pull request at all.
+held outside the repo can drift with no pull request at all, and most
+of it can only be read signed in.
 
 ## Rules
 
@@ -26,7 +27,8 @@ held outside the repo can drift with no pull request at all.
   writes nothing.
 - The conformance tier checks that setup held outside the repo, such
   as GitHub's settings, still matches what the repo records. It runs
-  every day, signs in to nothing and writes nothing.
+  every day and writes nothing. It may sign in, with the narrowest
+  read-only credential the service offers.
 - The eval set is not in the gate.
 
 ## Do not
@@ -38,10 +40,10 @@ held outside the repo can drift with no pull request at all.
 - Add a second test runner.
 - Put a check of outside setup in the live tier: the live tier is for
   the deployed site, and says what its files touch.
-- Give a conformance check a credential without a decision: the one
-  AWS role CI can assume is the administrator deploy role, and CI
-  holds one stored secret (repo-and-delivery.md).
+- Give a conformance check the deploy role, or any credential that can
+  write: it only reads, and the deploy role can change everything.
 
 Judgment: A signed-in path from a real agent to a card is checked by
-hand after a deploy. No test can see it.
+hand after a deploy, and a conformance key's scope when it is made.
+No test can see either.
 History: [ADR 9](../adr/0009-test-pyramid.md), [ADR 15](../adr/0015-conformance-tier.md)

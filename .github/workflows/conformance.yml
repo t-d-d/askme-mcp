@@ -1,6 +1,7 @@
 # The conformance tier (ADR 15): checks that setup held outside the repo, such
 # as GitHub's settings, still matches what the repo records. No pull request
-# can see that setup, so this runs every day, signed out and read only.
+# can see that setup, so this runs every day. It only reads. A check may sign
+# in with a read-only key kept as a secret, never with the deploy role.
 name: conformance
 
 on:
