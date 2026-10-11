@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import type { ToolDefinition } from "../service/src/tools";
 import { eslint, importRefused, reported, rulesFor } from "../test/lint";
 import { repoFiles, root, scripts } from "../test/repo";
 
@@ -110,6 +111,71 @@ describe("fitness: no warnings (types-and-lint.md)", () => {
       }
     }
     expect(warned).toEqual([]);
+  });
+});
+
+describe("fitness: boundaries are parsed (types-and-lint.md)", () => {
+  const servicePath = "service/src/ask.ts";
+
+  it.each([
+    [
+      "process.env.CLERK_ISSUER",
+      "export const a = process.env.CLERK_ISSUER;\n",
+    ],
+    ["process.env destructured", "export const { env } = process;\n"],
+  ])("refuses reading %s outside the environment module", async (_, code) => {
+    expect(await reported(code, servicePath)).toContain(
+      "no-restricted-properties",
+    );
+  });
+
+  it.each(["node:process", "process"])(
+    "refuses importing env from %s outside the environment module",
+    async (name) => {
+      expect(
+        await importRefused(
+          `import { env } from "${name}";\nexport const a = env.CLERK_ISSUER;\n`,
+          servicePath,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    [
+      "an event's body",
+      "export const b = (event: { body: string }) => event.body;\n",
+    ],
+    [
+      "a body destructured",
+      "export const c = (event: { body: string }) => {\n  const { body } = event;\n  return body;\n};\n",
+    ],
+    [
+      "a request read as JSON",
+      "export const d = (request: Request) => request.json();\n",
+    ],
+    [
+      "a request read as text",
+      "export const e = (request: Request) => request.text();\n",
+    ],
+  ])("refuses reading %s outside the HTTP module", async (_, code) => {
+    expect(await reported(code, servicePath)).toContain("no-restricted-syntax");
+  });
+
+  it("refuses registering a tool around the wrapper that carries its schemas", async () => {
+    const code =
+      'import { McpServer } from "@modelcontextprotocol/server";\n' +
+      'export const f = (server: McpServer) => server.registerTool("x", {}, () => ({ content: [] }));\n';
+    expect(await reported(code, servicePath)).toContain(
+      "no-restricted-properties",
+    );
+  });
+
+  it("cannot define a tool without its schemas", () => {
+    const run = () => Promise.resolve({ id: "x", status: "posted" as const });
+    // @ts-expect-error -- a tool with no input or output schema does not compile
+    const missing: ToolDefinition = { name: "x", description: "x", run };
+    expect(missing.name).toBe("x");
   });
 });
 
