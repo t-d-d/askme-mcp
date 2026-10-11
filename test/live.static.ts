@@ -17,15 +17,15 @@ const given = (): string[] =>
 describe("the live tier reads its addresses in one place", () => {
   it("finds the variables the deploy gives the live tier", () => {
     expect(given()).toEqual(
-      expect.arrayContaining(["ASKME_URL", "ASKME_MCP_URL"]),
+      expect.arrayContaining(["ASKME_URL", "ASKME_MCP_URL", "CLERK_ISSUER"]),
     );
   });
 
+  // Any mention of the process counts, so env destructured from it, or
+  // imported from node:process, is found as well as process.env.
   it("reads the environment in test/live.ts and no other live file", () => {
     expect(
-      liveTierFiles().filter((path) =>
-        /\bprocess\.env\b/u.test(readRepoFile(path)),
-      ),
+      liveTierFiles().filter((path) => /\bprocess\b/u.test(readRepoFile(path))),
     ).toEqual([helper]);
   });
 
