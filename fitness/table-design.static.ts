@@ -202,9 +202,9 @@ describe("fitness: two functions write (table-design.md)", () => {
   });
 
   it("finds the store's own writes in those two functions", async () => {
-    expect(
-      await reported(readRepoFile(storePath), storePath),
-    ).not.toContain("askme/write-functions");
+    expect(await reported(readRepoFile(storePath), storePath)).not.toContain(
+      "askme/write-functions",
+    );
   });
 });
 

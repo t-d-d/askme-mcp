@@ -3,11 +3,13 @@
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import {
   pagePaths,
+  sinceParam,
   type AsksAnswer,
   type ConnectionAnswer,
 } from "../shared/page-api";
-import { openPage, Status, type OpenPage } from "../test/browser";
+import { Answering, openPage, Status, type OpenPage } from "../test/browser";
 import { cursorInstallLink } from "./src/cursor";
+import { pollMs } from "./src/poll";
 
 const phone = { width: 390, height: 844 };
 const desktop = { width: 1280, height: 800 };
@@ -228,6 +230,45 @@ describe("a list that cannot be loaded", () => {
     try {
       await view.page.getByText("Not connected. Trying again.").waitFor();
       expect(await view.page.getByRole("article").count()).toBe(0);
+    } finally {
+      await view.close();
+    }
+  });
+});
+
+describe("a poll that fails", () => {
+  it("keeps the list, says the page is not connected, and tries again", async () => {
+    let failing = false;
+    const view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: true,
+      api: {
+        [pagePaths.asks]: new Answering((url) =>
+          failing
+            ? new Status(503)
+            : url.searchParams.get(sinceParam) === String(five.version)
+              ? { version: five.version, unchanged: true }
+              : five,
+        ),
+        [pagePaths.connection]: connection,
+      },
+    });
+    try {
+      const { page } = view;
+      const note = page.getByText("Not connected. Trying again.");
+      await page.getByRole("article").waitFor();
+      failing = true;
+      await page.clock.fastForward(pollMs);
+      await note.waitFor();
+      expect(await page.getByRole("article").innerText()).toContain(
+        "Merge the fix for checkout rounding? Tests pass.",
+      );
+      expect(await page.getByRole("listitem").count()).toBe(4);
+      failing = false;
+      await page.clock.fastForward(pollMs);
+      await note.waitFor({ state: "detached" });
+      expect(await page.getByRole("article").count()).toBe(1);
+      expect(await page.getByRole("listitem").count()).toBe(4);
     } finally {
       await view.close();
     }
