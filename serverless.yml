@@ -446,6 +446,46 @@ resources:
           filter message.event = "ask-posted"
           | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
 
+    AskReplacedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/ask-replaced
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "ask-replaced"
+          | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
+
+    AskResolvedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/ask-resolved
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "ask-resolved"
+          | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
+
+    AskAlreadyClosedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/ask-already-closed
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "ask-already-closed"
+          | stats count(*) as calls, count_distinct(message.accountId) as accounts by bin(1d)
+
+    AskNotFoundQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/ask-not-found
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "ask-not-found"
+          | stats count(*) as calls, count_distinct(message.accountId) as accounts by bin(1d)
+
     PollLimitedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
