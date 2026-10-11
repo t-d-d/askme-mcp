@@ -38,6 +38,7 @@ const rulesSchema = z.array(
         required_status_checks: z
           .array(z.object({ context: z.string() }))
           .optional(),
+        strict_required_status_checks_policy: z.boolean().optional(),
       })
       .optional(),
   }),
@@ -68,6 +69,18 @@ describe("fitness: main is protected (repo-and-delivery.md)", () => {
       (rule) => rule.parameters?.required_status_checks ?? [],
     );
     expect(checks.map((check) => check.context)).toContain("gate");
+  });
+
+  // Two branches that each pass alone can leave main red once both merge.
+  // A branch behind main has to merge main in, so the gate runs on the
+  // combined tree first (#43).
+  it("requires a branch to be up to date with main before it merges", async () => {
+    const { status, body } = await github("/rules/branches/main");
+    expect(status, body).toBe(200);
+    const strict = parse(body, rulesSchema)
+      .filter((rule) => rule.type === "required_status_checks")
+      .map((rule) => rule.parameters?.strict_required_status_checks_policy);
+    expect(strict).toContain(true);
   });
 });
 
