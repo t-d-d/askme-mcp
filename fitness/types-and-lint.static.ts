@@ -129,6 +129,18 @@ describe("fitness: boundaries are parsed (types-and-lint.md)", () => {
     );
   });
 
+  it.each(["node:process", "process"])(
+    "refuses importing env from %s outside the environment module",
+    async (name) => {
+      expect(
+        await importRefused(
+          `import { env } from "${name}";\nexport const a = env.CLERK_ISSUER;\n`,
+          servicePath,
+        ),
+      ).toBe(true);
+    },
+  );
+
   it.each([
     [
       "an event's body",

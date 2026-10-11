@@ -111,7 +111,7 @@ async function serve(
     if (!(error instanceof OAuthError) || error.code !== invalidToken) {
       throw error;
     }
-    if (authorization === undefined) {
+    if (authorization === undefined || authorization.trim() === "") {
       log.info("token-missing");
     } else {
       log.info("token-rejected", {
@@ -125,9 +125,15 @@ async function serve(
       resourceMetadataUrl,
     });
   }
-  return mcp.fetch(request, {
+  const response = await mcp.fetch(request, {
     authInfo: { ...authInfo, extra: { ...authInfo.extra, requestId } },
   });
+  // The SDK answers a failure of its own with a server error and logs
+  // nothing, so it is logged here, by status only.
+  if (response.status >= 500) {
+    log.error("request-failed", { status: response.status });
+  }
+  return response;
 }
 
 // Any failure the service did not expect. It is service_unavailable, which

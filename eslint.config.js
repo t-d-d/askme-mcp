@@ -36,10 +36,29 @@ const otherLoggers = [
   message: "Log through the shared logger in service/src/log.ts (ADR 7).",
 }));
 
+const serviceImports = {
+  patterns: [layerPattern("web")],
+  paths: otherLoggers,
+};
+
+// Importing env, stdout or stderr from the process module would get round
+// the property rules below.
+const processImports = ["process", "node:process"].map((name) => ({
+  name,
+  importNames: ["env", "stdout", "stderr"],
+  message:
+    "Read the environment in service/src/env.ts, and log through service/src/log.ts (ADR 7, ADR 10).",
+}));
+
 // Outside data enters the service at one place for each kind, and is parsed
 // there by a schema (ADR 10). Each boundary module disables the rule on the
 // line where it reads, with its reason.
 const boundaries = {
+  // This block replaces the service-wide import rule, so it carries it too.
+  "no-restricted-imports": [
+    "error",
+    { ...serviceImports, paths: [...serviceImports.paths, ...processImports] },
+  ],
   "no-console": "error",
   "no-restricted-properties": [
     "error",
@@ -146,10 +165,7 @@ export default defineConfig(
   {
     files: ["service/**/*.ts"],
     rules: {
-      "no-restricted-imports": [
-        "error",
-        { patterns: [layerPattern("web")], paths: otherLoggers },
-      ],
+      "no-restricted-imports": ["error", serviceImports],
     },
   },
   {

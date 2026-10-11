@@ -1,9 +1,11 @@
 // The MCP endpoint end to end, in process: API Gateway's event, the token
 // check, the MCP server and the ask tool, driven by the official client.
+import { McpServer } from "@modelcontextprotocol/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
+import { captureLogs, lineText } from "../test/logs";
 import { connect, eras, mcpUrl, metadataUrl, refusalOf } from "../test/mcp";
 import { fixedAskId } from "./src/ask";
 import { handler } from "./src/handler";
@@ -35,6 +37,24 @@ describe("a call with no token", () => {
     expect(first?.headers.get("www-authenticate")).toMatch(
       new RegExp(`^Bearer .*resource_metadata="${metadataUrl}"`, "u"),
     );
+  });
+});
+
+describe("a call with an empty authorization header", () => {
+  it("is logged as a missing token, not a rejected one", async () => {
+    const capture = captureLogs();
+    try {
+      const response = await invoke(
+        handler,
+        new Request(mcpUrl, { method: "POST", headers: { authorization: "" } }),
+      );
+      expect(response.status).toBe(401);
+      const written = capture.lines.map(lineText).join("\n");
+      expect(written).toContain("token-missing");
+      expect(written).not.toContain("token-rejected");
+    } finally {
+      capture.restore();
+    }
   });
 });
 
@@ -179,6 +199,35 @@ describe("a request the handler cannot use", () => {
       }),
     );
     expect(response.status).toBe(404);
+  });
+
+  // The SDK answers a failure of its own with a 500 and logs nothing, so the
+  // handler logs it, and the error alarm sees it (logging.md).
+  it("is logged as a failure when the MCP server cannot be built", async () => {
+    const capture = captureLogs();
+    const register = vi
+      .spyOn(McpServer.prototype, "registerTool")
+      .mockImplementationOnce(() => {
+        throw new Error("Could not register");
+      });
+    try {
+      const seen: Response[] = [];
+      await expect(
+        connect(handler, { token: await issuer.token(), seen }),
+      ).rejects.toThrow();
+      expect(seen[0]?.status).toBe(500);
+      expect(
+        capture.lines.some(
+          (line) =>
+            line.method === "error" &&
+            lineText(line).includes("request-failed") &&
+            lineText(line).includes("500"),
+        ),
+      ).toBe(true);
+    } finally {
+      register.mockRestore();
+      capture.restore();
+    }
   });
 
   // API Gateway always sends a well-formed event, so this is a fault on

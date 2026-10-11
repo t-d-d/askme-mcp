@@ -87,7 +87,12 @@ export function addTool<Input extends z.ZodObject, Output extends z.ZodObject>(
         );
       }
       try {
-        const output = await tool.run(parsed.data, { caller, log });
+        // The answer is parsed by the tool's own schema here, so one that
+        // breaks it is a failure under the error contract, not the SDK's
+        // own error text.
+        const output = tool.output.parse(
+          await tool.run(parsed.data, { caller, log }),
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(output) }],
           structuredContent: output,
