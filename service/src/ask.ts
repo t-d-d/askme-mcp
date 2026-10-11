@@ -1,13 +1,18 @@
 // The ask tool: an agent posts something it needs the person for. The ask
 // is checked against its limits, stored, and answered with its id. An ask
-// that names an earlier one in replaces takes its place.
+// that names an earlier one in replaces takes its place. A repeat of an ask
+// posted in the last ten minutes is answered with the first one's id. An
+// account over its rate or its daily cap is refused.
 //
-// Each limit is a constant here, and the schema, the field's description and
-// the refusal's message all take it from here, so the three cannot disagree
-// (ADR 11).
+// Each field's limit is a constant here, and the schema, the field's
+// description and the refusal's message all take it from here, so the three
+// cannot disagree (ADR 11). The daily cap is the store's constant and the
+// rate is rate.ts's, and the refusals' messages take them from there.
 import { z } from "zod";
-import { retryBudget } from "./errors";
+import { Refused, retryBudget } from "./errors";
 import { guidance } from "./instructions";
+import { askLimit } from "./rate";
+import { dailyAskCap } from "./store/store";
 import type { ToolDefinition } from "./tools";
 
 // The most characters each field may hold. A summary is one or two lines on
@@ -84,14 +89,24 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
     guidance.resolve,
     "Resolve it with the resolve tool and its id.",
     guidance.replace,
+    guidance.retry,
     guidance.ownSession,
     `If askme refuses with a code marked retry, send the same call again at most ${String(retryBudget)} times, then carry on without askme.`,
   ].join(" "),
   input: askInput,
   output: askOutput,
   async run(input, { caller, log, store }) {
-    const { id, replaced } = await store.postAsk(
-      caller.accountId,
+    const { accountId } = caller;
+    const now = new Date();
+    // Every call is counted before anything is stored, so an agent that
+    // floods, even with one ask repeated, is slowed (ADR 18).
+    const counted = await store.countAsk(accountId, now);
+    if (!counted.counted) {
+      log.info("rate-limited", { accountId });
+      return rateLimited(counted.secondsLeft);
+    }
+    const posting = await store.postAsk(
+      accountId,
       {
         summary: input.summary,
         area: input.area,
@@ -104,15 +119,42 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
           : { sessionLink: input.session_link }),
         ...(input.replaces === undefined ? {} : { replaces: input.replaces }),
       },
-      new Date(),
+      now,
     );
-    if (replaced && input.replaces !== undefined) {
-      log.info("ask-replaced", {
-        accountId: caller.accountId,
-        askId: input.replaces,
-      });
+    switch (posting.kind) {
+      case "posted":
+        if (posting.replaced && input.replaces !== undefined) {
+          log.info("ask-replaced", { accountId, askId: input.replaces });
+        }
+        log.info("ask-posted", { accountId, askId: posting.id });
+        return { id: posting.id, status: "posted" };
+      case "matched":
+        // The same answer as a new ask's, so the agent cannot tell them
+        // apart (ADR 3).
+        log.info("ask-deduplicated", { accountId, askId: posting.id });
+        return { id: posting.id, status: "posted" };
+      case "over-cap":
+        log.info("cap-reached", { accountId });
+        return capReached(posting.resetsAt);
     }
-    log.info("ask-posted", { accountId: caller.accountId, askId: id });
-    return { id, status: "posted" };
   },
 };
+
+function capReached(resetsAt: Date): Refused {
+  return new Refused(
+    "cap_reached",
+    `This account has posted ${String(dailyAskCap)} asks today, which is as many as askme takes in a day. The count starts again at ${resetsAt.toISOString()}, midnight UTC. Do not retry before then. Ask your question in your own session, and carry on.`,
+  );
+}
+
+function rateLimited(waitSeconds: number): Refused {
+  const perWindow =
+    askLimit.windowMinutes === 1
+      ? "a minute"
+      : `in ${String(askLimit.windowMinutes)} minutes`;
+  const wait = `${String(waitSeconds)} ${waitSeconds === 1 ? "second" : "seconds"}`;
+  return new Refused(
+    "rate_limited",
+    `This account is posting asks too fast. askme takes at most ${String(askLimit.asks)} asks ${perWindow}. Wait ${wait}, then send the same call again, at most ${String(retryBudget)} times in all. If it is still refused, carry on without askme.`,
+  );
+}
