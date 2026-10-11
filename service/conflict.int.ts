@@ -85,12 +85,18 @@ const post = async (agent: Client) =>
 const transactions = () =>
   database.calls.filter((call) => call.action === "TransactWriteItems").length;
 
-// The account's version, read straight from its META item.
-async function versionOf(owner: AccountId): Promise<number | undefined> {
-  const items = await storedItems(endpoint, tableName, owner);
-  const meta = items.find((item) => item.sk === keys.meta(owner).sk);
-  return z.object({ version: z.number() }).optional().parse(meta)?.version;
+// The account's version, raised once by each write that landed, and the
+// ids of its open asks.
+async function listed(owner: AccountId) {
+  const { version, asks } = await elsewhere.openAsks(owner, new Date());
+  return { version, open: asks.map((open) => open.id) };
 }
+
+// What is stored for one ask, open or closed, read straight from the table.
+const itemsOf = async (owner: AccountId, id: string) =>
+  (await storedItems(endpoint, tableName, owner)).filter(
+    (item) => item.id === id,
+  );
 
 describe("a write that meets another transaction", () => {
   it("posts the ask once when its first try is cancelled", async () => {
@@ -104,12 +110,7 @@ describe("a write that meets another transaction", () => {
         .object({ id: z.string(), status: z.literal("posted") })
         .parse(result.structuredContent);
       expect(transactions() - before).toBe(2);
-      const items = await storedItems(endpoint, tableName, owner);
-      expect(items.map((item) => item.sk)).toEqual([
-        keys.meta(owner).sk,
-        keys.openAsk(owner, id).sk,
-      ]);
-      expect(await versionOf(owner)).toBe(1);
+      expect(await listed(owner)).toEqual({ version: 1, open: [id] });
     } finally {
       await agent.close();
     }
@@ -128,12 +129,13 @@ describe("a write that meets another transaction", () => {
       });
       expect(result.structuredContent).toEqual({ id, status: "resolved" });
       expect(transactions() - before).toBe(2);
-      const items = await storedItems(endpoint, tableName, owner);
-      expect(items.map((item) => item.sk)).toEqual([
-        keys.closedAsk(owner, id).sk,
-        keys.meta(owner).sk,
+      expect(await listed(owner)).toEqual({ version: 2, open: [] });
+      expect(await itemsOf(owner, id)).toEqual([
+        expect.objectContaining({
+          ...keys.closedAsk(owner, id),
+          endedAs: "resolved",
+        }),
       ]);
-      expect(await versionOf(owner)).toBe(2);
     } finally {
       await agent.close();
     }
@@ -161,12 +163,13 @@ describe("a write that meets another transaction", () => {
       expect(other).toEqual(["resolved"]);
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toEqual({ id, status: "resolved" });
-      const items = await storedItems(endpoint, tableName, owner);
-      expect(items.map((item) => item.sk)).toEqual([
-        keys.closedAsk(owner, id).sk,
-        keys.meta(owner).sk,
+      expect(await listed(owner)).toEqual({ version: 2, open: [] });
+      expect(await itemsOf(owner, id)).toEqual([
+        expect.objectContaining({
+          ...keys.closedAsk(owner, id),
+          endedAs: "resolved",
+        }),
       ]);
-      expect(await versionOf(owner)).toBe(2);
     } finally {
       await agent.close();
     }
@@ -196,7 +199,10 @@ describe("a write that meets another transaction", () => {
     }
   });
 
-  it("answers service_unavailable when every try is cancelled, and stores nothing", async () => {
+  // The ask's rate counter is counted before the transaction, and stays
+  // counted (ADR 18). Nothing in the transaction lands, so the agent's
+  // retry posts the ask afresh.
+  it("answers service_unavailable when every try is cancelled, and posts nothing", async () => {
     const { sub, owner } = newAccount();
     const agent = await agentFor(sub);
     try {
@@ -208,7 +214,10 @@ describe("a write that meets another transaction", () => {
       expect(refusal.code).toBe("service_unavailable");
       expect(refusal.class).toBe("retry");
       expect(transactions() - before).toBe(writeTries);
-      expect(await storedItems(endpoint, tableName, owner)).toEqual([]);
+      expect(await listed(owner)).toEqual({ version: 0, open: [] });
+      database.conflict(0);
+      const id = await post(agent);
+      expect(await listed(owner)).toEqual({ version: 1, open: [id] });
     } finally {
       await agent.close();
     }
