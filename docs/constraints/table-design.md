@@ -42,4 +42,4 @@ that lags behind the table.
 Judgment: A need to read across accounts is a new ADR, not an
 index.
 
-History: [ADR 13](../adr/0013-table-design.md), [ADR 17](../adr/0017-rate-counter.md)
+History: [ADR 13](../adr/0013-table-design.md), [ADR 18](../adr/0018-rate-counter.md)

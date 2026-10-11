@@ -10,6 +10,7 @@ export interface Key {
 }
 
 const openAskPrefix = "OPEN#";
+const closedAskPrefix = "CLOSED#";
 const pollCountPrefix = "POLL#";
 
 export const keys = {
@@ -22,8 +23,14 @@ export const keys = {
   }),
   // The prefix every open ask's sort key starts with, to list them.
   openAsks: (account: AccountId) => ({ pk: account, prefix: openAskPrefix }),
+  // An ask that has closed. It moves here from its open key, so listing the
+  // open asks never reads it.
+  closedAsk: (account: AccountId, askId: string): Key => ({
+    pk: account,
+    sk: `${closedAskPrefix}${askId}`,
+  }),
   // The poll's rate counter for one window, named by the minute it starts
-  // (ADR 17).
+  // (ADR 18).
   pollCount: (account: AccountId, window: string): Key => ({
     pk: account,
     sk: `${pollCountPrefix}${window}`,

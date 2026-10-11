@@ -114,7 +114,7 @@ const writeFunctionsRule = {
     schema: [],
     messages: {
       elsewhere:
-        "Write to the table through write(), which raises the version, or count(), which writes a rate counter (ADR 13, ADR 17).",
+        "Write to the table through write(), which raises the version, or count(), which writes a rate counter (ADR 13, ADR 18).",
     },
   },
   create(context) {

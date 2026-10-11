@@ -37,16 +37,43 @@ const ask = {
   action_link: "https://github.com/t-d-d/askme-mcp/pull/1",
 };
 
-async function post(account: string): Promise<string> {
+// One tool call, as an agent of the account.
+async function call(
+  account: string,
+  name: string,
+  args: Record<string, string>,
+): Promise<unknown> {
   const client = await connect(handler, {
     token: await issuer.token({ claims: { sub: account } }),
   });
   try {
-    const result = await client.callTool({ name: "ask", arguments: ask });
-    return z.object({ id: z.string() }).parse(result.structuredContent).id;
+    return (await client.callTool({ name, arguments: args })).structuredContent;
   } finally {
     await client.close();
   }
+}
+
+async function post(
+  account: string,
+  args: Record<string, string> = ask,
+): Promise<string> {
+  return z.object({ id: z.string() }).parse(await call(account, "ask", args))
+    .id;
+}
+
+// The list as the page reads it: the version, and each ask's id and when
+// it was posted.
+async function list(account: string) {
+  const response = await get(
+    pagePaths.asks,
+    await issuer.sessionToken({ claims: { sub: account } }),
+  );
+  return z
+    .object({
+      version: z.number(),
+      asks: z.array(z.object({ id: z.string(), postedAt: z.string() })),
+    })
+    .parse(await response.json());
 }
 
 const refusalSchema = z.strictObject({
@@ -99,6 +126,28 @@ describe("the list of open asks", () => {
     const postedAt = Date.parse(posted);
     expect(postedAt).toBeGreaterThanOrEqual(before - 1000);
     expect(postedAt).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("drops an ask once its agent resolves it", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    await call(account, "resolve", { id });
+    expect(await list(account)).toEqual({ version: 2, asks: [] });
+  });
+
+  it("holds a new ask in place of the one it replaces, waiting since the first", async () => {
+    const account = newAccount();
+    const old = await post(account);
+    const [first] = (await list(account)).asks;
+    const id = await post(account, {
+      ...ask,
+      summary: "Approve the revised plan for the kitchen rewiring",
+      replaces: old,
+    });
+    expect(await list(account)).toEqual({
+      version: 2,
+      asks: [{ id, postedAt: first?.postedAt }],
+    });
   });
 
   it("holds only the signed-in account's asks", async () => {

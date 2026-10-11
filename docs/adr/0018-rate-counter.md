@@ -1,4 +1,4 @@
-# ADR 17: A rate counter is written without raising the version
+# ADR 18: A rate counter is written without raising the version
 
 Decided on 11 October 2026: a rate counter is stored in the table, one item per account and time window, under its own key prefix. One function in the store writes it, as one conditional update, and that write does not raise the account's version. Every change to asks or rules still goes through the one write function, which raises the version. This replaces the words "Every write goes through one function" in point 10 of [ADR 13](0013-table-design.md), and the consequence there that "a new kind of write has to be added there and nowhere else". The rest of ADR 13 stands.
 

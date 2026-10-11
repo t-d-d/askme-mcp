@@ -1,10 +1,13 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import type { Client } from "@modelcontextprotocol/client";
 import { handler, routes } from "../service/src/handler";
+import { instructions } from "../service/src/instructions";
+import { pagePaths } from "../shared/page-api";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
-import { connect, eras, origin } from "../test/mcp";
+import { connect, eras, origin, type Era } from "../test/mcp";
 
 let issuer: FakeIssuer;
 beforeAll(async () => {
@@ -39,8 +42,54 @@ const refusalSchema = z.strictObject({
 // An id and a status, and nothing else (ADR 2).
 const idAndStatus = z.strictObject({
   id: z.string(),
-  status: z.literal("posted"),
+  status: z.enum(["posted", "resolved"]),
 });
+
+const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
+
+// An id of the same shape as askme's, that no account has.
+const unknownId = () => randomBytes(18).toString("base64url");
+
+const agentOf = async (sub: string, era: Era = "legacy") =>
+  connect(handler, { token: await issuer.token({ claims: { sub } }), era });
+
+const postAs = async (agent: Client, args: Record<string, string> = ask) =>
+  idAndStatus.parse(
+    (await agent.callTool({ name: "ask", arguments: args })).structuredContent,
+  ).id;
+
+// What the page shows the account: the version, and the open asks' ids.
+async function pageOf(sub: string) {
+  const response = await invoke(
+    handler,
+    new Request(`${origin}${pagePaths.asks}`, {
+      headers: {
+        authorization: `Bearer ${await issuer.sessionToken({ claims: { sub } })}`,
+      },
+    }),
+  );
+  return z
+    .object({
+      version: z.number(),
+      asks: z.array(z.object({ id: z.string() })),
+    })
+    .parse(await response.json());
+}
+
+describe.each(eras)(
+  "fitness: the tool list is fixed (agents-write-only.md), %s handshake",
+  (era) => {
+    it("advertises exactly ask and resolve", async () => {
+      const client = await connect(handler, {
+        token: await issuer.token(),
+        era,
+      });
+      const { tools } = await client.listTools();
+      expect(tools.map((tool) => tool.name).sort()).toEqual(["ask", "resolve"]);
+      await client.close();
+    });
+  },
+);
 
 describe.each(eras)(
   "fitness: results carry no account data (agents-write-only.md), %s handshake",
@@ -54,7 +103,10 @@ describe.each(eras)(
       const properties = tools.map((tool) =>
         Object.keys(tool.outputSchema?.properties ?? {}).sort(),
       );
-      expect(properties).toEqual([["id", "status"]]);
+      expect(properties).toEqual([
+        ["id", "status"],
+        ["id", "status"],
+      ]);
       await client.close();
     });
 
@@ -84,6 +136,111 @@ describe.each(eras)(
       await postAndCheck();
       await postAndCheck();
       await client.close();
+    });
+
+    it("answers a resolve with an id and a status only, however the ask was closed", async () => {
+      const client = await agentOf(newAccount(), era);
+      const id = await postAs(client);
+      const resolveAndCheck = async () => {
+        const { _meta: meta, ...result } = await client.callTool({
+          name: "resolve",
+          arguments: { id },
+        });
+        expect(Object.keys(result).sort()).toEqual(
+          ["content", "structuredContent"].sort(),
+        );
+        if (meta !== undefined) expect(meta).toEqual(serverInfo);
+        expect(idAndStatus.parse(result.structuredContent)).toEqual({
+          id,
+          status: "resolved",
+        });
+        return result;
+      };
+      const first = await resolveAndCheck();
+      expect(await resolveAndCheck()).toEqual(first);
+      await client.close();
+    });
+  },
+);
+
+describe("fitness: ids cannot be guessed or borrowed (agents-write-only.md)", () => {
+  it("gives every ask a long random id", async () => {
+    const client = await agentOf(newAccount());
+    const ids: string[] = [];
+    for (let n = 0; n < 20; n += 1) {
+      ids.push(await postAs(client, { ...ask, summary: `Ask ${String(n)}` }));
+    }
+    for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9_-]{24}$/u);
+    expect(new Set(ids).size).toBe(ids.length);
+    await client.close();
+  });
+
+  it("refuses to resolve another account's ask exactly as it refuses an id that does not exist", async () => {
+    const [owner, other] = [newAccount(), newAccount()];
+    const ownerAgent = await agentOf(owner);
+    const id = await postAs(ownerAgent);
+    await ownerAgent.close();
+    const before = await pageOf(owner);
+
+    const otherAgent = await agentOf(other);
+    const borrowed = await otherAgent.callTool({
+      name: "resolve",
+      arguments: { id },
+    });
+    const unknown = await otherAgent.callTool({
+      name: "resolve",
+      arguments: { id: unknownId() },
+    });
+    await otherAgent.close();
+
+    expect(borrowed.isError).toBe(true);
+    expect(borrowed).toEqual(unknown);
+    expect(await pageOf(owner)).toEqual(before);
+  });
+
+  it("posts an ask that names another account's ask in replaces as new, and leaves that one open", async () => {
+    const [owner, other] = [newAccount(), newAccount()];
+    const ownerAgent = await agentOf(owner);
+    const id = await postAs(ownerAgent);
+    await ownerAgent.close();
+    const before = await pageOf(owner);
+
+    const otherAgent = await agentOf(other);
+    const replacing = await postAs(otherAgent, { ...ask, replaces: id });
+    await otherAgent.close();
+
+    expect(await pageOf(owner)).toEqual(before);
+    expect(await pageOf(other)).toEqual({
+      version: 1,
+      asks: [{ id: replacing }],
+    });
+  });
+});
+
+describe.each(eras)(
+  "fitness: instructions are the same for all (agents-write-only.md), %s handshake",
+  (era) => {
+    // What a client is told before it calls anything: the server's
+    // instructions, and each tool with its description and schemas.
+    const toldTo = async (token: string) => {
+      const client = await connect(handler, { token, era });
+      const told = {
+        instructions: client.getInstructions(),
+        tools: (await client.listTools()).tools,
+      };
+      await client.close();
+      return told;
+    };
+
+    it("tells every account, and every connection, the same", async () => {
+      const first = await toldTo(await issuer.token());
+      const second = await toldTo(
+        await issuer.token({
+          claims: { sub: newAccount(), client_id: "client_other" },
+        }),
+      );
+      expect(first.instructions).toBe(instructions);
+      expect(second).toEqual(first);
     });
   },
 );

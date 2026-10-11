@@ -19,6 +19,17 @@ export type Code = keyof typeof codes;
 // before it carries on without askme. The tool descriptions state it.
 export const retryBudget = 2;
 
+// A refusal a tool decides on as it runs, such as not_found. The tool
+// wrapper sends it on as a refusal.
+export class Refused {
+  readonly code: Code;
+  readonly message: string;
+  constructor(code: Code, message: string) {
+    this.code = code;
+    this.message = message;
+  }
+}
+
 export function refusal(code: Code, message: string): CallToolResult {
   const body = { code, class: codes[code], message };
   return {

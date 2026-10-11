@@ -38,7 +38,9 @@ import {
   TokenRejected,
   type AccountId,
 } from "./identity";
+import { instructions } from "./instructions";
 import { createLogger, errorClass, type Logger } from "./log";
+import { resolveTool } from "./resolve";
 import { isPageRoute, isRoute, mcpPath, routes } from "./routes";
 import { createStore, type Store } from "./store/store";
 import { addTool } from "./tools";
@@ -49,10 +51,17 @@ export { routes };
 const invalidToken: string = OAuthErrorCode.InvalidToken;
 
 // A fresh MCP server for each request, as the SDK's stateless serving does.
-// It sees the caller the token check verified.
+// It sees the caller the token check verified. Its tools and instructions
+// are the same for every caller (ADR 2).
 function buildServer(context: McpRequestContext): McpServer {
-  const server = new McpServer({ name: "askme", version: "1.0.0" });
-  addTool(server, askTool, callerOf(context.authInfo), ready().store);
+  const server = new McpServer(
+    { name: "askme", version: "1.0.0" },
+    { instructions },
+  );
+  const caller = callerOf(context.authInfo);
+  const { store } = ready();
+  addTool(server, askTool, caller, store);
+  addTool(server, resolveTool, caller, store);
   return server;
 }
 

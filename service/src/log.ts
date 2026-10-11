@@ -23,6 +23,15 @@ export const events = [
   "input-invalid",
   // An ask was accepted and answered with its id.
   "ask-posted",
+  // A new ask took the place of an open one, which closed as replaced. The
+  // id is the old ask's.
+  "ask-replaced",
+  // An agent resolved an open ask, which closed.
+  "ask-resolved",
+  // An agent resolved an ask that was already closed. It succeeds.
+  "ask-already-closed",
+  // An agent resolved an id its account has no ask for, so it was refused.
+  "ask-not-found",
   // A poll came over the account's limit for the minute, and was refused
   // with rate_limited. Expected, so logged at info.
   "poll-limited",

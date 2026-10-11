@@ -3,17 +3,19 @@ import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { askTool, limits } from "../service/src/ask";
+import { resolveTool } from "../service/src/resolve";
 import { callerOf } from "../service/src/identity";
 import type { Store } from "../service/src/store/store";
 import { addTool } from "../service/src/tools";
 import { captureLogs } from "../test/logs";
 import { refusalOf } from "../test/mcp";
 
-// The ask tool in memory, with a store it never reaches: every call here is
+// The tools in memory, with a store they never reach: every call here is
 // refused before it would be stored.
 const unused = () => Promise.reject(new Error("The store is not used here."));
 const store: Store = {
   postAsk: unused,
+  resolveAsk: unused,
   openAsks: unused,
   asksSince: unused,
   countPoll: unused,
@@ -25,17 +27,14 @@ let capture: ReturnType<typeof captureLogs>;
 beforeAll(async () => {
   capture = captureLogs();
   const server = new McpServer({ name: "askme", version: "1.0.0" });
-  addTool(
-    server,
-    askTool,
-    callerOf({
-      token: "test",
-      clientId: "test",
-      scopes: ["asks:create"],
-      extra: { accountId: "user_1", requestId: "req-1" },
-    }),
-    store,
-  );
+  const caller = callerOf({
+    token: "test",
+    clientId: "test",
+    scopes: ["asks:create"],
+    extra: { accountId: "user_1", requestId: "req-1" },
+  });
+  addTool(server, askTool, caller, store);
+  addTool(server, resolveTool, caller, store);
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await server.connect(serverSide);
   client = new Client({ name: "askme-test", version: "1.0.0" });
@@ -46,31 +45,39 @@ afterAll(async () => {
   capture.restore();
 });
 
-// Each field with a limit, by the name an agent sends.
-const fields = {
-  summary: limits.summary,
-  area: limits.area,
-  spoken_detail: limits.spokenDetail,
-  action_link: limits.link,
-  session_link: limits.link,
-  replaces: limits.replaces,
-} as const;
+// Each field with a limit, by its tool and the name an agent sends.
+const fields = [
+  ["ask", "summary", limits.summary],
+  ["ask", "area", limits.area],
+  ["ask", "spoken_detail", limits.spokenDetail],
+  ["ask", "action_link", limits.link],
+  ["ask", "session_link", limits.link],
+  ["ask", "replaces", limits.id],
+  ["resolve", "id", limits.id],
+] as const;
+
+// An id carries no limit in its description: an agent copies it as given.
+const ids = new Set(["replaces", "id"]);
 
 const propertySchema = z.object({
   description: z.string(),
   maxLength: z.number(),
 });
 
-async function advertised(field: string) {
+async function advertised(name: string, field: string) {
   const { tools } = await client.listTools();
-  const ask = tools.find((tool) => tool.name === "ask");
-  return propertySchema.parse(ask?.inputSchema.properties?.[field]);
+  const tool = tools.find((each) => each.name === name);
+  return propertySchema.parse(tool?.inputSchema.properties?.[field]);
 }
 
-const valid = {
-  summary: "Approve the plan",
-  area: "Home",
-  spoken_detail: "The electrician needs a yes or no.",
+// A valid call to each tool, before one field is made too long.
+const valid: Record<string, Record<string, string>> = {
+  ask: {
+    summary: "Approve the plan",
+    area: "Home",
+    spoken_detail: "The electrician needs a yes or no.",
+  },
+  resolve: {},
 };
 
 const tooLong = (field: string, limit: number) =>
@@ -79,18 +86,18 @@ const tooLong = (field: string, limit: number) =>
     : "x".repeat(limit + 1);
 
 describe("fitness: limits agree (error-contract.md)", () => {
-  it.each(Object.entries(fields))(
-    "gives %s the same limit in its schema, its description and its refusal",
-    async (field, limit) => {
-      const property = await advertised(field);
+  it.each(fields)(
+    "gives %s's %s the same limit in its schema, its description and its refusal",
+    async (name, field, limit) => {
+      const property = await advertised(name, field);
       expect(property.maxLength).toBe(limit);
-      if (field !== "replaces") {
+      if (!ids.has(field)) {
         expect(property.description).toContain(`${String(limit)} characters`);
       }
       const refusal = refusalOf(
         await client.callTool({
-          name: "ask",
-          arguments: { ...valid, [field]: tooLong(field, limit) },
+          name,
+          arguments: { ...valid[name], [field]: tooLong(field, limit) },
         }),
       );
       expect(refusal.code).toBe("invalid_input");
@@ -102,9 +109,11 @@ describe("fitness: limits agree (error-contract.md)", () => {
 
   it("takes every limit in a description from the schema's own constants", async () => {
     const { tools } = await client.listTools();
-    const properties = tools.find((tool) => tool.name === "ask")?.inputSchema
-      .properties;
-    for (const [field, value] of Object.entries(properties ?? {})) {
+    const properties = tools.flatMap((tool) =>
+      Object.entries(tool.inputSchema.properties ?? {}),
+    );
+    expect(properties.length).toBeGreaterThan(0);
+    for (const [field, value] of properties) {
       const { description, maxLength } = z
         .object({ description: z.string(), maxLength: z.number().optional() })
         .parse(value);

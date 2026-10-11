@@ -52,7 +52,7 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 - **ask** posts an ask and returns its id. It can carry the id of an earlier ask, which it then replaces. Delivery is at least once: an ask identical to one posted on the same account in the last ten minutes returns the first one's id, so a retry does not make a second card. See [ADR 3](docs/adr/0003-idempotency.md).
 - **resolve** closes an ask by id.
 - The server sends its own instructions to each client, and the essentials are repeated in the tool descriptions, because not every client passes server instructions on.
-- Those instructions say four things. Post whenever work stops to wait for the person, since a cleared ask costs them nothing. A session may hold several open asks. Resolve as soon as the wait is over, before doing anything else, whether the person replied or the awaited event happened, such as a pull request being merged. If a call times out, send the same ask again unchanged.
+- Those instructions say five things. Post whenever work stops to wait for the person, since a cleared ask costs them nothing. A session may hold several open asks. Resolve as soon as the wait is over, before doing anything else, whether the person replied or the awaited event happened, such as a pull request being merged. If a call times out, send the same ask again unchanged, at most twice. Whatever askme answers, still ask your question in your own session.
 - Agents get no tool that reads anything: not the rules, the hashtags, other asks, or their own asks. See [ADR 2](docs/adr/0002-agents-write-only.md). A refusal carries a code that tells the agent whether to retry. See [ADR 11](docs/adr/0011-error-contract.md).
 
 ### The ask
@@ -61,7 +61,7 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 | --- | --- | --- |
 | Summary | Sending agent | One or two lines for the card. Hard character limit, rejected if longer. |
 | Area | Sending agent | Required. One short line naming the project or part of life the ask belongs to. Broad, not the task in hand. It helps sorting and is not shown. |
-| Spoken detail | Sending agent | Plain sentences written to be heard. No markdown, code, file paths or raw URLs. About a minute of speech at most. |
+| Spoken detail | Sending agent | Plain sentences written to be heard. No markdown, code, file paths or raw URLs. About a minute of speech at most. When the user can take the action in one place only, such as a browser tab on one machine, it says where. |
 | Action link | Sending agent, optional | Where the user takes the action when that is not the session, such as a pull request or a ticket. Must be https. |
 | Session link | Sending agent, optional | Back to the agent's session, for when the user needs to reply to the agent. Must be https. |
 | Replaces | Sending agent, optional | The id of an earlier ask that this one takes over from. |

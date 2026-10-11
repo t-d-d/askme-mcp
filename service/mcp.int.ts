@@ -1,5 +1,6 @@
 // The MCP endpoint end to end, in process: API Gateway's event, the token
 // check, the MCP server and the ask tool, driven by the official client.
+import type { Client } from "@modelcontextprotocol/client";
 import { McpServer } from "@modelcontextprotocol/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -9,6 +10,7 @@ import { captureLogs, lineText } from "../test/logs";
 import { connect, eras, mcpUrl, metadataUrl, refusalOf } from "../test/mcp";
 import { limits } from "./src/ask";
 import { handler } from "./src/handler";
+import { instructions } from "./src/instructions";
 
 // What a posted ask answers: a long random id, and nothing about the account.
 const posted = z.strictObject({
@@ -81,13 +83,22 @@ describe("the metadata", () => {
 describe.each(eras)(
   "a verified token with asks:create, %s handshake",
   (era) => {
-    it("reaches one tool, ask", async () => {
+    it("reaches two tools, ask and resolve", async () => {
       const client = await connect(handler, {
         token: await issuer.token(),
         era,
       });
       const { tools } = await client.listTools();
-      expect(tools.map((tool) => tool.name)).toEqual(["ask"]);
+      expect(tools.map((tool) => tool.name).sort()).toEqual(["ask", "resolve"]);
+      await client.close();
+    });
+
+    it("is sent the server's instructions", async () => {
+      const client = await connect(handler, {
+        token: await issuer.token(),
+        era,
+      });
+      expect(client.getInstructions()).toBe(instructions);
       await client.close();
     });
 
@@ -186,6 +197,79 @@ describe.each(eras)(
     });
   },
 );
+
+// What a resolve answers: the id it was given, and that it is resolved,
+// however and whenever the ask was closed (ADR 2).
+const resolved = (id: string) => ({ id, status: "resolved" });
+
+describe.each(eras)("resolving and replacing, %s handshake", (era) => {
+  const client = async () =>
+    connect(handler, { token: await issuer.token(), era });
+
+  const post = async (agent: Client) =>
+    posted.parse(
+      (await agent.callTool({ name: "ask", arguments: ask })).structuredContent,
+    ).id;
+
+  it("resolves an ask it posted, answering with its id", async () => {
+    const agent = await client();
+    const id = await post(agent);
+    const result = await agent.callTool({
+      name: "resolve",
+      arguments: { id },
+    });
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toEqual(resolved(id));
+    await agent.close();
+  });
+
+  it("answers a resolve of an ask already closed the same way", async () => {
+    const agent = await client();
+    const id = await post(agent);
+    const first = await agent.callTool({ name: "resolve", arguments: { id } });
+    const second = await agent.callTool({ name: "resolve", arguments: { id } });
+    expect(second.isError).not.toBe(true);
+    expect(second.structuredContent).toEqual(first.structuredContent);
+    expect(second.content).toEqual(first.content);
+    await agent.close();
+  });
+
+  it("refuses an id this account has no ask for as not_found, not to be retried", async () => {
+    const agent = await client();
+    const refusal = refusalOf(
+      await agent.callTool({
+        name: "resolve",
+        arguments: { id: "AAAAAAAAAAAAAAAAAAAAAAAA" },
+      }),
+    );
+    expect(refusal.code).toBe("not_found");
+    expect(refusal.class).toBe("do not retry");
+    expect(refusal.message).toContain("Do not retry");
+    expect(refusal.message).toMatch(/carry on/iu);
+    await agent.close();
+  });
+
+  it("refuses a resolve with no id as invalid_input", async () => {
+    const agent = await client();
+    const refusal = refusalOf(
+      await agent.callTool({ name: "resolve", arguments: {} }),
+    );
+    expect(refusal.code).toBe("invalid_input");
+    expect(refusal.message).toContain("id: is missing");
+    await agent.close();
+  });
+
+  it("posts an ask whose replaces names no ask as a new one", async () => {
+    const agent = await client();
+    const result = await agent.callTool({
+      name: "ask",
+      arguments: { ...ask, replaces: "AAAAAAAAAAAAAAAAAAAAAAAA" },
+    });
+    expect(result.isError).not.toBe(true);
+    posted.parse(result.structuredContent);
+    await agent.close();
+  });
+});
 
 describe("a verified token without asks:create", () => {
   it.each(eras)(

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Client } from "@modelcontextprotocol/client";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
@@ -8,7 +9,7 @@ import { pagePaths } from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
-import { connect, origin } from "../test/mcp";
+import { connect, origin, refusalOf } from "../test/mcp";
 
 const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
@@ -42,7 +43,16 @@ const ask = {
   spoken_detail: "The electrician needs a yes or no before Friday.",
 };
 
-async function version(sub: string): Promise<number> {
+async function postWith(
+  client: Client,
+  args: Record<string, string>,
+): Promise<string> {
+  const result = await client.callTool({ name: "ask", arguments: args });
+  return z.object({ id: z.string() }).parse(result.structuredContent).id;
+}
+
+// The version the page reads, and the ids of the open asks.
+async function listed(sub: string) {
   const response = await invoke(
     handler,
     new Request(`${origin}${pagePaths.asks}`, {
@@ -51,8 +61,15 @@ async function version(sub: string): Promise<number> {
       },
     }),
   );
-  return z.object({ version: z.number() }).parse(await response.json()).version;
+  return z
+    .object({
+      version: z.number(),
+      asks: z.array(z.object({ id: z.string() })),
+    })
+    .parse(await response.json());
 }
+
+const version = async (sub: string) => (await listed(sub)).version;
 
 describe("fitness: every change raises the version (table-design.md)", () => {
   it("raises it on posting", async () => {
@@ -66,6 +83,42 @@ describe("fitness: every change raises the version (table-design.md)", () => {
       expect(await version(sub)).toBe(1);
       await client.callTool({ name: "ask", arguments: ask });
       expect(await version(sub)).toBe(2);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("raises it on closing, and leaves it alone when the ask was already closed", async () => {
+    const sub = newAccount();
+    const client = await connect(handler, {
+      token: await issuer.token({ claims: { sub } }),
+    });
+    try {
+      const id = await postWith(client, ask);
+      expect(await version(sub)).toBe(1);
+      await client.callTool({ name: "resolve", arguments: { id } });
+      expect(await version(sub)).toBe(2);
+      await client.callTool({ name: "resolve", arguments: { id } });
+      expect(await version(sub)).toBe(2);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("raises it once on replacing, which closes one ask and posts another", async () => {
+    const sub = newAccount();
+    const client = await connect(handler, {
+      token: await issuer.token({ claims: { sub } }),
+    });
+    try {
+      const old = await postWith(client, ask);
+      expect(await version(sub)).toBe(1);
+      const id = await postWith(client, {
+        ...ask,
+        summary: "Revised",
+        replaces: old,
+      });
+      expect(await listed(sub)).toEqual({ version: 2, asks: [{ id }] });
     } finally {
       await client.close();
     }
@@ -85,6 +138,30 @@ describe("fitness: every change raises the version (table-design.md)", () => {
     } finally {
       await client.close();
     }
+  });
+});
+
+describe("fitness: accounts are apart (table-design.md)", () => {
+  it("answers not_found to a resolve of another account's ask, and changes nothing", async () => {
+    const [owner, other] = [newAccount(), newAccount()];
+    const ownerAgent = await connect(handler, {
+      token: await issuer.token({ claims: { sub: owner } }),
+    });
+    const id = await postWith(ownerAgent, ask);
+    await ownerAgent.close();
+    const ownerItems = await storedItems(endpoint, tableName, owner);
+
+    const otherAgent = await connect(handler, {
+      token: await issuer.token({ claims: { sub: other } }),
+    });
+    const refusal = refusalOf(
+      await otherAgent.callTool({ name: "resolve", arguments: { id } }),
+    );
+    await otherAgent.close();
+
+    expect(refusal.code).toBe("not_found");
+    expect(await storedItems(endpoint, tableName, owner)).toEqual(ownerItems);
+    expect(await storedItems(endpoint, tableName, other)).toEqual([]);
   });
 });
 
