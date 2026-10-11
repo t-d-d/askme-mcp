@@ -6,7 +6,9 @@ import {
   builtFrom,
   constantFor,
   liveTierFiles,
+  signUpRequests,
   typedValues,
+  valuesSetInPage,
 } from "../test/live-tier";
 import {
   conformancePath,
@@ -241,6 +243,12 @@ const liveAddresses = () =>
     addressesIn(readRepoFile(path)).map((address) => ({ path, address })),
   );
 
+// Every file the live tier runs or imports, by path, read as it is.
+const liveSources = () =>
+  Object.fromEntries(
+    liveTierFiles().map((path) => [path, readRepoFile(path)] as const),
+  );
+
 // The test account's address, the file that holds it, and the names of the
 // constants that hold the address and Clerk's test code.
 function testAccount() {
@@ -327,6 +335,11 @@ describe("fitness: the live tier signs in as one account (test-tiers.md)", () =>
       'await box.fill("x" + (account));',
       'await box.fill([")", account].join(""));',
       'import { account as renamed } from "./account";',
+      'await box.fill("x".concat(account));',
+      'await box.fill("{}".replace("{}", account));',
+      'await box.fill("{}".replaceAll("{}", account));',
+      'await box.fill("".padStart(40, account));',
+      'await box.fill(String.prototype.concat.call("x", account));',
     ];
     expect(builtFrom(builtOn.join("\n"), "account")).toEqual(builtOn);
   });
@@ -381,5 +394,75 @@ describe("fitness: the live tier makes no other account (test-tiers.md)", () => 
     expect(
       typed.filter(({ value }) => value !== name && value !== code),
     ).toEqual([]);
+  });
+
+  it("finds each request a file sends to Clerk's sign-up path", () => {
+    const sends = [
+      'await fetch("https://clerk.example.com/v1/client/sign_ups", { method: "POST" });',
+      "await page.request.post(new URL(signUps, frontendApi).href, { form });",
+      'await api.fetch(`${frontendApi}${signUps}`, { method: "POST" });',
+      "await post(signUpUrl);",
+      'await page.evaluate((url) => fetch(url, { method: "POST" }), signUpUrl);',
+      'await page.route("**/v1/client/sign_ups", (route) => route.continue({ postData }));',
+      'await fetch(new URL(clerkSignUps, frontendApi), { method: "POST" });',
+    ];
+    const sources = {
+      "web/a.live.ts": [
+        'import { clerkSignUps } from "../shared/paths";',
+        'const signUps = "/v1/client/sign_ups";',
+        "const signUpUrl = frontendApi + signUps;",
+        "async function post(url: string) {",
+        '  return fetch(url, { method: "POST" });',
+        "}",
+        "async function giveAddress(field: Locator, path: string) {",
+        "  await field.fill(account);",
+        "  await page.waitForResponse((response) => new URL(response.url()).pathname === path);",
+        "}",
+        "await giveAddress(field, signUps);",
+        'await fetch(mcpUrl(), { method: "POST", body: "{}" });',
+        'expect(response.headers.get("www-authenticate")).toBe("Bearer");',
+        ...sends,
+      ].join("\n"),
+      "shared/paths.ts": 'export const clerkSignUps = "/v1/client/sign_ups";',
+    };
+    expect(signUpRequests(sources)).toEqual(
+      sends.map((line) => `web/a.live.ts: ${line}`),
+    );
+  });
+
+  it("sends no request of its own to Clerk's sign-up path", () => {
+    expect(signUpRequests(liveSources())).toEqual([]);
+  });
+
+  it("finds each script in the page that sets an input's value", () => {
+    const sets = [
+      'await page.evaluate(() => { document.querySelector("input").value = "x"; });',
+      "await field.evaluate((input, value) => { (input as HTMLInputElement).value = value; }, other);",
+      'await page.$eval("input", (input) => input.setAttribute("value", "x"));',
+      'await field.evaluate((input) => Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "x"));',
+      "await field.evaluate(setValue, other);",
+      'await page.evaluate(\'document.querySelector("input").value = "x"\');',
+      'await page.evaluate(`document.querySelector("input").value = "${other}"`);',
+      'await page.addInitScript(() => document.execCommand("insertText", false, "x"));',
+      "await page.addScriptTag({ content: \"document.forms[0].email.value = 'x'\" });",
+      'await page.waitForFunction(() => { document.querySelector("input").value = "x"; return true; });',
+    ];
+    const text = [
+      "function setValue(input: HTMLInputElement, value: string) {",
+      "  input.value = value;",
+      "}",
+      "const state = { value: 1 };",
+      "state.value = 2;",
+      "await page.evaluate(() => document.documentElement.scrollWidth);",
+      "await field.evaluate((input) => (input as HTMLInputElement).value);",
+      ...sets,
+    ].join("\n");
+    expect(valuesSetInPage({ "a.live.ts": text })).toEqual(
+      sets.map((line) => `a.live.ts: ${line}`),
+    );
+  });
+
+  it("sets no input's value from a script in the page", () => {
+    expect(valuesSetInPage(liveSources())).toEqual([]);
   });
 });
