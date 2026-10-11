@@ -5,7 +5,7 @@ The rules in force, one file per topic. A decision record in [`docs/adr/`](../ad
 | File | Decision | From |
 | --- | --- | --- |
 | [agents-write-only.md](agents-write-only.md) | An agent connection can post, replace and resolve asks, and can read nothing about the account. | [ADR 2](../adr/0002-agents-write-only.md) |
-| [alerting.md](alerting.md) | Four alarms, scoped to askme, all emailing the owner through one topic: error lines, function failures, server errors, spend. | [ADR 8](../adr/0008-alerting.md) |
+| [alerting.md](alerting.md) | Four alarms, scoped to askme, all emailing the owner through one topic: error lines, function failures, server errors, spend. | [ADR 8](../adr/0008-alerting.md), [ADR 17](../adr/0017-spend-reads-the-bill.md) |
 | [ask-idempotency.md](ask-idempotency.md) | ask is delivered at least once; an identical ask on the same account within ten minutes returns the first id. | [ADR 3](../adr/0003-idempotency.md) |
 | [error-contract.md](error-contract.md) | Every refusal carries one of six codes, each marked retry or do not retry, and is sent as a tool result the model can read. | [ADR 11](../adr/0011-error-contract.md) |
 | [hosting.md](hosting.md) | AWS only: a static React page on S3 and CloudFront, the API and MCP server on Lambda, data in DynamoDB. | [ADR 5](../adr/0005-hosting.md) |

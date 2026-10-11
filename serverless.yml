@@ -180,6 +180,282 @@ resources:
                       - ":distribution/"
                       - !Ref WebDistribution
 
+    # Alerts (ADR 8). Four alarms, all publishing to this one topic, which
+    # emails the owner. The address is the parameter issue #1 fixed. AWS
+    # sends a confirmation link first, and nothing arrives until the owner
+    # clicks it.
+    AlertTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: askme-alerts
+        DisplayName: askme alerts
+
+    AlertEmail:
+      Type: AWS::SNS::Subscription
+      Properties:
+        Protocol: email
+        TopicArn: !Ref AlertTopic
+        Endpoint: ${ssm:/askme/alerts/email}
+
+    # The net: every function gets one filter on the error level, and every
+    # filter feeds the one metric the error-lines alarm reads. A function
+    # added without one fails the gate. With no default value, a filter
+    # publishes nothing while nothing goes wrong.
+    McpErrorLines:
+      Type: AWS::Logs::MetricFilter
+      Properties:
+        LogGroupName: !Ref McpLogGroup
+        FilterPattern: '{ $.level = "ERROR" }'
+        MetricTransformations:
+          - MetricNamespace: askme
+            MetricName: ErrorLines
+            MetricValue: "1"
+
+    ErrorLinesAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: askme-error-lines
+        AlarmDescription: >-
+          [tripwire] An askme function wrote an error-level line. Run the
+          saved query askme/errors first.
+        Namespace: askme
+        MetricName: ErrorLines
+        Statistic: Sum
+        Period: 60
+        EvaluationPeriods: 1
+        Threshold: 0
+        ComparisonOperator: GreaterThanThreshold
+        TreatMissingData: notBreaching
+        AlarmActions:
+          - !Ref AlertTopic
+
+    # Failures that write no line: a crash, a timeout, running out of memory
+    # (all counted as Errors) and throttling. Each function's two metrics
+    # are added together.
+    FunctionFailuresAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: askme-function-failures
+        AlarmDescription: >-
+          [tripwire] An askme function failed, timed out or was throttled. Run
+          the saved query askme/function-failures first. A throttle writes no
+          line, so if it finds nothing, read the function's Throttles metric.
+        Metrics:
+          - Id: mcpErrors
+            ReturnData: false
+            MetricStat:
+              Metric:
+                Namespace: AWS/Lambda
+                MetricName: Errors
+                Dimensions:
+                  - Name: FunctionName
+                    Value: !Ref McpLambdaFunction
+              Period: 60
+              Stat: Sum
+          - Id: mcpThrottles
+            ReturnData: false
+            MetricStat:
+              Metric:
+                Namespace: AWS/Lambda
+                MetricName: Throttles
+                Dimensions:
+                  - Name: FunctionName
+                    Value: !Ref McpLambdaFunction
+              Period: 60
+              Stat: Sum
+          - Id: failures
+            Label: Failures
+            Expression: SUM(METRICS())
+            ReturnData: true
+        EvaluationPeriods: 1
+        Threshold: 0
+        ComparisonOperator: GreaterThanThreshold
+        TreatMissingData: notBreaching
+        AlarmActions:
+          - !Ref AlertTopic
+
+    # The API failing for users in a way the first two did not see, such as
+    # API Gateway failing to invoke the function.
+    ServerErrorsAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: askme-server-errors
+        AlarmDescription: >-
+          [rate] More than 5% of the API's requests ended in a server error
+          over five minutes. Run the saved query askme/errors first.
+        Metrics:
+          - Id: serverErrors
+            ReturnData: false
+            MetricStat:
+              Metric:
+                Namespace: AWS/ApiGateway
+                MetricName: 5xx
+                Dimensions:
+                  - Name: ApiId
+                    Value: !Ref HttpApi
+              Period: 300
+              Stat: Sum
+          - Id: requests
+            ReturnData: false
+            MetricStat:
+              Metric:
+                Namespace: AWS/ApiGateway
+                MetricName: Count
+                Dimensions:
+                  - Name: ApiId
+                    Value: !Ref HttpApi
+              Period: 300
+              Stat: Sum
+          - Id: errorRate
+            Label: Server errors (%)
+            Expression: IF(requests > 0, 100 * FILL(serverErrors, 0) / requests, 0)
+            ReturnData: true
+        EvaluationPeriods: 1
+        Threshold: 5
+        ComparisonOperator: GreaterThanThreshold
+        TreatMissingData: notBreaching
+        AlarmActions:
+          - !Ref AlertTopic
+
+    # The month's AWS bill. The account holds askme alone, so its bill is
+    # askme's (ADR 17). AWS publishes it about every six hours, and only in
+    # us-east-1, where askme runs. The amount is the parameter issue #1
+    # fixed, in US dollars. A gap between bills keeps the alarm where it
+    # was, so it does not leave ALARM and email again on the next bill. With
+    # no bill at all, the account's billing alerts are off, and the alarm
+    # shows INSUFFICIENT_DATA.
+    SpendAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: askme-spend
+        AlarmDescription: >-
+          [tripwire] This month's AWS bill has passed the set amount. Run the
+          saved query askme/lines-by-event first, then open Cost Explorer.
+        Namespace: AWS/Billing
+        MetricName: EstimatedCharges
+        Dimensions:
+          - Name: Currency
+            Value: USD
+        Statistic: Maximum
+        Period: 21600
+        EvaluationPeriods: 1
+        Threshold: ${ssm:/askme/alerts/monthly-spend}
+        ComparisonOperator: GreaterThanThreshold
+        TreatMissingData: ignore
+        AlarmActions:
+          - !Ref AlertTopic
+
+    # Saved queries (ADR 8). Product numbers are counted here, by event,
+    # never by a metric. There is one for each event the service logs, and
+    # one for each alarm to name as its first step. Each reads every
+    # function's log group.
+    ErrorsQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/errors
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          fields @timestamp, message.event, message.errorClass, message.status, message.requestId, errorType, @logStream
+          | filter level = "ERROR"
+          | sort @timestamp desc
+          | limit 100
+
+    FunctionFailuresQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/function-failures
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          fields @timestamp, type, record.status, record.errorType, record.requestId, @logStream
+          | filter ispresent(record.status) and record.status != "success"
+          | sort @timestamp desc
+          | limit 100
+
+    # Every line, counted by level and event. Warnings are counted here,
+    # never alarmed.
+    LinesByEventQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/lines-by-event
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter ispresent(message.event)
+          | stats count(*) as lines by level, message.event
+          | sort lines desc
+
+    TokenMissingQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/token-missing
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "token-missing"
+          | stats count(*) as calls by bin(1h)
+
+    TokenRejectedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/token-rejected
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "token-rejected"
+          | stats count(*) as calls by message.errorClass, bin(1h)
+
+    ScopeMissingQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/scope-missing
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "scope-missing"
+          | stats count(*) as calls by message.tool, bin(1h)
+
+    AgentTokenRefusedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/agent-token-refused
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "agent-token-refused"
+          | stats count(*) as calls by bin(1h)
+
+    InputInvalidQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/input-invalid
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "input-invalid"
+          | stats count(*) as calls by message.tool, bin(1d)
+
+    AskPostedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/ask-posted
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "ask-posted"
+          | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
+
+    RequestFailedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/request-failed
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "request-failed"
+          | stats count(*) as failures by message.errorClass, message.status, bin(1d)
+
   Outputs:
     WebBucketName:
       Value: !Ref WebBucket
