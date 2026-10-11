@@ -518,6 +518,16 @@ resources:
           filter message.event = "rate-limited"
           | stats count(*) as refusals by message.accountId, bin(1h)
 
+    PollLimitedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/poll-limited
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "poll-limited"
+          | stats count(*) as polls, count_distinct(message.accountId) as accounts by bin(1h)
+
     RequestFailedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:

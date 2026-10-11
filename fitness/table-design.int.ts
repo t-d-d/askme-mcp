@@ -181,17 +181,15 @@ describe("fitness: posting is atomic (table-design.md)", () => {
     expect(asks).toEqual([
       expect.objectContaining({ ...keys.openAsk(owner, ids[0] ?? "") }),
     ]);
-    // The day's count and the minute's count, each raised once, under the
-    // keys for the moment the ask was posted.
+    // The day's count, raised once, under the key for the day the ask was
+    // posted. The rate counter counts every call, the repeats included.
     const at = new Date(z.string().parse(asks[0]?.postedAt));
-    const counts = items.filter((item) => typeof item.asks === "number");
-    expect(counts.map(({ sk, asks: count }) => ({ sk, count }))).toEqual(
-      expect.arrayContaining([
-        { sk: keys.usage(owner, at).sk, count: 1 },
-        { sk: keys.rate(owner, at).sk, count: 1 },
-      ]),
-    );
-    expect(counts).toHaveLength(2);
+    const daily = items.filter((item) => item.sk === keys.usage(owner, at).sk);
+    expect(daily).toEqual([expect.objectContaining({ count: 1 })]);
+    const calls = items
+      .filter((item) => String(item.sk).startsWith(keys.askCount(owner, "").sk))
+      .map((item) => z.number().parse(item.count));
+    expect(calls.reduce((sum, count) => sum + count, 0)).toBe(20);
     expect(await version(sub)).toBe(1);
   });
 });

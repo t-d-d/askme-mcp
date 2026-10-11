@@ -11,6 +11,8 @@ export interface Key {
 
 const openAskPrefix = "OPEN#";
 const closedAskPrefix = "CLOSED#";
+const pollCountPrefix = "POLL#";
+const askCountPrefix = "RATE#";
 
 export const keys = {
   // The account marker, which holds the version.
@@ -40,10 +42,16 @@ export const keys = {
     pk: account,
     sk: `USAGE#${at.toISOString().slice(0, 10)}`,
   }),
-  // The rate counter: how many asks the account has posted in the UTC minute
-  // of a moment, named by the minute, as 2026-10-11T09:30.
-  rate: (account: AccountId, at: Date): Key => ({
+  // The poll's rate counter for one window, named by the minute it starts
+  // (ADR 18).
+  pollCount: (account: AccountId, window: string): Key => ({
     pk: account,
-    sk: `RATE#${at.toISOString().slice(0, 16)}`,
+    sk: `${pollCountPrefix}${window}`,
+  }),
+  // The ask tool's rate counter for one window, named by the minute it
+  // starts (ADR 18).
+  askCount: (account: AccountId, window: string): Key => ({
+    pk: account,
+    sk: `${askCountPrefix}${window}`,
   }),
 };

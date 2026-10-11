@@ -2,14 +2,24 @@
 // test/page-server.ts builds the page with this in place of
 // web/src/clerk.tsx. A test signs in by putting a session token in local
 // storage before the page loads, and reads which of Clerk's screens the
-// page asked for from session storage.
-import { useMemo, type ReactNode } from "react";
+// page asked for from session storage. A test signs in or out later by
+// changing the token and sending sessionChangedEvent.
+import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { AuthContext, type Auth } from "../../web/src/auth";
-import { askedForKey, sessionKey } from "./keys";
+import { askedForKey, sessionChangedEvent, sessionKey } from "./keys";
+
+const subscribe = (changed: () => void) => {
+  window.addEventListener(sessionChangedEvent, changed);
+  return () => {
+    window.removeEventListener(sessionChangedEvent, changed);
+  };
+};
+
+const currentToken = () => localStorage.getItem(sessionKey);
 
 export function ClerkAuth({ children }: { children: ReactNode }) {
+  const token = useSyncExternalStore(subscribe, currentToken);
   const auth = useMemo<Auth>(() => {
-    const token = localStorage.getItem(sessionKey);
     return {
       status: token === null ? "signed-out" : "signed-in",
       getToken: () => Promise.resolve(token),
@@ -20,6 +30,6 @@ export function ClerkAuth({ children }: { children: ReactNode }) {
         sessionStorage.setItem(askedForKey, "sign-up");
       },
     };
-  }, []);
+  }, [token]);
   return <AuthContext value={auth}>{children}</AuthContext>;
 }

@@ -1,17 +1,18 @@
 // The ask tool: an agent posts something it needs the person for. The ask
 // is checked against its limits, stored, and answered with its id. An ask
 // that names an earlier one in replaces takes its place. A repeat of an ask
-// posted in the last ten minutes is answered with the first one's id, and
-// an account over its daily cap or its rate is refused.
+// posted in the last ten minutes is answered with the first one's id. An
+// account over its rate or its daily cap is refused.
 //
 // Each field's limit is a constant here, and the schema, the field's
 // description and the refusal's message all take it from here, so the three
-// cannot disagree (ADR 11). The daily cap and the rate are the store's
-// constants, which the refusals' messages take from there.
+// cannot disagree (ADR 11). The daily cap is the store's constant and the
+// rate is rate.ts's, and the refusals' messages take them from there.
 import { z } from "zod";
 import { Refused, retryBudget } from "./errors";
 import { guidance } from "./instructions";
-import { asksPerMinute, dailyAskCap } from "./store/store";
+import { askLimit } from "./rate";
+import { dailyAskCap } from "./store/store";
 import type { ToolDefinition } from "./tools";
 
 // The most characters each field may hold. A summary is one or two lines on
@@ -96,6 +97,14 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
   output: askOutput,
   async run(input, { caller, log, store }) {
     const { accountId } = caller;
+    const now = new Date();
+    // Every call is counted before anything is stored, so an agent that
+    // floods, even with one ask repeated, is slowed (ADR 18).
+    const counted = await store.countAsk(accountId, now);
+    if (!counted.counted) {
+      log.info("rate-limited", { accountId });
+      return rateLimited(counted.secondsLeft);
+    }
     const posting = await store.postAsk(
       accountId,
       {
@@ -110,7 +119,7 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
           : { sessionLink: input.session_link }),
         ...(input.replaces === undefined ? {} : { replaces: input.replaces }),
       },
-      new Date(),
+      now,
     );
     switch (posting.kind) {
       case "posted":
@@ -127,9 +136,6 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
       case "over-cap":
         log.info("cap-reached", { accountId });
         return capReached(posting.resetsAt);
-      case "too-fast":
-        log.info("rate-limited", { accountId });
-        return rateLimited(posting.waitSeconds);
     }
   },
 };
@@ -145,6 +151,6 @@ function rateLimited(waitSeconds: number): Refused {
   const wait = `${String(waitSeconds)} ${waitSeconds === 1 ? "second" : "seconds"}`;
   return new Refused(
     "rate_limited",
-    `This account is posting asks too fast. askme takes at most ${String(asksPerMinute)} asks a minute. Wait ${wait}, then send the same call again, at most ${String(retryBudget)} times in all. If it is still refused, carry on without askme.`,
+    `This account is posting asks too fast. askme takes at most ${String(askLimit.asks)} asks a minute. Wait ${wait}, then send the same call again, at most ${String(retryBudget)} times in all. If it is still refused, carry on without askme.`,
   );
 }

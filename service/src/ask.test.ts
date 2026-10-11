@@ -5,9 +5,10 @@ import { askTool } from "./ask";
 import { Refused, retryBudget } from "./errors";
 import { callerOf } from "./identity";
 import { createLogger } from "./log";
+import { askLimit } from "./rate";
 import {
-  asksPerMinute,
   dailyAskCap,
+  type Counted,
   type Posting,
   type Store,
 } from "./store/store";
@@ -76,13 +77,17 @@ describe("the ask tool's description of its fields", () => {
   });
 });
 
-// A store that answers every post the same way.
-const storeAnswering = (posting: Posting): Store => {
+// A store that counts every call the same way, and answers every post the
+// same way.
+const storeAnswering = (posting: Posting, counted: Counted): Store => {
   const unused = () => Promise.reject(new Error("Not used here."));
   return {
     postAsk: () => Promise.resolve(posting),
+    countAsk: () => Promise.resolve(counted),
     resolveAsk: unused,
     openAsks: unused,
+    asksSince: unused,
+    countPoll: unused,
     close: () => undefined,
   };
 };
@@ -100,12 +105,19 @@ const caller = callerOf({
   extra: { accountId: "user_1", requestId: "req-1" },
 });
 
-const run = (posting: Posting) =>
+const run = (posting: Posting, counted: Counted = { counted: true }) =>
   askTool.run(input, {
     caller,
     log: createLogger(caller.requestId),
-    store: storeAnswering(posting),
+    store: storeAnswering(posting, counted),
   });
+
+// What the store would post, if the call got that far.
+const posted: Posting = {
+  kind: "posted",
+  id: "AAAAAAAAAAAAAAAAAAAAAAAA",
+  replaced: false,
+};
 
 describe("the ask tool's answer", () => {
   let capture: ReturnType<typeof captureLogs>;
@@ -142,21 +154,21 @@ describe("the ask tool's answer", () => {
     expect(logged()).toContain("cap-reached");
   });
 
-  it("refuses an account posting too fast as rate_limited, saying how long to wait", async () => {
-    const answer = await run({ kind: "too-fast", waitSeconds: 23 });
+  it("refuses an account calling too fast as rate_limited, saying how long to wait, and posts nothing", async () => {
+    const answer = await run(posted, { counted: false, secondsLeft: 23 });
     expect(answer).toBeInstanceOf(Refused);
     const { code, message } = z
       .object({ code: z.string(), message: z.string() })
       .parse(answer);
     expect(code).toBe("rate_limited");
-    expect(message).toContain(`${String(asksPerMinute)} asks a minute`);
+    expect(message).toContain(`${String(askLimit.asks)} asks a minute`);
     expect(message).toContain("Wait 23 seconds");
     expect(message).toContain(`at most ${String(retryBudget)} times`);
     expect(logged()).toContain("rate-limited");
   });
 
   it("says one second, not one seconds", async () => {
-    const answer = await run({ kind: "too-fast", waitSeconds: 1 });
+    const answer = await run(posted, { counted: false, secondsLeft: 1 });
     expect(z.object({ message: z.string() }).parse(answer).message).toContain(
       "Wait 1 second,",
     );

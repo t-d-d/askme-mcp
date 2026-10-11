@@ -3,7 +3,7 @@
 
 // A sort key the table uses (ADR 13), written as a whole string or as the
 // start of one.
-const sortKey = /^(?:META|RULES)$|^(?:OPEN|CLOSED|DEDUPE|USAGE|RATE)#/u;
+const sortKey = /^(?:META|RULES)$|^(?:OPEN|CLOSED|DEDUPE|USAGE|POLL|RATE)#/u;
 
 const noHandBuiltKey = {
   meta: {
@@ -64,6 +64,101 @@ const noScan = {
   },
 };
 
+// Every command in the AWS SDK that writes to a table.
+const writeCommands = new Set([
+  "PutCommand",
+  "UpdateCommand",
+  "DeleteCommand",
+  "TransactWriteCommand",
+  "BatchWriteCommand",
+  "PutItemCommand",
+  "UpdateItemCommand",
+  "DeleteItemCommand",
+  "TransactWriteItemsCommand",
+  "BatchWriteItemCommand",
+]);
+
+// The functions in the store that may write: write(), which raises the
+// version, and count(), which writes a rate counter and nothing else.
+const writeFunctions = new Set(["write", "count"]);
+
+// The name a function goes by: its own, or the variable, property or
+// method it is assigned to. Undefined for an anonymous callback.
+function functionName(node) {
+  if (node.id?.type === "Identifier") return node.id.name;
+  const { parent } = node;
+  if (parent?.type === "VariableDeclarator" && parent.id.type === "Identifier")
+    return parent.id.name;
+  if (
+    (parent?.type === "Property" || parent?.type === "MethodDefinition") &&
+    !parent.computed &&
+    parent.key.type === "Identifier"
+  )
+    return parent.key.name;
+  return undefined;
+}
+
+const functionTypes = new Set([
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
+]);
+
+const writeFunctionsRule = {
+  meta: {
+    type: "problem",
+    docs: {
+      description:
+        "A write to the table is built only in write() or count() in the store.",
+    },
+    schema: [],
+    messages: {
+      elsewhere:
+        "Write to the table through write(), which raises the version, or count(), which writes a rate counter (ADR 13, ADR 18).",
+    },
+  },
+  create(context) {
+    // Write commands imported under another name, by their local name.
+    const aliases = new Map();
+    // The command a constructor names: by its own name, an imported alias,
+    // or a property of a namespace, such as lib.PutCommand.
+    const commandName = (callee) => {
+      if (callee.type === "Identifier")
+        return aliases.get(callee.name) ?? callee.name;
+      if (
+        callee.type === "MemberExpression" &&
+        !callee.computed &&
+        callee.property.type === "Identifier"
+      )
+        return callee.property.name;
+      return undefined;
+    };
+    return {
+      ImportSpecifier(node) {
+        if (
+          node.imported.type === "Identifier" &&
+          writeCommands.has(node.imported.name)
+        )
+          aliases.set(node.local.name, node.imported.name);
+      },
+      NewExpression(node) {
+        if (!writeCommands.has(commandName(node.callee))) return;
+        // The nearest enclosing function with a name, passing over
+        // anonymous callbacks.
+        const named = context.sourceCode
+          .getAncestors(node)
+          .reverse()
+          .filter((ancestor) => functionTypes.has(ancestor.type))
+          .map(functionName)
+          .find((name) => name !== undefined);
+        if (named === undefined || !writeFunctions.has(named)) {
+          context.report({ node, messageId: "elsewhere" });
+        }
+      },
+    };
+  },
+};
+
 // The name of an object property, when it is written as a plain name or a
 // string.
 function propertyName(property) {
@@ -103,5 +198,6 @@ export default {
     "no-hand-built-key": noHandBuiltKey,
     "no-scan": noScan,
     "refusal-from-table": refusalFromTable,
+    "write-functions": writeFunctionsRule,
   },
 };

@@ -17,11 +17,8 @@ import { askTool } from "../service/src/ask";
 import { codes, type Code } from "../service/src/errors";
 import { handler } from "../service/src/handler";
 import { callerOf, type AccountId } from "../service/src/identity";
-import {
-  asksPerMinute,
-  createStore,
-  dailyAskCap,
-} from "../service/src/store/store";
+import { askLimit } from "../service/src/rate";
+import { createStore, dailyAskCap } from "../service/src/store/store";
 import {
   startFakeIssuer,
   type FakeIssuer,
@@ -134,9 +131,10 @@ const cases: { code: Code; provoke: () => Promise<unknown> }[] = [
   {
     code: "rate_limited",
     provoke: async () => {
+      // The minute's calls, all counted already.
       const sub = newAccount();
-      for (let n = 1; n <= asksPerMinute; n += 1) {
-        await store.postAsk(accountId(sub), numbered(n), noon);
+      for (let n = 1; n <= askLimit.asks; n += 1) {
+        await store.countAsk(accountId(sub), noon);
       }
       stopClockAt(noon);
       return call(sub, "ask", ask);
