@@ -27,9 +27,10 @@ most of it can only be read signed in.
 - The live tier checks the deployed site, and writes nothing to
   askme's store. It may sign in as the one test account and no other,
   through Clerk's own screens, using Clerk's test mode and no stored
-  secret. The account's address carries +clerk_test and is a constant
-  in the repo. When the account is missing, the check signs up with
-  that address, and no other.
+  secret. The account's address carries +clerk_test and is one
+  constant, in one file, used as it is. When Clerk says the account
+  does not exist, the check signs up with that address, and no other.
+  Any other answer from Clerk fails the check.
 - The conformance tier checks that setup held outside the repo, such
   as GitHub's settings, still matches what the repo records. It runs
   every day and writes nothing. It may sign in, with the narrowest
@@ -54,8 +55,9 @@ most of it can only be read signed in.
 - Give a conformance check a key that can write when the service
   offers one that only reads.
 - Make an account in the live tier with any address but the one test
-  address, or delete one: the instance holds 100 accounts, and a run
-  on every deploy would use them up.
+  address: the instance holds 100 accounts, and a run on every deploy
+  would use them up.
+- Delete an account from the live tier: it takes Clerk's secret key.
 - Give the live tier Clerk's secret key, as @clerk/testing's
   server-side sign-in needs: it can change anything in the instance.
 

@@ -28,7 +28,7 @@ askme.mcp is one place where all of a person's AI agents ask for their input, so
 | Unit | `*.test.ts` | Memory only |
 | Integration | `*.int.ts` | Loopback: the local database, the fake model, test-key tokens |
 | Browser | `*.browser.ts` | Loopback, with the API faked |
-| Live | `*.live.ts` | The deployed site, read only, signed in at most as the one test account (ADR 16) |
+| Live | `*.live.ts` | The deployed site, writing nothing to askme's store. It may sign in, or sign up once, as the one test account (ADR 16) |
 | Conformance | `*.conformance.ts` | Setup outside the repo, such as GitHub's settings, read only, signed in where needed (ADR 15) |
 
 - An assertion goes in the lowest tier that can see it.
