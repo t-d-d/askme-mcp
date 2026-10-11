@@ -454,7 +454,7 @@ resources:
           - !Ref McpLogGroup
         QueryString: |
           filter message.event = "ask-replaced"
-          | stats count(*) as asks by bin(1d)
+          | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
 
     AskResolvedQuery:
       Type: AWS::Logs::QueryDefinition
@@ -474,7 +474,7 @@ resources:
           - !Ref McpLogGroup
         QueryString: |
           filter message.event = "ask-already-closed"
-          | stats count(*) as calls by bin(1d)
+          | stats count(*) as calls, count_distinct(message.accountId) as accounts by bin(1d)
 
     AskNotFoundQuery:
       Type: AWS::Logs::QueryDefinition
