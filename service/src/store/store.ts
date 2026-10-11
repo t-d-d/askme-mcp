@@ -143,21 +143,26 @@ const newAskId = () => randomBytes(18).toString("base64url");
 
 const seconds = (time: number) => Math.floor(time / 1000);
 
-// Whether a transaction was refused with this reason for any of its items.
-const cancelledFor = (error: unknown, code: string) =>
-  error instanceof TransactionCanceledException &&
-  (error.CancellationReasons ?? []).some((reason) => reason.Code === code);
-
 // Whether a transaction was refused because one of its conditions failed,
 // as when another call closed the same ask first.
 const conditionFailed = (error: unknown) =>
-  cancelledFor(error, "ConditionalCheckFailed");
+  error instanceof TransactionCanceledException &&
+  (error.CancellationReasons ?? []).some(
+    (reason) => reason.Code === "ConditionalCheckFailed",
+  );
 
 // Whether a transaction was refused only because another transaction held
-// one of its items. DynamoDB cancels it whole, so sending it again is safe.
-// A failed condition is an answer, and sending it again would not change it.
-const conflicted = (error: unknown) =>
-  cancelledFor(error, "TransactionConflict") && !conditionFailed(error);
+// one of its items: an item names a conflict, and no item names anything
+// else. DynamoDB cancels it whole, so sending it again is safe. Any other
+// reason, such as a failed condition, goes back to the caller.
+const conflicted = (error: unknown) => {
+  if (!(error instanceof TransactionCanceledException)) return false;
+  const codes = (error.CancellationReasons ?? []).map((reason) => reason.Code);
+  return (
+    codes.includes("TransactionConflict") &&
+    codes.every((code) => code === "TransactionConflict" || code === "None")
+  );
+};
 
 export function createStore(config: {
   tableName: string;

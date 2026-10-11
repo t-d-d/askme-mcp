@@ -27,7 +27,7 @@ import { connect, refusalOf } from "../test/mcp";
 import { handler } from "./src/handler";
 import { callerOf, type AccountId } from "./src/identity";
 import { keys } from "./src/store/keys";
-import { createStore, writeTries } from "./src/store/store";
+import { createStore, writeTries, type Resolution } from "./src/store/store";
 
 const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
@@ -147,11 +147,18 @@ describe("a write that meets another transaction", () => {
     const agent = await agentFor(sub);
     try {
       const id = await post(agent);
-      database.conflict(1, () => elsewhere.resolveAsk(owner, id, new Date()));
+      const other: Resolution[] = [];
+      database.conflict(1, {
+        meanwhile: async () => {
+          other.push(await elsewhere.resolveAsk(owner, id, new Date()));
+        },
+      });
       const result = await agent.callTool({
         name: "resolve",
         arguments: { id },
       });
+      // The other resolve closed the ask, so this one found it closed.
+      expect(other).toEqual(["resolved"]);
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toEqual({ id, status: "resolved" });
       const items = await storedItems(endpoint, tableName, owner);
@@ -160,6 +167,30 @@ describe("a write that meets another transaction", () => {
         keys.meta(owner).sk,
       ]);
       expect(await versionOf(owner)).toBe(2);
+    } finally {
+      await agent.close();
+    }
+  });
+
+  // DynamoDB can name a failed condition and a conflict in one answer. The
+  // failed condition is the answer the store acts on, so it does not try
+  // again.
+  it("does not try again when a condition failed as well", async () => {
+    const { sub, owner } = newAccount();
+    const agent = await agentFor(sub);
+    try {
+      const id = await post(agent);
+      database.conflict(Infinity, {
+        meanwhile: () => elsewhere.resolveAsk(owner, id, new Date()),
+        conditionFailed: true,
+      });
+      const before = transactions();
+      const result = await agent.callTool({
+        name: "resolve",
+        arguments: { id },
+      });
+      expect(result.structuredContent).toEqual({ id, status: "resolved" });
+      expect(transactions() - before).toBe(1);
     } finally {
       await agent.close();
     }
@@ -176,7 +207,6 @@ describe("a write that meets another transaction", () => {
       );
       expect(refusal.code).toBe("service_unavailable");
       expect(refusal.class).toBe("retry");
-      expect(writeTries).toBeGreaterThan(1);
       expect(transactions() - before).toBe(writeTries);
       expect(await storedItems(endpoint, tableName, owner)).toEqual([]);
     } finally {
