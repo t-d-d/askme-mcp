@@ -2,6 +2,7 @@
 // server sends it as its instructions, and the tool descriptions repeat it,
 // because not every client passes server instructions on. It is the same
 // for every account (ADR 2), so it is written once, here, as constants.
+import { retryBudget } from "./errors";
 
 export const guidance = {
   post: "Post an ask whenever your work stops to wait for the person. An ask that is cleared costs them nothing, so post freely.",
@@ -10,6 +11,8 @@ export const guidance = {
     "Resolve each ask as soon as its wait is over, before doing anything else, whether the person replied or the thing you were waiting for happened, such as a pull request being merged.",
   replace:
     "When an ask changes, post the new one with replaces set to the old one's id, and the old one closes.",
+  // A repeat is matched by its content (ADR 3), so it must be unchanged.
+  retry: `If a call times out, send the same ask again unchanged, at most ${String(retryBudget)} times. askme matches the repeat, so it makes no second card.`,
   ownSession:
     "Whatever askme answers, still ask your question in your own session.",
 } as const;
@@ -20,5 +23,6 @@ export const instructions = [
   guidance.several,
   guidance.resolve,
   guidance.replace,
+  guidance.retry,
   guidance.ownSession,
 ].join(" ");

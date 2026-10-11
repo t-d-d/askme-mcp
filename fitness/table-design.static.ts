@@ -106,6 +106,8 @@ describe("fitness: one key builder (table-design.md)", () => {
     'export const k = (id: string) => ({ sk: "OPEN#" + id });\n',
     "export const k = (id: string) => ({ sk: `CLOSED#${id}` });\n",
     'export const k = { sk: "DEDUPE#abc" };\n',
+    "export const k = (day: string) => ({ sk: `USAGE#${day}` });\n",
+    "export const k = (minute: string) => ({ sk: `RATE#${minute}` });\n",
   ])("refuses a key written by hand: %s", async (code) => {
     expect(await reported(code, servicePath)).toContain(
       "askme/no-hand-built-key",

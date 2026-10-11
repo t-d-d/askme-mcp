@@ -1,13 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
+import { z } from "zod";
 import { handler } from "../service/src/handler";
 import { callerOf } from "../service/src/identity";
-import { askLifetimeDays, createStore } from "../service/src/store/store";
+import { fingerprint } from "../service/src/store/fingerprint";
+import { keys } from "../service/src/store/keys";
+import {
+  askLifetimeDays,
+  createStore,
+  dedupeWindowMinutes,
+} from "../service/src/store/store";
 import { asksAnswer, pagePaths } from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
-import { origin } from "../test/mcp";
+import { connect, origin } from "../test/mcp";
 
 const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
@@ -61,5 +68,56 @@ describe("fitness: expiry holds on read (hosting.md)", () => {
     );
     const { asks } = asksAnswer.parse(await response.json());
     expect(asks.map((ask) => ask.summary)).toEqual(["New"]);
+  });
+
+  it("makes a new ask when the identical one's dedupe record is past its expiry, though still in the table", async () => {
+    const sub = `user_${randomUUID().slice(0, 8)}`;
+    const owner = callerOf({
+      token: "test",
+      clientId: "test",
+      scopes: [],
+      extra: { accountId: sub, requestId: "r" },
+    }).accountId;
+    const ask = {
+      summary: "Approve the plan",
+      area: "Home",
+      spokenDetail: "The electrician needs a yes or no.",
+    };
+    const earlier = await store.postAsk(
+      owner,
+      ask,
+      new Date(Date.now() - dedupeWindowMinutes * 60_000 - 1000),
+    );
+    if (earlier.kind !== "posted")
+      throw new Error("The first ask was refused.");
+    const record = keys.dedupe(owner, fingerprint(ask));
+    const inTable = await storedItems(endpoint, tableName, owner);
+    expect(inTable).toEqual(
+      expect.arrayContaining([expect.objectContaining(record)]),
+    );
+
+    const agent = await connect(handler, {
+      token: await issuer.token({ claims: { sub } }),
+    });
+    try {
+      const result = await agent.callTool({
+        name: "ask",
+        arguments: {
+          summary: ask.summary,
+          area: ask.area,
+          spoken_detail: ask.spokenDetail,
+        },
+      });
+      const { id } = z
+        .object({ id: z.string() })
+        .parse(result.structuredContent);
+      expect(id).not.toBe(earlier.id);
+    } finally {
+      await agent.close();
+    }
+    const asks = (await storedItems(endpoint, tableName, owner)).filter(
+      (item) => typeof item.summary === "string",
+    );
+    expect(asks).toHaveLength(2);
   });
 });

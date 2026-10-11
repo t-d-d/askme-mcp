@@ -17,13 +17,28 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
 import type { AccountId } from "../identity";
+import { fingerprint } from "./fingerprint";
 import { keys, type Key } from "./keys";
 
 // Every ask is deleted a month after it is posted (PRD, "Accounts and
 // connection"). The page's demo notice says so.
 export const askLifetimeDays = 30;
 
+// An ask identical to one the account posted this many minutes ago or less
+// is the same ask, and gets the first one's id (ADR 3).
+export const dedupeWindowMinutes = 10;
+
+// The most asks an account may post in a UTC day, which limits abuse (PRD,
+// "Accounts and connection"), and in one minute, which slows an agent that
+// floods before it uses up the day.
+export const dailyAskCap = 100;
+export const asksPerMinute = 30;
+
+// How long the table keeps a day's count after the day ends.
+const usageKeptDays = 3;
+
 const dayMs = 86_400_000;
+const minuteMs = 60_000;
 
 // An ask as the agent sent it, once its schema has parsed it.
 export interface NewAsk {
@@ -66,11 +81,21 @@ const closedAskSchema = storedAskSchema.extend({
 // already closed, or no ask under that id in the account.
 export type Resolution = "resolved" | "already-closed" | "not-found";
 
-// A new ask's id, and whether it took over from an open ask it named.
-export interface Posted {
-  id: string;
-  replaced: boolean;
-}
+// What posting an ask came to: a new ask, with whether it took over from an
+// open ask it named; a repeat of an ask posted in the last ten minutes, with
+// that ask's id; or a refusal, because the account has posted all its asks
+// for the day, or too many this minute.
+export type Posting =
+  | { kind: "posted"; id: string; replaced: boolean }
+  | { kind: "matched"; id: string }
+  | { kind: "over-cap"; resetsAt: Date }
+  | { kind: "too-fast"; waitSeconds: number };
+
+// The record that an ask was posted, kept while a repeat of it is matched.
+const dedupeSchema = z.object({
+  askId: z.string(),
+  expiresAt: z.number().int(),
+});
 
 const metaSchema = z.object({
   version: z.number().int().nonnegative(),
@@ -88,8 +113,10 @@ export interface AccountAsks {
 export interface Store {
   // Stores a new ask and gives its id. When the ask names an open ask of the
   // same account in replaces, it takes that ask's place, and that ask closes
-  // as replaced. Otherwise it is posted as new.
-  postAsk(account: AccountId, ask: NewAsk, now: Date): Promise<Posted>;
+  // as replaced. Otherwise it is posted as new. An ask identical to one
+  // posted in the last ten minutes stores nothing and gives that one's id.
+  // An account over its daily cap or its rate stores nothing.
+  postAsk(account: AccountId, ask: NewAsk, now: Date): Promise<Posting>;
   // Closes an open ask as resolved.
   resolveAsk(account: AccountId, askId: string, now: Date): Promise<Resolution>;
   openAsks(account: AccountId, now: Date): Promise<AccountAsks>;
@@ -104,13 +131,23 @@ const newAskId = () => randomBytes(18).toString("base64url");
 
 const seconds = (time: number) => Math.floor(time / 1000);
 
-// Whether a transaction was refused because one of its conditions failed,
-// as when another call closed the same ask first.
-const conditionFailed = (error: unknown) =>
-  error instanceof TransactionCanceledException &&
-  (error.CancellationReasons ?? []).some(
+// When a transaction was refused because a condition failed, whether each
+// of its changes, in order, was one whose condition failed.
+function failedChanges(error: unknown): boolean[] | undefined {
+  if (!(error instanceof TransactionCanceledException)) return undefined;
+  const failed = (error.CancellationReasons ?? []).map(
     (reason) => reason.Code === "ConditionalCheckFailed",
   );
+  return failed.includes(true) ? failed : undefined;
+}
+
+// Whether a transaction was refused because one of its conditions failed,
+// as when another call closed the same ask first.
+const conditionFailed = (error: unknown) => failedChanges(error) !== undefined;
+
+// The start of the next UTC day, when a day's count starts again.
+const nextDay = (now: Date) =>
+  Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
 
 export function createStore(config: {
   tableName: string;
@@ -218,6 +255,25 @@ export function createStore(config: {
     ];
   }
 
+  // The change that adds one to a count, made only while the count is under
+  // its limit. A count is named by its day or its minute, so it is counted
+  // against only within that time, before it expires.
+  function counting(key: Key, limit: number, expiresAt: number): Change {
+    return {
+      Update: {
+        TableName,
+        Key: key,
+        UpdateExpression: "ADD asks :one SET expiresAt = :expiresAt",
+        ConditionExpression: "attribute_not_exists(asks) OR asks < :limit",
+        ExpressionAttributeValues: {
+          ":one": 1,
+          ":limit": limit,
+          ":expiresAt": expiresAt,
+        },
+      },
+    };
+  }
+
   async function storedAsks(account: AccountId, now: Date) {
     const { pk, prefix } = keys.openAsks(account);
     const found: StoredAsk[] = [];
@@ -244,6 +300,39 @@ export function createStore(config: {
   return {
     async postAsk(account, ask, now) {
       const id = newAskId();
+      const time = now.getTime();
+      const record = keys.dedupe(account, fingerprint(ask));
+      const dayEnds = nextDay(now);
+      const minuteEnds = (Math.floor(time / minuteMs) + 1) * minuteMs;
+      // Every post makes these changes first, and in this order, so a
+      // refusal can be read by place (ADR 13). The dedupe record is written
+      // only if none is live, and holds the new ask's id. The day's count and
+      // the minute's count are each raised only while under their limits.
+      const guards: Change[] = [
+        {
+          Put: {
+            TableName,
+            Item: {
+              ...record,
+              askId: id,
+              expiresAt: seconds(time + dedupeWindowMinutes * minuteMs),
+            },
+            ConditionExpression:
+              "attribute_not_exists(sk) OR expiresAt <= :now",
+            ExpressionAttributeValues: { ":now": seconds(time) },
+          },
+        },
+        counting(
+          keys.usage(account, now),
+          dailyAskCap,
+          seconds(dayEnds + usageKeptDays * dayMs),
+        ),
+        counting(
+          keys.rate(account, now),
+          asksPerMinute,
+          seconds(minuteEnds + minuteMs),
+        ),
+      ];
       const put = (since: Pick<OpenItem, "postedAt" | "expiresAt">) => ({
         Put: {
           TableName,
@@ -251,6 +340,40 @@ export function createStore(config: {
           ConditionExpression: "attribute_not_exists(sk)",
         },
       });
+
+      // The guards and the changes as one transaction. A guard that refuses
+      // decides the answer. A later change that refuses is left to the
+      // caller, as "refused".
+      async function guarded(
+        changes: Change[],
+        posted: Posting,
+      ): Promise<Posting | "refused"> {
+        try {
+          await write(account, [...guards, ...changes], { everAsked: true });
+          return posted;
+        } catch (error) {
+          const failed = failedChanges(error);
+          if (failed === undefined) throw error;
+          const [repeat, overCap, tooFast, ...later] = failed;
+          if (repeat === true) {
+            const first = await stored(record, dedupeSchema, now);
+            if (first === undefined) throw error;
+            return { kind: "matched", id: first.askId };
+          }
+          if (overCap === true) {
+            return { kind: "over-cap", resetsAt: new Date(dayEnds) };
+          }
+          if (tooFast === true) {
+            return {
+              kind: "too-fast",
+              waitSeconds: Math.ceil((minuteEnds - time) / 1000),
+            };
+          }
+          if (later.some(Boolean)) return "refused";
+          throw error;
+        }
+      }
+
       const old =
         ask.replaces === undefined
           ? undefined
@@ -262,32 +385,30 @@ export function createStore(config: {
       if (old !== undefined) {
         // The new ask has waited as long as the one it replaces, and goes
         // when that one would have (ADR 13).
-        try {
-          await write(
-            account,
-            [
-              put({ postedAt: old.postedAt, expiresAt: old.expiresAt }),
-              ...closing(account, old, "replaced", now),
-            ],
-            { everAsked: true },
-          );
-          return { id, replaced: true };
-        } catch (error) {
-          // The old ask closed after it was read, so this one is new.
-          if (!conditionFailed(error)) throw error;
-        }
+        const replacing = await guarded(
+          [
+            put({ postedAt: old.postedAt, expiresAt: old.expiresAt }),
+            ...closing(account, old, "replaced", now),
+          ],
+          { kind: "posted", id, replaced: true },
+        );
+        // Refused when the old ask closed after it was read, so this one is
+        // new.
+        if (replacing !== "refused") return replacing;
       }
-      await write(
-        account,
+      const posting = await guarded(
         [
           put({
             postedAt: now.toISOString(),
-            expiresAt: seconds(now.getTime() + askLifetimeDays * dayMs),
+            expiresAt: seconds(time + askLifetimeDays * dayMs),
           }),
         ],
-        { everAsked: true },
+        { kind: "posted", id, replaced: false },
       );
-      return { id, replaced: false };
+      if (posting === "refused") {
+        throw new Error("A new ask's id was already in use.");
+      }
+      return posting;
     },
 
     async resolveAsk(account, askId, now) {

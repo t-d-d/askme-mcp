@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
 import { callerOf, type AccountId } from "../service/src/identity";
+import { keys } from "../service/src/store/keys";
 import { askLifetimeDays, createStore } from "../service/src/store/store";
 import { pagePaths } from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
@@ -81,8 +82,25 @@ describe("fitness: every change raises the version (table-design.md)", () => {
       expect(await version(sub)).toBe(0);
       await client.callTool({ name: "ask", arguments: ask });
       expect(await version(sub)).toBe(1);
-      await client.callTool({ name: "ask", arguments: ask });
+      await client.callTool({
+        name: "ask",
+        arguments: { ...ask, summary: "Another" },
+      });
       expect(await version(sub)).toBe(2);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("leaves it alone when a repeated ask stores nothing", async () => {
+    const sub = newAccount();
+    const client = await connect(handler, {
+      token: await issuer.token({ claims: { sub } }),
+    });
+    try {
+      await client.callTool({ name: "ask", arguments: ask });
+      await client.callTool({ name: "ask", arguments: ask });
+      expect(await version(sub)).toBe(1);
     } finally {
       await client.close();
     }
@@ -138,6 +156,43 @@ describe("fitness: every change raises the version (table-design.md)", () => {
     } finally {
       await client.close();
     }
+  });
+});
+
+describe("fitness: posting is atomic (table-design.md)", () => {
+  it("leaves one open ask, one count and one id when twenty identical asks arrive at once", async () => {
+    const sub = newAccount();
+    const owner = accountId(sub);
+    const client = await connect(handler, {
+      token: await issuer.token({ claims: { sub } }),
+    });
+    let ids: string[];
+    try {
+      ids = await Promise.all(
+        Array.from({ length: 20 }, () => postWith(client, ask)),
+      );
+    } finally {
+      await client.close();
+    }
+    expect(new Set(ids).size).toBe(1);
+
+    const items = await storedItems(endpoint, tableName, sub);
+    const asks = items.filter((item) => typeof item.summary === "string");
+    expect(asks).toEqual([
+      expect.objectContaining({ ...keys.openAsk(owner, ids[0] ?? "") }),
+    ]);
+    // The day's count and the minute's count, each raised once, under the
+    // keys for the moment the ask was posted.
+    const at = new Date(z.string().parse(asks[0]?.postedAt));
+    const counts = items.filter((item) => typeof item.asks === "number");
+    expect(counts.map(({ sk, asks: count }) => ({ sk, count }))).toEqual(
+      expect.arrayContaining([
+        { sk: keys.usage(owner, at).sk, count: 1 },
+        { sk: keys.rate(owner, at).sk, count: 1 },
+      ]),
+    );
+    expect(counts).toHaveLength(2);
+    expect(await version(sub)).toBe(1);
   });
 });
 

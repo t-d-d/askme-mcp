@@ -28,4 +28,22 @@ export const keys = {
     pk: account,
     sk: `${closedAskPrefix}${askId}`,
   }),
+  // The record that an ask with this fingerprint was posted, which holds its
+  // id while a repeat of it is matched (ADR 3).
+  dedupe: (account: AccountId, fingerprint: string): Key => ({
+    pk: account,
+    sk: `DEDUPE#${fingerprint}`,
+  }),
+  // How many asks the account has posted in the UTC day of a moment, named
+  // by the day, as 2026-10-11.
+  usage: (account: AccountId, at: Date): Key => ({
+    pk: account,
+    sk: `USAGE#${at.toISOString().slice(0, 10)}`,
+  }),
+  // The rate counter: how many asks the account has posted in the UTC minute
+  // of a moment, named by the minute, as 2026-10-11T09:30.
+  rate: (account: AccountId, at: Date): Key => ({
+    pk: account,
+    sk: `RATE#${at.toISOString().slice(0, 16)}`,
+  }),
 };

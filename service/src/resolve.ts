@@ -36,6 +36,7 @@ export const resolveTool: ToolDefinition<
     "Resolve an ask: close it by the id the ask tool gave you, and it leaves the person's askme list.",
     guidance.resolve,
     "Resolving an ask that is already closed succeeds.",
+    `If a call times out, send the same resolve again unchanged, at most ${String(retryBudget)} times.`,
     guidance.ownSession,
     `If askme refuses with a code marked retry, send the same call again at most ${String(retryBudget)} times, then carry on without askme.`,
   ].join(" "),
