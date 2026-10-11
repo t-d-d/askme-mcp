@@ -11,7 +11,10 @@ export interface Key {
 
 const openAskPrefix = "OPEN#";
 const closedAskPrefix = "CLOSED#";
+const dedupePrefix = "DEDUPE#";
+const usagePrefix = "USAGE#";
 const pollCountPrefix = "POLL#";
+const askCountPrefix = "RATE#";
 
 export const keys = {
   // The account marker, which holds the version.
@@ -29,10 +32,28 @@ export const keys = {
     pk: account,
     sk: `${closedAskPrefix}${askId}`,
   }),
+  // The record that an ask with this fingerprint was posted, which holds its
+  // id while a repeat of it is matched (ADR 3).
+  dedupe: (account: AccountId, fingerprint: string): Key => ({
+    pk: account,
+    sk: `${dedupePrefix}${fingerprint}`,
+  }),
+  // How many asks the account has posted in the UTC day of a moment, named
+  // by the day, as 2026-10-11.
+  usage: (account: AccountId, at: Date): Key => ({
+    pk: account,
+    sk: `${usagePrefix}${at.toISOString().slice(0, 10)}`,
+  }),
   // The poll's rate counter for one window, named by the minute it starts
   // (ADR 18).
   pollCount: (account: AccountId, window: string): Key => ({
     pk: account,
     sk: `${pollCountPrefix}${window}`,
+  }),
+  // The ask tool's rate counter for one window, named by the minute it
+  // starts (ADR 18).
+  askCount: (account: AccountId, window: string): Key => ({
+    pk: account,
+    sk: `${askCountPrefix}${window}`,
   }),
 };
