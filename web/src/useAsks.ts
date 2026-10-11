@@ -6,8 +6,7 @@
 // nothing new is answered with the version alone and costs the service one
 // read. When a poll fails, the page keeps the list it has and says it is not
 // connected, and the next poll tries again.
-import { useQuery } from "@tanstack/react-query";
-import { useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   pagePaths,
   pollAnswer,
@@ -24,26 +23,29 @@ const pollPath = (since: number | undefined) =>
     ? pagePaths.asks
     : `${pagePaths.asks}?${sinceParam}=${String(since)}`;
 
+const queryKey = [pagePaths.asks];
+
 export function useAsks(): Answer<AsksAnswer> {
   const { getToken } = useAuth();
-  // The list the page has. An answer that nothing changed keeps it.
-  const held = useRef<AsksAnswer>(undefined);
+  const queries = useQueryClient();
   const query = useQuery({
-    queryKey: [pagePaths.asks],
+    queryKey,
     queryFn: async ({ signal }) => {
+      // The list the page has, kept in the cache across screens. An answer
+      // that nothing changed keeps it.
+      const held = queries.getQueryData<AsksAnswer>(queryKey);
       const answer = await load(
-        pollPath(held.current?.version),
+        pollPath(held?.version),
         pollAnswer,
         getToken,
         signal,
       );
       if ("unchanged" in answer) {
-        if (held.current === undefined) {
+        if (held === undefined) {
           throw new Error("The API said nothing changed, with no list held.");
         }
-        return held.current;
+        return held;
       }
-      held.current = answer;
       return answer;
     },
     refetchInterval: pollMs,

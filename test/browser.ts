@@ -7,7 +7,8 @@
 // Headless Chromium always reports a page as visible, so the page's
 // visibility is replaced before it loads, and a test hides and shows it.
 import { chromium, type Page } from "playwright";
-import { askedForKey, sessionKey } from "./page/keys";
+import { sinceParam, type AsksAnswer } from "../shared/page-api";
+import { askedForKey, sessionChangedEvent, sessionKey } from "./page/keys";
 import { isLoopbackHost } from "./loopback";
 
 export interface ApiCall {
@@ -26,6 +27,9 @@ export interface OpenPage {
   // Hide or show the page, as switching tabs or locking the phone would.
   hide(): Promise<void>;
   show(): Promise<void>;
+  // Sign in with another session token, or out with null, without a
+  // reload, as Clerk does when another tab signs in or out.
+  signInAs(session: string | null): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -45,10 +49,20 @@ export class Status {
   constructor(readonly code: number) {}
 }
 
-// An answer worked out for each call, from the address the page asked for.
-// It may give JSON or a status.
+// An answer worked out for each call, from the address the page asked for
+// and the Authorization header it sent. It may give JSON or a status.
 export class Answering {
-  constructor(readonly answer: (url: URL) => unknown) {}
+  constructor(
+    readonly answer: (url: URL, authorization: string | null) => unknown,
+  ) {}
+}
+
+// Answers a poll for the list as the service does: with nothing new when it
+// carries the list's version, and with the whole list otherwise.
+export function answerPoll(url: URL, list: AsksAnswer): unknown {
+  return url.searchParams.get(sinceParam) === String(list.version)
+    ? { version: list.version, unchanged: true }
+    : list;
 }
 
 const hiddenFlag = "testHidden";
@@ -95,13 +109,11 @@ export async function openPage(
       isLoopbackHost(target.hostname) && target.pathname.startsWith("/api/"),
     async (route) => {
       const url = new URL(route.request().url());
-      apiCalls.push({
-        path: url.pathname,
-        query: url.search,
-        authorization: await route.request().headerValue("authorization"),
-      });
+      const authorization = await route.request().headerValue("authorization");
+      apiCalls.push({ path: url.pathname, query: url.search, authorization });
       const given = options.api?.[url.pathname];
-      const answer = given instanceof Answering ? given.answer(url) : given;
+      const answer =
+        given instanceof Answering ? given.answer(url, authorization) : given;
       if (answer === undefined) {
         await route.fulfill({ status: 404 });
       } else if (answer instanceof Status) {
@@ -142,6 +154,15 @@ export async function openPage(
       page.evaluate((key) => sessionStorage.getItem(key), askedForKey),
     hide: () => setHidden(page, true),
     show: () => setHidden(page, false),
+    signInAs: (session) =>
+      page.evaluate(
+        ([key, event, token]) => {
+          if (token === null) localStorage.removeItem(key);
+          else localStorage.setItem(key, token);
+          window.dispatchEvent(new Event(event));
+        },
+        [sessionKey, sessionChangedEvent, session] as const,
+      ),
     close: () => browser.close(),
   };
 }

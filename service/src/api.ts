@@ -67,18 +67,13 @@ function pollRefusal(secondsLeft: number): Response {
 }
 
 // The account's open asks, unless nothing changed since the version the
-// poll carried. Every poll counts against the account's limit first.
+// poll carried. A poll with a bad version is refused before the table is
+// touched. Every other poll counts against the account's limit first.
 async function poll(
   request: Request,
   account: AccountId,
   { store, log }: PageContext,
 ): Promise<Response> {
-  const now = new Date();
-  const counted = await store.countPoll(account, now);
-  if (!counted.counted) {
-    log.info("poll-limited", { accountId: account });
-    return pollRefusal(counted.secondsLeft);
-  }
   const since = sinceSchema.safeParse(
     new URL(request.url).searchParams.get(sinceParam) ?? undefined,
   );
@@ -88,6 +83,12 @@ async function poll(
       "invalid_input",
       `"${sinceParam}" must be a whole number: the version of the last answer. Send it as it came, or leave it out to get the whole list.`,
     );
+  }
+  const now = new Date();
+  const counted = await store.countPoll(account, now);
+  if (!counted.counted) {
+    log.info("poll-limited", { accountId: account });
+    return pollRefusal(counted.secondsLeft);
   }
   const found = await store.asksSince(account, since.data, now);
   if ("unchanged" in found) return answer(asksUnchanged.parse(found));

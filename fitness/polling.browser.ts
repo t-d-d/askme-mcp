@@ -8,7 +8,12 @@ import {
   type AsksAnswer,
   type PageAsk,
 } from "../shared/page-api";
-import { Answering, openPage, type OpenPage } from "../test/browser";
+import {
+  Answering,
+  answerPoll,
+  openPage,
+  type OpenPage,
+} from "../test/browser";
 import { pollMs } from "../web/src/poll";
 
 const phone = { width: 390, height: 844 };
@@ -31,11 +36,7 @@ function fakeList(list: AsksAnswer) {
     set(next: AsksAnswer) {
       current = next;
     },
-    answering: new Answering((url) =>
-      url.searchParams.get(sinceParam) === String(current.version)
-        ? { version: current.version, unchanged: true }
-        : current,
-    ),
+    answering: new Answering((url) => answerPoll(url, current)),
   };
 }
 
@@ -125,5 +126,31 @@ describe("fitness: quiet when hidden (polling.md)", () => {
     await settle(view);
     expect(polls(view).length).toBe(before + 1);
     expect(polls(view).at(-1)?.query).toBe(`?${sinceParam}=1`);
+  });
+});
+
+describe("a poll after another screen", () => {
+  let view: OpenPage;
+  const list = fakeList({ version: 1, everAsked: true, asks: [first] });
+  beforeAll(async () => {
+    view = await open(list);
+    await view.page.getByRole("article").waitFor();
+  });
+  afterAll(async () => {
+    await view.close();
+  });
+
+  it("carries the version of the list the page already has", async () => {
+    await view.page.evaluate(() => {
+      window.location.hash = "#connect";
+    });
+    await view.page.getByRole("article").waitFor({ state: "detached" });
+    const before = polls(view).length;
+    await view.page.evaluate(() => {
+      window.location.hash = "";
+    });
+    await view.page.getByRole("article").waitFor();
+    await expect.poll(() => polls(view).length).toBeGreaterThan(before);
+    expect(polls(view)[before]?.query).toBe(`?${sinceParam}=1`);
   });
 });

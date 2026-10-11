@@ -118,13 +118,31 @@ const writeFunctionsRule = {
     },
   },
   create(context) {
+    // Write commands imported under another name, by their local name.
+    const aliases = new Map();
+    // The command a constructor names: by its own name, an imported alias,
+    // or a property of a namespace, such as lib.PutCommand.
+    const commandName = (callee) => {
+      if (callee.type === "Identifier")
+        return aliases.get(callee.name) ?? callee.name;
+      if (
+        callee.type === "MemberExpression" &&
+        !callee.computed &&
+        callee.property.type === "Identifier"
+      )
+        return callee.property.name;
+      return undefined;
+    };
     return {
-      NewExpression(node) {
+      ImportSpecifier(node) {
         if (
-          node.callee.type !== "Identifier" ||
-          !writeCommands.has(node.callee.name)
+          node.imported.type === "Identifier" &&
+          writeCommands.has(node.imported.name)
         )
-          return;
+          aliases.set(node.local.name, node.imported.name);
+      },
+      NewExpression(node) {
+        if (!writeCommands.has(commandName(node.callee))) return;
         // The nearest enclosing function with a name, passing over
         // anonymous callbacks.
         const named = context.sourceCode

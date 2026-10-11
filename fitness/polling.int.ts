@@ -62,7 +62,7 @@ async function post(sub: string): Promise<{ isError?: unknown }> {
   }
 }
 
-async function poll(sub: string, since?: number): Promise<Response> {
+async function poll(sub: string, since?: number | string): Promise<Response> {
   const query = since === undefined ? "" : `?since=${String(since)}`;
   return invoke(
     handler,
@@ -227,6 +227,15 @@ describe("fitness: the poll endpoint has its own rate limit (polling.md)", () =>
     expect((await poll(sub)).status).toBe(429);
     vi.setSystemTime(new Date("2026-10-11T09:31:00.000Z"));
     expect((await poll(sub)).status).toBe(200);
+  });
+
+  it("counts no poll whose version is not a whole number", async () => {
+    vi.setSystemTime(start);
+    const sub = newAccount();
+    expect((await poll(sub, "abc")).status).toBe(400);
+    expect(await storedItems(inject("databaseEndpoint"), "askme", sub)).toEqual(
+      [],
+    );
   });
 
   it("does not limit an agent's asks", async () => {

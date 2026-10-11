@@ -190,6 +190,13 @@ describe("fitness: two functions write (table-design.md)", () => {
   });
 
   it.each([
+    "import { PutCommand as Store } from \"@aws-sdk/lib-dynamodb\";\nexport const f = () => new Store({ TableName: 't', Item: {} });\n",
+    "import * as lib from \"@aws-sdk/lib-dynamodb\";\nexport const f = () => new lib.PutCommand({ TableName: 't', Item: {} });\n",
+  ])("refuses a write command under another name: %s", async (code) => {
+    expect(await reported(code, storePath)).toContain("askme/write-functions");
+  });
+
+  it.each([
     "export async function write() {\n  return new TransactWriteCommand({ TransactItems: [] });\n}\n",
     "export const write = async () => new TransactWriteCommand({ TransactItems: [] });\n",
     "export async function count() {\n  return new UpdateCommand({ TableName: 't', Key: {} });\n}\n",

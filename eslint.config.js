@@ -155,7 +155,6 @@ export default defineConfig(
     rules: {
       "askme/no-hand-built-key": "error",
       "askme/no-scan": "error",
-      "askme/write-functions": "error",
     },
   },
   {
@@ -223,6 +222,13 @@ export default defineConfig(
     files: ["service/src/**/*.ts"],
     ignores: ["service/src/**/*.test.ts"],
     rules: boundaries,
+  },
+  {
+    // A write to the table is built in write() or count() and nowhere else
+    // (ADR 13, ADR 18). The test setup that makes the local table is outside
+    // the service, and is not held to it.
+    files: ["service/**/*.ts"],
+    rules: { "askme/write-functions": "error" },
   },
   {
     // The key module is where every key is written (ADR 13).
