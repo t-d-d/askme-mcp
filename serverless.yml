@@ -9,6 +9,40 @@ provider:
   name: aws
   region: ${env:AWS_REGION}
   stage: prod
+  runtime: nodejs22.x
+  timeout: 10
+  # Logs are kept as long as the data (ADR 7).
+  logRetentionInDays: 30
+  logs:
+    lambda:
+      # Every function logs JSON, so each line carries the level its console
+      # method sets. There is no debug level (ADR 7).
+      logFormat: JSON
+      applicationLogLevel: INFO
+      systemLogLevel: INFO
+  environment:
+    # The Clerk instance whose tokens the service accepts. Its keys are
+    # public, so no Clerk secret reaches the function (ADR 6).
+    CLERK_ISSUER: ${env:CLERK_ISSUER}
+
+build:
+  esbuild:
+    # The repo is ES modules. Lambda loads a .mjs bundle as one.
+    format: esm
+    outExtension:
+      ".js": ".mjs"
+
+functions:
+  # The MCP endpoint, and the metadata that says where to sign in. Every
+  # route here is one the service knows, and all but the metadata check a
+  # token (ADR 6).
+  mcp:
+    handler: service/src/handler.handler
+    events:
+      - httpApi: "POST /mcp"
+      - httpApi: "GET /mcp"
+      - httpApi: "DELETE /mcp"
+      - httpApi: "GET /.well-known/oauth-protected-resource/mcp"
 
 resources:
   Resources:

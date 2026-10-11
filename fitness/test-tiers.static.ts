@@ -98,6 +98,56 @@ describe("fitness: the gate is offline (test-tiers.md)", () => {
   });
 });
 
+describe("fitness: MCP goes through a real client (test-tiers.md)", () => {
+  const gateTests = () =>
+    repoFiles().filter((path) =>
+      tiers.some((tier) => tier.inGate && path.endsWith(tier.suffix)),
+    );
+  // The name of JSON-RPC's version field, built so this file does not hold it.
+  const protocolField = ["json", "rpc"].join("");
+
+  it("finds the MCP integration tests", () => {
+    expect(mcpTests()).toEqual(expect.arrayContaining(["service/mcp.int.ts"]));
+  });
+
+  const officialClient =
+    /import \{[^}]*\bClient\b[^}]*\} from "@modelcontextprotocol\/client";/u;
+
+  it("connects through test/mcp.ts, which uses the official client", () => {
+    expect(readRepoFile("test/mcp.ts")).toMatch(officialClient);
+    expect(readRepoFile("test/mcp.ts")).toContain(
+      "new StreamableHTTPClientTransport(",
+    );
+  });
+
+  it("drives the MCP handler only from tests that use the official client", () => {
+    for (const path of mcpTests()) {
+      const text = readRepoFile(path);
+      expect(
+        officialClient.test(text) ||
+          /import \{[^}]*\bconnect\b[^}]*\} from "[./]*test\/mcp";/u.test(text),
+        path,
+      ).toBe(true);
+    }
+  });
+
+  it("writes no protocol message by hand in any test the gate runs", () => {
+    const handWritten = gateTests().filter((path) =>
+      new RegExp(`\\b${protocolField}\\b`, "u").test(readRepoFile(path)),
+    );
+    expect(handWritten).toEqual([]);
+  });
+
+  // An integration test that calls the service's handler, by its import.
+  function mcpTests(): string[] {
+    return repoFiles()
+      .filter((path) => path.endsWith(".int.ts"))
+      .filter((path) =>
+        /from "[./]*(?:service\/)?src\/handler"/u.test(readRepoFile(path)),
+      );
+  }
+});
+
 describe("fitness: the gate holds no secrets (test-tiers.md)", () => {
   it("declares no secret in the gate's workflow", () => {
     // GitHub reads context names in any case.
