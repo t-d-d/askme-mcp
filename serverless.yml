@@ -238,7 +238,8 @@ resources:
         AlarmName: askme-function-failures
         AlarmDescription: >-
           [tripwire] An askme function failed, timed out or was throttled. Run
-          the saved query askme/function-failures first.
+          the saved query askme/function-failures first. A throttle writes no
+          line, so if it finds nothing, read the function's Throttles metric.
         Metrics:
           - Id: mcpErrors
             ReturnData: false
@@ -319,8 +320,10 @@ resources:
     # The month's AWS bill. The account holds askme alone, so its bill is
     # askme's (ADR 17). AWS publishes it about every six hours, and only in
     # us-east-1, where askme runs. The amount is the parameter issue #1
-    # fixed, in US dollars. Missing data is left as missing: it means the
-    # account's billing alerts are off, not that all is well.
+    # fixed, in US dollars. A gap between bills keeps the alarm where it
+    # was, so it does not leave ALARM and email again on the next bill. With
+    # no bill at all, the account's billing alerts are off, and the alarm
+    # shows INSUFFICIENT_DATA.
     SpendAlarm:
       Type: AWS::CloudWatch::Alarm
       Properties:
@@ -338,6 +341,7 @@ resources:
         EvaluationPeriods: 1
         Threshold: ${ssm:/askme/alerts/monthly-spend}
         ComparisonOperator: GreaterThanThreshold
+        TreatMissingData: ignore
         AlarmActions:
           - !Ref AlertTopic
 

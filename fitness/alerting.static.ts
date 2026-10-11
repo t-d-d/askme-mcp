@@ -8,7 +8,9 @@ import {
   templateSchema,
 } from "../test/repo";
 
-const definition = () =>
+// Each file is parsed once per test file, as the checks read them often.
+type Definition = ReturnType<typeof readDefinition>;
+const readDefinition = () =>
   readYaml(
     "serverless.yml",
     z.object({
@@ -21,15 +23,20 @@ const definition = () =>
       resources: z.object({ Resources: z.record(z.string(), resourceSchema) }),
     }),
   );
+let parsedDefinition: Definition | undefined;
+const definition = (): Definition => (parsedDefinition ??= readDefinition());
 
 // Every resource askme declares, in the deployment definition and in the
 // deploy role's stack, by logical id.
-const declared = () => [
-  ...Object.entries(definition().resources.Resources),
-  ...Object.entries(
-    readYaml("infra/github-oidc.cfn.yml", templateSchema).Resources,
-  ),
-];
+type Declared = [string, z.infer<typeof resourceSchema>][];
+let parsedDeclared: Declared | undefined;
+const declared = (): Declared =>
+  (parsedDeclared ??= [
+    ...Object.entries(definition().resources.Resources),
+    ...Object.entries(
+      readYaml("infra/github-oidc.cfn.yml", templateSchema).Resources,
+    ),
+  ]);
 
 const ofType = (type: string) =>
   declared().filter(([, resource]) => resource.Type === type);
@@ -118,6 +125,11 @@ const metricsOf = (alarm: Alarm): Metric[] => {
     }),
   ];
 };
+
+// Whether an expression finds metrics for itself, with SEARCH or a Metrics
+// Insights query, rather than doing math over the alarm's own entries.
+const searches = (expression: string): boolean =>
+  /\b(?:SEARCH|SELECT)\b/iu.test(expression);
 
 // The alarm set as alerting.md words it, one alarm name each: "error lines"
 // is the alarm askme-error-lines.
@@ -213,13 +225,13 @@ describe("fitness: every function is in the net (alerting.md)", () => {
     }
   });
 
-  // A filter on any other level would make a metric of warnings or product
-  // numbers, which are counted by saved query instead.
+  // Any other filter would make a metric of warnings or product numbers,
+  // which are counted by saved query instead. Each function has exactly one
+  // net filter, so one filter per function leaves room for no other.
   it("has no metric filter but the error net", () => {
-    const others = filters()
-      .filter((filter) => filter.FilterPattern !== errorLevel)
-      .map((filter) => filter.id);
-    expect(others).toEqual([]);
+    expect(filters().map((filter) => filter.id)).toHaveLength(
+      functionNames().length,
+    );
   });
 
   it("reads every function's errors, timeouts and throttles in the function-failures alarm", () => {
@@ -320,6 +332,33 @@ describe("fitness: alarms are scoped (alerting.md)", () => {
     expect(wide).toEqual([]);
   });
 
+  // An expression that finds metrics for itself, by SEARCH or a Metrics
+  // Insights query, reads whatever matches across the account. No dimension
+  // scopes it, and metricsOf cannot see what it reads.
+  it("finds no metric by search in any alarm", () => {
+    const searching = alarms().flatMap((alarm) =>
+      (alarm.Metrics ?? [])
+        .filter((entry) => searches(entry.Expression ?? ""))
+        .map((entry) => `${alarm.AlarmName}: ${entry.Id}`),
+    );
+    expect(searching).toEqual([]);
+  });
+
+  it("tells an expression that searches from one over its own metrics", () => {
+    expect(searches("SUM(METRICS())")).toBe(false);
+    expect(
+      searches("IF(requests > 0, 100 * FILL(serverErrors, 0) / requests, 0)"),
+    ).toBe(false);
+    expect(
+      searches(
+        `SEARCH('{AWS/Lambda,FunctionName} MetricName="Errors"', 'Sum', 60)`,
+      ),
+    ).toBe(true);
+    expect(
+      searches('SELECT SUM(Errors) FROM SCHEMA("AWS/Lambda", FunctionName)'),
+    ).toBe(true);
+  });
+
   it("tells a scoped metric from an account-wide one", () => {
     const ours = new Set(["McpLambdaFunction"]);
     const lambda = (value: unknown): Metric => ({
@@ -389,8 +428,8 @@ describe("fitness: saved queries use real events (alerting.md)", () => {
   });
 });
 
-describe("saved queries", () => {
-  it("count every event the service logs", () => {
+describe("fitness: product numbers are saved queries (alerting.md)", () => {
+  it("has one for every event the service logs", () => {
     const named = new Set(
       queries().flatMap((query) => eventsIn(query.QueryString)),
     );
@@ -398,7 +437,7 @@ describe("saved queries", () => {
     expect(missing).toEqual([]);
   });
 
-  it("read every function's log group", () => {
+  it("reads every function's log group in each", () => {
     for (const query of queries()) {
       for (const name of functionNames()) {
         expect(query.LogGroupNames, query.Name).toContainEqual(
@@ -409,7 +448,7 @@ describe("saved queries", () => {
   });
 });
 
-describe("alarm descriptions", () => {
+describe("fitness: alarm descriptions name the first query (alerting.md)", () => {
   it("say what kind each alarm is and name a saved query to run first", () => {
     const saved = queries().map((query) => query.Name);
     expect(alarms().length).toBeGreaterThan(0);

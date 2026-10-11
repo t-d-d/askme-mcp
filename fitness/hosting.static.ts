@@ -117,10 +117,21 @@ describe("fitness: nothing runs continuously (hosting.md)", () => {
   ]);
 
   // An alarm is billed by the month, for each metric it reads, past
-  // CloudWatch's free ten. ADR 8 chose alarms knowing that, and alerting.md
-  // holds the set at four, so they cost nothing at askme's size.
+  // CloudWatch's free ten. ADR 8 chose alarms knowing that, so they pass
+  // here while all of them together read ten metrics or fewer. Each new
+  // function adds two to the function-failures alarm.
   const alarm = (resource: z.infer<typeof resourceSchema>) =>
     resource.Type === "AWS::CloudWatch::Alarm";
+  const freeAlarmMetrics = 10;
+  const metricsRead = (resource: z.infer<typeof resourceSchema>): number => {
+    const metrics = z
+      .array(z.looseObject({ MetricStat: z.unknown().optional() }))
+      .optional()
+      .parse(resource.Properties?.Metrics);
+    return metrics === undefined
+      ? 1
+      : metrics.filter((entry) => entry.MetricStat !== undefined).length;
+  };
 
   // A table costs nothing while idle only when it is billed per request.
   const onDemandTable = (resource: z.infer<typeof resourceSchema>) =>
@@ -143,6 +154,34 @@ describe("fitness: nothing runs continuously (hosting.md)", () => {
       )
       .map(([id, resource]) => `${id}: ${resource.Type}`);
     expect(standing).toEqual([]);
+  });
+
+  it("keeps the alarms within CloudWatch's free metrics", () => {
+    const read = Object.values(definition().resources.Resources)
+      .filter(alarm)
+      .reduce((sum, resource) => sum + metricsRead(resource), 0);
+    expect(read).toBeLessThanOrEqual(freeAlarmMetrics);
+  });
+
+  it("counts the metrics an alarm reads, alone or by math", () => {
+    expect(
+      metricsRead({
+        Type: "AWS::CloudWatch::Alarm",
+        Properties: { Namespace: "askme", MetricName: "ErrorLines" },
+      }),
+    ).toBe(1);
+    expect(
+      metricsRead({
+        Type: "AWS::CloudWatch::Alarm",
+        Properties: {
+          Metrics: [
+            { Id: "a", MetricStat: {} },
+            { Id: "b", MetricStat: {} },
+            { Id: "sum", Expression: "SUM(METRICS())" },
+          ],
+        },
+      }),
+    ).toBe(2);
   });
 
   it("tells a table billed per request from one with set capacity", () => {

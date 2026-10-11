@@ -1,5 +1,5 @@
 # Alerting
-Relevance: An alarm, a metric filter, the alert topic, a saved query or a new function: infra/** alarms and filters, queries/**
+Relevance: An alarm, a metric filter, the alert topic, a saved query or a new function: the deployment definition, infra/** alarms and filters, queries/**
 Decision: Four alarms, scoped to askme, all emailing the owner through one topic: error lines, function failures, server errors, spend.
 
 Why: One owner needs few alerts that each mean act. An alarm on every
