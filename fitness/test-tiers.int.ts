@@ -3,6 +3,8 @@ import { lookup, lookupService, resolve, Resolver } from "node:dns";
 import {
   lookup as lookupAsync,
   resolve4 as resolve4Async,
+  Resolver as ResolverAsync,
+  reverse as reverseAsync,
 } from "node:dns/promises";
 import { connect, createServer, Socket, type AddressInfo } from "node:net";
 import { once } from "node:events";
@@ -68,6 +70,20 @@ describe("fitness: the gate is offline (test-tiers.md)", () => {
     expect(() => resolve4Async("example.com")).toThrow(/The gate is offline/u);
     expect(() => {
       new Resolver().resolve4("example.com", ignore);
+    }).toThrow(/The gate is offline/u);
+    expect(() => new ResolverAsync().resolve4("example.com")).toThrow(
+      /The gate is offline/u,
+    );
+    expect(() => reverseAsync("192.0.2.1")).toThrow(/The gate is offline/u);
+  });
+
+  it("refuses a lookup that the hosts file may not answer, which asks a DNS server", () => {
+    const ignore = () => undefined;
+    expect(() => {
+      lookup("api.localhost", ignore);
+    }).toThrow(/The gate is offline/u);
+    expect(() => {
+      lookupService("127.0.0.2", 443, ignore);
     }).toThrow(/The gate is offline/u);
   });
 
