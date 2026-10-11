@@ -486,6 +486,38 @@ resources:
           filter message.event = "ask-not-found"
           | stats count(*) as calls, count_distinct(message.accountId) as accounts by bin(1d)
 
+    # How often an ask repeats one posted in the last ten minutes, to tune
+    # the window (ADR 3).
+    AskDeduplicatedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/ask-deduplicated
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "ask-deduplicated"
+          | stats count(*) as repeats, count_distinct(message.accountId) as accounts by bin(1d)
+
+    CapReachedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/cap-reached
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "cap-reached"
+          | stats count(*) as refusals by message.accountId, bin(1d)
+
+    RateLimitedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/rate-limited
+        LogGroupNames:
+          - !Ref McpLogGroup
+        QueryString: |
+          filter message.event = "rate-limited"
+          | stats count(*) as refusals by message.accountId, bin(1h)
+
     PollLimitedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:

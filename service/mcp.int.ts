@@ -1,5 +1,6 @@
 // The MCP endpoint end to end, in process: API Gateway's event, the token
 // check, the MCP server and the ask tool, driven by the official client.
+import { randomUUID } from "node:crypto";
 import type { Client } from "@modelcontextprotocol/client";
 import { McpServer } from "@modelcontextprotocol/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -17,6 +18,8 @@ const posted = z.strictObject({
   id: z.string().regex(/^[A-Za-z0-9_-]{24}$/u),
   status: z.literal("posted"),
 });
+
+const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
 
 let issuer: FakeIssuer;
 beforeAll(async () => {
@@ -102,18 +105,36 @@ describe.each(eras)(
       await client.close();
     });
 
-    it("gets a new id back from each ask", async () => {
+    it("gets a new id back from each new ask", async () => {
       const client = await connect(handler, {
-        token: await issuer.token(),
+        token: await issuer.token({ claims: { sub: newAccount() } }),
         era,
       });
-      const post = async () => {
-        const result = await client.callTool({ name: "ask", arguments: ask });
+      const post = async (summary: string) => {
+        const result = await client.callTool({
+          name: "ask",
+          arguments: { ...ask, summary },
+        });
         expect(result.isError).not.toBe(true);
         return posted.parse(result.structuredContent).id;
       };
-      const ids = [await post(), await post()];
+      const ids = [await post("First"), await post("Second")];
       expect(new Set(ids).size).toBe(2);
+      await client.close();
+    });
+
+    it("gets the first id back from an identical ask", async () => {
+      const client = await connect(handler, {
+        token: await issuer.token({ claims: { sub: newAccount() } }),
+        era,
+      });
+      const post = async () =>
+        posted.parse(
+          (await client.callTool({ name: "ask", arguments: ask }))
+            .structuredContent,
+        ).id;
+      const first = await post();
+      expect(await post()).toBe(first);
       await client.close();
     });
 
@@ -203,8 +224,13 @@ describe.each(eras)(
 const resolved = (id: string) => ({ id, status: "resolved" });
 
 describe.each(eras)("resolving and replacing, %s handshake", (era) => {
+  // An account of its own for each test, so no test's ask is a repeat of
+  // another's.
   const client = async () =>
-    connect(handler, { token: await issuer.token(), era });
+    connect(handler, {
+      token: await issuer.token({ claims: { sub: newAccount() } }),
+      era,
+    });
 
   const post = async (agent: Client) =>
     posted.parse(

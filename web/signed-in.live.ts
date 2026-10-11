@@ -11,6 +11,7 @@ import {
 } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { mcpUrl, pageUrl, phone } from "../test/live";
 
 // The one test account. Clerk's test mode verifies a +clerk_test address
 // with the code 424242, and sends it no email. Anyone may read the address:
@@ -18,19 +19,8 @@ import { z } from "zod";
 const testAddress = "askme-live+clerk_test@example.com";
 const testCode = "424242";
 
-const phone = { width: 390, height: 844 };
 // How long one of Clerk's screens, or one answer from Clerk, may take.
 const stepMs = 30_000;
-
-const https = z.url({ protocol: /^https$/u });
-const pageUrl = () =>
-  https.parse(process.env.ASKME_URL, {
-    error: () => "Set ASKME_URL to the live address.",
-  });
-const mcpUrl = () =>
-  https.parse(process.env.ASKME_MCP_URL, {
-    error: () => "Set ASKME_MCP_URL to the live MCP endpoint.",
-  });
 
 // Clerk's screens start a sign-in or a sign-up with a POST to its Frontend
 // API, and Clerk answers there.
