@@ -23,6 +23,7 @@ const output = z.object({ id: z.string().min(3) });
 const unused = () => Promise.reject(new Error("The store is not used here."));
 const store: Store = {
   postAsk: unused,
+  resolveAsk: unused,
   openAsks: unused,
   close: () => undefined,
 };
