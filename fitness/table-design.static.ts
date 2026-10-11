@@ -106,6 +106,7 @@ describe("fitness: one key builder (table-design.md)", () => {
     'export const k = (id: string) => ({ sk: "OPEN#" + id });\n',
     "export const k = (id: string) => ({ sk: `CLOSED#${id}` });\n",
     'export const k = { sk: "DEDUPE#abc" };\n',
+    "export const k = (w: string) => ({ sk: `POLL#${w}` });\n",
   ])("refuses a key written by hand: %s", async (code) => {
     expect(await reported(code, servicePath)).toContain(
       "askme/no-hand-built-key",
@@ -148,6 +149,69 @@ describe("fitness: one key builder (table-design.md)", () => {
         "service/src/store/store.ts",
       ),
     ).toBe(false);
+  });
+});
+
+describe("fitness: two functions write (table-design.md)", () => {
+  const storePath = "service/src/store/store.ts";
+
+  beforeAll(async () => {
+    await reported("", storePath);
+  }, 60_000);
+
+  it.each([
+    [
+      "PutCommand",
+      "export const f = () => new PutCommand({ TableName: 't', Item: {} });\n",
+    ],
+    [
+      "UpdateCommand",
+      "export async function postAsk() {\n  return new UpdateCommand({ TableName: 't', Key: {} });\n}\n",
+    ],
+    [
+      "DeleteCommand",
+      "export const store = {\n  close() {\n    return new DeleteCommand({ TableName: 't', Key: {} });\n  },\n};\n",
+    ],
+    [
+      "TransactWriteCommand",
+      "export function writeAll() {\n  return new TransactWriteCommand({ TransactItems: [] });\n}\n",
+    ],
+    [
+      "BatchWriteCommand",
+      "export const f = () => new BatchWriteCommand({ RequestItems: {} });\n",
+    ],
+    [
+      "UpdateItemCommand",
+      "export const f = () => new UpdateItemCommand({ TableName: 't', Key: {} });\n",
+    ],
+  ])("refuses %s outside write() and count()", async (name, body) => {
+    const code = `import { ${name} } from "@aws-sdk/lib-dynamodb";\n${body}`;
+    expect(await reported(code, storePath)).toContain("askme/write-functions");
+  });
+
+  it.each([
+    "import { PutCommand as Store } from \"@aws-sdk/lib-dynamodb\";\nexport const f = () => new Store({ TableName: 't', Item: {} });\n",
+    "import * as lib from \"@aws-sdk/lib-dynamodb\";\nexport const f = () => new lib.PutCommand({ TableName: 't', Item: {} });\n",
+  ])("refuses a write command under another name: %s", async (code) => {
+    expect(await reported(code, storePath)).toContain("askme/write-functions");
+  });
+
+  it.each([
+    "export async function write() {\n  return new TransactWriteCommand({ TransactItems: [] });\n}\n",
+    "export const write = async () => new TransactWriteCommand({ TransactItems: [] });\n",
+    "export async function count() {\n  return new UpdateCommand({ TableName: 't', Key: {} });\n}\n",
+    "export function write() {\n  return [1].map(() => new TransactWriteCommand({ TransactItems: [] }));\n}\n",
+  ])("lets write() and count() build a write command: %s", async (body) => {
+    const code = `import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";\n${body}`;
+    expect(await reported(code, storePath)).not.toContain(
+      "askme/write-functions",
+    );
+  });
+
+  it("finds the store's own writes in those two functions", async () => {
+    expect(await reported(readRepoFile(storePath), storePath)).not.toContain(
+      "askme/write-functions",
+    );
   });
 });
 

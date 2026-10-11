@@ -1,10 +1,15 @@
 // The store (ADR 13): the only code that reads or writes the table. Every
-// key comes from keys.ts, every write goes through write(), which raises the
-// account's version in the same transaction, and every read is strongly
-// consistent and checks expiry itself, because DynamoDB removes expired
-// items late (ADR 5).
+// key comes from keys.ts, and every read is strongly consistent and checks
+// expiry itself, because DynamoDB removes expired items late (ADR 5).
+//
+// Two functions write. write() makes every change to asks or rules, and
+// raises the account's version in the same transaction, so the page learns
+// of it. count() adds to a rate counter, which changes nothing the page
+// shows, so it leaves the version alone and an idle poll stays idle
+// (ADR 18). Lint holds every other write out.
 import { randomBytes } from "node:crypto";
 import {
+  ConditionalCheckFailedException,
   DynamoDBClient,
   TransactionCanceledException,
 } from "@aws-sdk/client-dynamodb";
@@ -13,10 +18,12 @@ import {
   GetCommand,
   QueryCommand,
   TransactWriteCommand,
+  UpdateCommand,
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
 import type { AccountId } from "../identity";
+import { pollLimit, secondsLeft, windowOf } from "../rate";
 import { keys, type Key } from "./keys";
 
 // Every ask is deleted a month after it is posted (PRD, "Accounts and
@@ -24,6 +31,11 @@ import { keys, type Key } from "./keys";
 export const askLifetimeDays = 30;
 
 const dayMs = 86_400_000;
+
+// A rate counter is kept an hour past its window, then DynamoDB may delete
+// it. It is only counted inside its own window, so it is never read after
+// it expires (ADR 18).
+const counterLifetimeMs = 3_600_000;
 
 // An ask as the agent sent it, once its schema has parsed it.
 export interface NewAsk {
@@ -85,6 +97,16 @@ export interface AccountAsks {
   asks: StoredAsk[];
 }
 
+// What a poll gets when nothing changed since the version it carried.
+export interface Unchanged {
+  version: number;
+  unchanged: true;
+}
+
+// Whether a call was counted, or how long until its limit allows another.
+export type Counted =
+  { counted: true } | { counted: false; secondsLeft: number };
+
 export interface Store {
   // Stores a new ask and gives its id. When the ask names an open ask of the
   // same account in replaces, it takes that ask's place, and that ask closes
@@ -93,6 +115,14 @@ export interface Store {
   // Closes an open ask as resolved.
   resolveAsk(account: AccountId, askId: string, now: Date): Promise<Resolution>;
   openAsks(account: AccountId, now: Date): Promise<AccountAsks>;
+  // The open asks, unless the version is still the one the page last saw.
+  asksSince(
+    account: AccountId,
+    since: number | undefined,
+    now: Date,
+  ): Promise<AccountAsks | Unchanged>;
+  // Counts a poll against the account's limit for the minute.
+  countPoll(account: AccountId, now: Date): Promise<Counted>;
   close(): void;
 }
 
@@ -158,6 +188,37 @@ export function createStore(config: {
         ],
       }),
     );
+  }
+
+  // Adds one to a rate counter, unless it has reached its limit. One
+  // conditional update, which never raises the version (ADR 18).
+  async function count(
+    key: Key,
+    limit: number,
+    expiresAt: number,
+  ): Promise<boolean> {
+    try {
+      await db.send(
+        new UpdateCommand({
+          TableName,
+          Key: key,
+          UpdateExpression:
+            "ADD #count :one SET expiresAt = if_not_exists(expiresAt, :expiresAt)",
+          ConditionExpression:
+            "attribute_not_exists(#count) OR #count < :limit",
+          ExpressionAttributeNames: { "#count": "count" },
+          ExpressionAttributeValues: {
+            ":one": 1,
+            ":limit": limit,
+            ":expiresAt": expiresAt,
+          },
+        }),
+      );
+      return true;
+    } catch (error) {
+      if (error instanceof ConditionalCheckFailedException) return false;
+      throw error;
+    }
   }
 
   async function meta(account: AccountId) {
@@ -241,6 +302,19 @@ export function createStore(config: {
     return found;
   }
 
+  // The open asks, with the version read before them, never alongside, so
+  // it is never newer than the list it comes with. A write that lands
+  // between the two reads raises the version again, and the page reads once
+  // more.
+  async function listed(
+    account: AccountId,
+    now: Date,
+    { version, everAsked }: z.output<typeof metaSchema>,
+  ): Promise<AccountAsks> {
+    const asks = await storedAsks(account, now);
+    return { version, everAsked: everAsked ?? false, asks };
+  }
+
   return {
     async postAsk(account, ask, now) {
       const id = newAskId();
@@ -313,13 +387,30 @@ export function createStore(config: {
       return closed === undefined ? "not-found" : "already-closed";
     },
 
-    // The version is read before the asks, never alongside them, so it is
-    // never newer than the list it comes with. A write that lands between
-    // the two reads raises the version again, and the page reads once more.
     async openAsks(account, now) {
-      const { version, everAsked } = await meta(account);
-      const asks = await storedAsks(account, now);
-      return { version, everAsked: everAsked ?? false, asks };
+      return listed(account, now, await meta(account));
+    },
+
+    // When the version is the one the page sent, nothing but the version is
+    // read (ADR 13).
+    async asksSince(account, since, now) {
+      const marker = await meta(account);
+      if (marker.version === since) {
+        return { version: marker.version, unchanged: true };
+      }
+      return listed(account, now, marker);
+    },
+
+    async countPoll(account, now) {
+      const window = windowOf(now, pollLimit.windowMinutes);
+      const counted = await count(
+        keys.pollCount(account, window.name),
+        pollLimit.polls,
+        seconds(window.endsAt + counterLifetimeMs),
+      );
+      return counted
+        ? { counted: true }
+        : { counted: false, secondsLeft: secondsLeft(window, now) };
     },
 
     close() {

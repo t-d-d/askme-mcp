@@ -6,6 +6,9 @@
 // Where the Docker daemon is not running, as in a Claude cloud session, it is
 // started first.
 import { execFile, spawn } from "node:child_process";
+import { once } from "node:events";
+import { createServer, request as forward } from "node:http";
+import type { AddressInfo } from "node:net";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import {
@@ -173,4 +176,96 @@ export async function storedItems(
   } finally {
     db.destroy();
   }
+}
+
+// One call the service made to the database: the action, such as GetItem,
+// and the sort key of every item it names.
+export interface DatabaseCall {
+  action: string;
+  sortKeys: string[];
+}
+
+export interface DatabaseRecorder {
+  // The address to give the service in place of the database's.
+  endpoint: string;
+  calls: DatabaseCall[];
+  close(): Promise<void>;
+}
+
+// The actions that read the table.
+export const readActions = new Set([
+  "GetItem",
+  "BatchGetItem",
+  "Query",
+  "Scan",
+  "TransactGetItems",
+]);
+
+// Every sort key written as {"sk": {"S": "..."}} anywhere in a request.
+function sortKeysIn(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(sortKeysIn);
+  if (typeof value !== "object" || value === null) return [];
+  return Object.entries(value).flatMap(([name, inner]) => {
+    if (name === "sk" && typeof inner === "object" && inner !== null) {
+      const text: unknown = Reflect.get(inner, "S");
+      if (typeof text === "string") return [text];
+    }
+    return sortKeysIn(inner);
+  });
+}
+
+// A stand-in for the database's address on loopback, which passes each
+// request on to the local DynamoDB and records what it asked for. A test
+// can then count the reads and writes behind one request to the service.
+export async function recordDatabase(
+  endpoint: string,
+): Promise<DatabaseRecorder> {
+  const target = new URL(endpoint);
+  const calls: DatabaseCall[] = [];
+  const server = createServer((incoming, outgoing) => {
+    const chunks: Buffer[] = [];
+    incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+    incoming.on("end", () => {
+      const body = Buffer.concat(chunks);
+      const action = String(incoming.headers["x-amz-target"] ?? "")
+        .split(".")
+        .at(-1);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(body.toString("utf8"));
+      } catch {
+        parsed = undefined;
+      }
+      calls.push({ action: action ?? "", sortKeys: sortKeysIn(parsed) });
+      const upstream = forward(
+        new URL(incoming.url ?? "/", target),
+        {
+          method: incoming.method,
+          headers: { ...incoming.headers, host: target.host },
+        },
+        (reply) => {
+          outgoing.writeHead(reply.statusCode ?? 502, reply.headers);
+          reply.pipe(outgoing);
+        },
+      );
+      upstream.on("error", () => outgoing.destroy());
+      upstream.end(body);
+    });
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const { port } = z
+    .object({ port: z.number() })
+    .parse(server.address() satisfies AddressInfo | string | null);
+  return {
+    endpoint: `http://127.0.0.1:${String(port)}`,
+    calls,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => {
+          resolve();
+        });
+      }),
+  };
 }
