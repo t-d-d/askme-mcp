@@ -63,6 +63,7 @@ chose to test.
 
 - `merge`: a gate test answers it.
 - `deploy`: a live-tier test answers it after the deploy.
+- `daily`: a conformance-tier test answers it on its next scheduled run.
 - `by hand`: only the owner can check it, such as a real agent connecting
   or speech on a phone. Say exactly what to do.
 - an issue number: nothing answers it yet, and that issue owns it. The

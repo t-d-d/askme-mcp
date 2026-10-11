@@ -5,6 +5,7 @@ import {
   readWorkflow,
   readYaml,
   repoFiles,
+  runsIn,
   templateSchema,
   triggers,
   workflowPaths,
@@ -25,11 +26,6 @@ const allJobs = (): [string, Job][] =>
       `${path} ${id}`,
       job,
     ]),
-  );
-
-const runsIn = (job: Job | undefined): string[] =>
-  (job?.steps ?? []).flatMap((step) =>
-    step.run === undefined ? [] : [step.run],
   );
 
 const deployCommand = /\b(?:serverless|sls)\b|\baws\s/u;

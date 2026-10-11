@@ -33,8 +33,11 @@ describe("fitness: main is protected (repo-and-delivery.md)", () => {
         },
       },
     );
-    expect(response.status).toBe(200);
-    const rules = rulesSchema.parse(await response.json());
+    // GitHub's own words, so a refusal such as a rate limit is not read as drift.
+    const body = await response.text();
+    expect(response.status, body).toBe(200);
+    const data: unknown = JSON.parse(body);
+    const rules = rulesSchema.parse(data);
     expect(rules.map((rule) => rule.type)).toEqual(
       expect.arrayContaining(["pull_request", "required_status_checks"]),
     );

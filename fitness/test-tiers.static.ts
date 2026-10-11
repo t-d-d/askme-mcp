@@ -5,8 +5,8 @@ import {
   readRepoFile,
   readWorkflow,
   repoFiles,
+  runsIn,
   triggers,
-  type Job,
 } from "../test/repo";
 import { tierPattern, tiers } from "../test/tiers";
 
@@ -118,11 +118,6 @@ describe("fitness: the gate holds no secrets (test-tiers.md)", () => {
 
 describe("fitness: conformance runs daily, signed out (test-tiers.md)", () => {
   const path = ".github/workflows/conformance.yml";
-  const runsIn = (job: Job | undefined): string[] =>
-    (job?.steps ?? []).flatMap((step) =>
-      step.run === undefined ? [] : [step.run],
-    );
-
   it("runs the conformance tier every day, and nothing else", () => {
     const workflow = readWorkflow(path);
     expect(workflow.name).toBe("conformance");
@@ -133,8 +128,12 @@ describe("fitness: conformance runs daily, signed out (test-tiers.md)", () => {
     ]);
   });
 
-  it("holds no secret and only reads", () => {
-    expect(readRepoFile(path)).not.toMatch(/\bsecrets\b|GITHUB_TOKEN/u);
-    expect(readWorkflow(path).permissions).toEqual({ contents: "read" });
+  it("holds no secret or token, and only reads", () => {
+    expect(readRepoFile(path)).not.toMatch(
+      /\bsecrets\b|GITHUB_TOKEN|github\.token/u,
+    );
+    const workflow = readWorkflow(path);
+    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(workflow.jobs.conformance?.permissions).toBeUndefined();
   });
 });

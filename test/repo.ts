@@ -1,6 +1,6 @@
 // Read-only access to the repo's own files, for static tests.
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse, type Tags } from "yaml";
@@ -12,17 +12,14 @@ export function readRepoFile(path: string): string {
   return readFileSync(join(root, path), "utf8");
 }
 
-// Every file in the repo that git tracks or would track, so nothing ignored,
-// and nothing deleted but not yet committed.
+// Every file in the repo that git tracks or would track, so nothing ignored.
 export function repoFiles(): string[] {
   const out = execFileSync(
     "git",
     ["ls-files", "--cached", "--others", "--exclude-standard"],
     { cwd: root, encoding: "utf8" },
   );
-  return out
-    .split("\n")
-    .filter((path) => path !== "" && existsSync(join(root, path)));
+  return out.split("\n").filter((path) => path !== "");
 }
 
 // CloudFormation's short-form functions, such as !Ref and !GetAtt, read as
@@ -133,6 +130,12 @@ export const workflowSchema = z.object({
 
 export type Workflow = z.infer<typeof workflowSchema>;
 export type Job = z.infer<typeof jobSchema>;
+
+// The shell commands a job runs, in order.
+export const runsIn = (job: Job | undefined): string[] =>
+  (job?.steps ?? []).flatMap((step) =>
+    step.run === undefined ? [] : [step.run],
+  );
 
 export const workflowPaths = (): string[] =>
   repoFiles().filter((path) =>

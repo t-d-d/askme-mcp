@@ -36,10 +36,11 @@ held outside the repo can drift with no pull request at all.
 - Call the real model or identity service from the gate.
 - Widen a tier's pattern to bare *.ts.
 - Add a second test runner.
-- Put a check of outside setup in the live tier: live runs after a
-  deploy and checks the site, and setup can change on any day.
-- Give a conformance check a credential without a decision: CI holds
-  one stored secret (repo-and-delivery.md).
+- Put a check of outside setup in the live tier: the live tier is for
+  the deployed site, and says what its files touch.
+- Give a conformance check a credential without a decision: the one
+  AWS role CI can assume is the administrator deploy role, and CI
+  holds one stored secret (repo-and-delivery.md).
 
 Judgment: A signed-in path from a real agent to a card is checked by
 hand after a deploy. No test can see it.
