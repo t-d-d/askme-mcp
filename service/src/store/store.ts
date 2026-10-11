@@ -170,14 +170,20 @@ const newAskId = () => randomBytes(18).toString("base64url");
 
 const seconds = (time: number) => Math.floor(time / 1000);
 
+// When a transaction was cancelled, the reason DynamoDB gave for each of its
+// changes, in order.
+const reasonCodes = (error: unknown): (string | undefined)[] | undefined =>
+  error instanceof TransactionCanceledException
+    ? (error.CancellationReasons ?? []).map((reason) => reason.Code)
+    : undefined;
+
 // When a transaction was refused because a condition failed, whether each
 // of its changes, in order, was one whose condition failed.
 function failedChanges(error: unknown): boolean[] | undefined {
-  if (!(error instanceof TransactionCanceledException)) return undefined;
-  const failed = (error.CancellationReasons ?? []).map(
-    (reason) => reason.Code === "ConditionalCheckFailed",
+  const failed = reasonCodes(error)?.map(
+    (code) => code === "ConditionalCheckFailed",
   );
-  return failed.includes(true) ? failed : undefined;
+  return failed?.includes(true) === true ? failed : undefined;
 }
 
 // Whether a transaction was refused because one of its conditions failed,
@@ -193,8 +199,7 @@ const nextDay = (now: Date) =>
 // else. DynamoDB cancels it whole, so sending it again is safe. Any other
 // reason, such as a failed condition, goes back to the caller.
 const conflicted = (error: unknown) => {
-  if (!(error instanceof TransactionCanceledException)) return false;
-  const codes = (error.CancellationReasons ?? []).map((reason) => reason.Code);
+  const codes = reasonCodes(error) ?? [];
   return (
     codes.includes("TransactionConflict") &&
     codes.every((code) => code === "TransactionConflict" || code === "None")

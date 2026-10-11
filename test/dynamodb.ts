@@ -234,9 +234,18 @@ function sortKeysIn(value: unknown): string[] {
 
 const transactionSchema = z.object({ TransactItems: z.array(z.unknown()) });
 
+// An error DynamoDB gives, which the SDK does not send again.
+function refuse(outgoing: ServerResponse, body: object): void {
+  outgoing.writeHead(400, { "content-type": "application/x-amz-json-1.0" });
+  outgoing.end(JSON.stringify(body));
+}
+
 // DynamoDB's answer to a transaction that met another one on an item: it is
 // cancelled whole, with a reason for each of its items, in order. Which item
-// was held makes no difference to the store, so the last one is named.
+// was held makes no difference to the store, so the last one is named, and
+// a failed condition, when asked for, is named on the first. A transaction
+// of one item then names only the failed condition, which is the answer the
+// store acts on.
 function cancelled(
   outgoing: ServerResponse,
   request: unknown,
@@ -245,40 +254,34 @@ function cancelled(
   const parsed = transactionSchema.safeParse(request);
   const items = parsed.success ? parsed.data.TransactItems.length : 1;
   const reasons = Array.from({ length: items }, (_, index) => {
-    if (index === items - 1) {
+    if (index === 0 && conditionFailed) {
       return {
-        Code: "TransactionConflict",
-        Message: "Transaction is ongoing for the item",
+        Code: "ConditionalCheckFailed",
+        Message: "The conditional request failed",
       };
     }
-    return index === 0 && conditionFailed
+    return index === items - 1
       ? {
-          Code: "ConditionalCheckFailed",
-          Message: "The conditional request failed",
+          Code: "TransactionConflict",
+          Message: "Transaction is ongoing for the item",
         }
       : { Code: "None" };
   });
   const codes = reasons.map((reason) => reason.Code).join(", ");
-  outgoing.writeHead(400, { "content-type": "application/x-amz-json-1.0" });
-  outgoing.end(
-    JSON.stringify({
-      __type: "com.amazonaws.dynamodb.v20120810#TransactionCanceledException",
-      Message: `Transaction cancelled, please refer cancellation reasons for specific reasons [${codes}]`,
-      CancellationReasons: reasons,
-    }),
-  );
+  refuse(outgoing, {
+    __type: "com.amazonaws.dynamodb.v20120810#TransactionCanceledException",
+    Message: `Transaction cancelled, please refer cancellation reasons for specific reasons [${codes}]`,
+    CancellationReasons: reasons,
+  });
 }
 
 // The answer when the test's own meanwhile step failed: an error DynamoDB
 // gives for a bad request, which the SDK never retries.
 function meanwhileFailed(outgoing: ServerResponse): void {
-  outgoing.writeHead(400, { "content-type": "application/x-amz-json-1.0" });
-  outgoing.end(
-    JSON.stringify({
-      __type: "com.amazon.coral.validate#ValidationException",
-      Message: "The test's meanwhile step failed.",
-    }),
-  );
+  refuse(outgoing, {
+    __type: "com.amazon.coral.validate#ValidationException",
+    Message: "The test's meanwhile step failed.",
+  });
 }
 
 // A stand-in for the database's address on loopback, which passes each

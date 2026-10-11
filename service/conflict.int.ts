@@ -155,12 +155,15 @@ describe("a write that meets another transaction", () => {
           other.push(await elsewhere.resolveAsk(owner, id, new Date()));
         },
       });
+      const before = transactions();
       const result = await agent.callTool({
         name: "resolve",
         arguments: { id },
       });
-      // The other resolve closed the ask, so this one found it closed.
+      // The other resolve closed the ask, so this one's next try found it
+      // closed.
       expect(other).toEqual(["resolved"]);
+      expect(transactions() - before).toBe(2);
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toEqual({ id, status: "resolved" });
       expect(await listed(owner)).toEqual({ version: 2, open: [] });
