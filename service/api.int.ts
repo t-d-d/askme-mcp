@@ -436,7 +436,7 @@ const ownerOf = (account: string) =>
 // Posts an ask straight to the store at a time in the past, so it is not
 // handed to the sort function, as when its sort failed back then. Gives its
 // id.
-async function postedAt(
+async function postEarlier(
   account: string,
   newAsk: NewAsk,
   at: Date,
@@ -539,7 +539,7 @@ describe("sorting", () => {
     fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
     await saveRules(account, { text: rulesText });
     // An ask posted two minutes ago, whose sort failed.
-    const old = await postedAt(
+    const old = await postEarlier(
       account,
       { summary: "Old", area: "Shop", spokenDetail: "Old." },
       new Date(Date.now() - 2 * sortRetryAfterMs),
@@ -573,7 +573,7 @@ describe("sorting", () => {
   // so it looks overdue the moment it is stored.
   it("does not ask again for a replacing ask while its first sort may still be running", async () => {
     const account = newAccount();
-    const old = await postedAt(
+    const old = await postEarlier(
       account,
       { summary: "Old", area: "Shop", spokenDetail: "Old." },
       new Date(Date.now() - 2 * sortRetryAfterMs),
@@ -587,12 +587,12 @@ describe("sorting", () => {
 
   it("asks again for a replacing ask left unsorted a minute after it was stored", async () => {
     const account = newAccount();
-    const old = await postedAt(
+    const old = await postEarlier(
       account,
       { summary: "Old", area: "Shop", spokenDetail: "Old." },
       new Date(Date.now() - 3 * sortRetryAfterMs),
     );
-    const id = await postedAt(
+    const id = await postEarlier(
       account,
       { summary: "New", area: "Shop", spokenDetail: "New.", replaces: old },
       new Date(Date.now() - 2 * sortRetryAfterMs),
