@@ -3,9 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Asks } from "./Asks";
 import { Connect } from "./Connect";
 import { Rules } from "./Rules";
-import { cardIn } from "./screen";
-
-type Screen = "asks" | "connect" | "rules";
+import { cardIn, screenIn, type Screen } from "./screen";
 
 // A screen with unsaved work gives the question to ask before it is left,
 // and null once it can be left without asking.
@@ -21,6 +19,10 @@ const historyIndex = (): number | null =>
 // named in the address's fragment: #connect, #rules, and anything else for
 // the list, with #ask/<id> opening one ask's card over it. Links between
 // them are real links, and Back works.
+//
+// Each screen starts at the top. The list and its cards are one screen,
+// which keeps the list's place itself (useListPlace.ts), so the browser
+// keeps none of its own for Back.
 function useScreen(): {
   screen: Screen;
   card: string | null;
@@ -29,6 +31,8 @@ function useScreen(): {
   const [hash, setHash] = useState(() => window.location.hash);
   const question = useRef<string | null>(null);
   useEffect(() => {
+    const restoring = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
     let at = historyIndex();
     let returning = false;
     // A link, Back or a typed address has changed the fragment before the
@@ -52,20 +56,20 @@ function useScreen(): {
         return;
       }
       at = here;
+      const left = screenIn(new URL(event.oldURL).hash);
       setHash(window.location.hash);
-      window.scrollTo(0, 0);
+      if (screenIn(window.location.hash) !== left) window.scrollTo(0, 0);
     };
     window.addEventListener("hashchange", follow);
     return () => {
       window.removeEventListener("hashchange", follow);
+      window.history.scrollRestoration = restoring;
     };
   }, []);
   const askFirst = useCallback<AskFirst>((asked) => {
     question.current = asked;
   }, []);
-  const screen =
-    hash === "#connect" ? "connect" : hash === "#rules" ? "rules" : "asks";
-  return { screen, card: cardIn(hash), askFirst };
+  return { screen: screenIn(hash), card: cardIn(hash), askFirst };
 }
 
 // A failed load shows at once, and the page's own timers try again, so
