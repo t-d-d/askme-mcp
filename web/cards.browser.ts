@@ -80,8 +80,8 @@ afterEach(async () => {
 // The page with a list, and the API taking every change to an ask. With
 // the clock, time jumps a minute once the list shows, then stands still
 // until a test moves it. The clock runs until the pause, and a pause aimed at
-// a moment already gone throws, so it aims further ahead than a browser test
-// may run (30 seconds).
+// a moment already gone throws, so it aims further ahead than
+// vitest.config.ts lets a browser test run.
 async function open(
   list: AsksAnswer,
   options: PageOptions & { change?: unknown } = {},
