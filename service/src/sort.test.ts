@@ -113,6 +113,13 @@ describe("the sorting prompt", () => {
     });
   });
 
+  it("says that a passkey or sign-in wait runs out, so the agent has to start again (issue #91)", () => {
+    const { system } = sortingPrompt(rules, ask);
+    expect(system).toMatch(/passkey/u);
+    expect(system).toMatch(/times out/u);
+    expect(system).toMatch(/set the work up again/u);
+  });
+
   it("asks for a shorter reason than the limit, since the model runs past what it is asked", () => {
     const { system } = sortingPrompt(rules, ask);
     expect(reasonAsked).toBeLessThan(reasonLimit);

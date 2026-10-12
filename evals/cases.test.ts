@@ -67,4 +67,22 @@ describe("the core eval set", () => {
     expect(evalRules.text).toMatch(/#admin is my own accounts/u);
     expect(expected).toEqual({ hashtags: [["shop"]], level: "high" });
   });
+
+  it("holds waits that run out without saying so, and a passkey ask that can wait", () => {
+    const named = (name: string) => cases.find((one) => one.name === name);
+    for (const name of [
+      "the passkey ask",
+      "a sign-in code for the school's payment site",
+    ]) {
+      const one = named(name);
+      expect(one?.expected.level, name).toBe("high");
+      // The prompt has to know such a wait runs out. The ask does not say.
+      expect(one?.ask.spokenDetail, name).not.toMatch(
+        /expire|time[sd]? out|run[s]? out|minute/iu,
+      );
+    }
+    expect(named("a passkey to set up when it suits")?.expected.level).toBe(
+      "low",
+    );
+  });
 });
