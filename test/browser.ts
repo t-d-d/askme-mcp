@@ -59,7 +59,9 @@ export interface PageOptions {
   api?: Record<string, unknown>;
   // Give the page Playwright's clock, which runs as usual until a test
   // moves it on with page.clock. Given a time, the clock starts there.
-  clock?: boolean | Date;
+  // "stopped", it stands still from before the page loads, and moves only
+  // when a test moves it on.
+  clock?: boolean | Date | "stopped";
   // The browser's time zone, such as Europe/London. Without one it is the
   // machine's.
   timeZone?: string;
@@ -282,6 +284,13 @@ export async function openPage(
     await context.clock.install({ time: options.clock });
   } else if (options.clock === true) {
     await context.clock.install();
+  } else if (options.clock === "stopped") {
+    // Paused before there is a page, so it stops at this time exactly. A
+    // page's clock is running by the time a test could pause it, and a
+    // pause at a time already gone is refused.
+    const start = new Date();
+    await context.clock.install({ time: start });
+    await context.clock.pauseAt(start);
   }
   if (options.speech === "absent") {
     await context.addInitScript(() => {

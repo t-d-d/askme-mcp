@@ -41,4 +41,22 @@ describe("openPage", () => {
     }
     expect(late).toEqual([]);
   });
+
+  it("gives the page a stopped clock, which moves only when a test moves it on", async () => {
+    const open = await openPage(
+      inject("pageUrl"),
+      { width: 390, height: 844 },
+      { clock: "stopped" },
+    );
+    try {
+      const now = () => open.page.evaluate(() => Date.now());
+      const start = await now();
+      await new Promise((waited) => setTimeout(waited, 100));
+      expect(await now()).toBe(start);
+      await open.page.clock.runFor(1);
+      expect(await now()).toBe(start + 1);
+    } finally {
+      await open.close();
+    }
+  });
 });
