@@ -159,20 +159,21 @@
   font-weight: var(--weight-label);
 }
 
-.none {
-  margin: 0;
-  padding-top: var(--space-10);
-  border-top: var(--hairline) solid var(--line);
+.none,
+.footnote {
   color: var(--text-3);
   font-size: var(--size-meta-small);
   line-height: var(--leading-note);
 }
 
+.none {
+  margin: 0;
+  padding-top: var(--space-10);
+  border-top: var(--hairline) solid var(--line);
+}
+
 .footnote {
   margin: var(--space-10) 0 0;
-  color: var(--text-3);
-  font-size: var(--size-meta-small);
-  line-height: var(--leading-note);
 }
 
 @media (min-width: 768px) {

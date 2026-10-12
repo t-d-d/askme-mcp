@@ -94,7 +94,10 @@ function rulesSaveRefusal(secondsLeft: number): Response {
 
 // The account's hashtags as the page shows them: in the rules' order, each
 // with the colour it took when it first appeared.
-const hashtagsOf = ({ hashtags, seen }: AccountRules) =>
+const hashtagsOf = ({
+  hashtags,
+  seen,
+}: Pick<AccountRules, "hashtags" | "seen">) =>
   hashtags.map((name) => ({ name, colour: Math.max(0, seen.indexOf(name)) }));
 
 // The hashtags open asks still carry that the rules no longer name, because
@@ -102,9 +105,12 @@ const hashtagsOf = ({ hashtags, seen }: AccountRules) =>
 // colour it took when it first appeared.
 function formerHashtagsOf({ hashtags, seen }: AccountRules, asks: StoredAsk[]) {
   const carried = new Set(asks.flatMap(({ sort }) => sort?.hashtags ?? []));
-  return seen.flatMap((name, colour) =>
-    carried.has(name) && !hashtags.includes(name) ? [{ name, colour }] : [],
-  );
+  return hashtagsOf({
+    hashtags: seen.filter(
+      (name) => carried.has(name) && !hashtags.includes(name),
+    ),
+    seen,
+  });
 }
 
 const rulesView = (rules: AccountRules) =>
