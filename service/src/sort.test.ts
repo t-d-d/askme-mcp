@@ -113,12 +113,25 @@ describe("the sorting prompt", () => {
     });
   });
 
-  it("says that a passkey or sign-in wait runs out, so the agent has to start again (issue #91)", () => {
+  it("judges each level by what it would cost if the person never acted (issue #157)", () => {
     const { system } = sortingPrompt(rules, ask);
-    expect(system).toMatch(/passkey/u);
-    expect(system).toMatch(/sign-in/u);
-    expect(system).toMatch(/times out/u);
-    expect(system).toMatch(/set the work up again/u);
+    expect(system).toContain("what it would cost if the person never acted");
+    for (const level of levels) {
+      expect(system).toMatch(
+        new RegExp(`^${level}: never acting would `, "mu"),
+      );
+    }
+  });
+
+  it("gives no weight to time, which the page orders by on its own (issue #157)", () => {
+    const { system } = sortingPrompt(rules, ask);
+    expect(system).toContain("never how soon");
+    expect(system).toContain(
+      "give no weight to a date, a deadline or a time limit the ask names",
+    );
+    // The lines #91 added, and a deadline as a cost, are gone.
+    expect(system).not.toMatch(/deadline,|or a deadline/u);
+    expect(system).not.toMatch(/passkey|sign-in|times out/u);
   });
 
   it("asks for a shorter reason than the limit, since the model runs past what it is asked", () => {
