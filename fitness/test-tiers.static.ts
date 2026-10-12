@@ -327,6 +327,11 @@ describe("fitness: the live tier signs in as one account (test-tiers.md)", () =>
       'await box.fill("x" + (account));',
       'await box.fill([")", account].join(""));',
       'import { account as renamed } from "./account";',
+      'await box.fill("x".concat(account));',
+      'await box.fill("{}".replace("{}", account));',
+      'await box.fill("{}".replaceAll("{}", account));',
+      'await box.fill("".padStart(40, account));',
+      'await box.fill("".padEnd(40, account));',
     ];
     expect(builtFrom(builtOn.join("\n"), "account")).toEqual(builtOn);
   });
