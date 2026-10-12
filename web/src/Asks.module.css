@@ -29,6 +29,14 @@
   flex-direction: column;
 }
 
+/* On All clear the same lines sit at the foot of the screen, because All
+   clear fills the space above them. Their margin is the screen's space at
+   the foot, so All clear sits the same with them or without them, whichever
+   line comes first. */
+.foot {
+  margin-top: var(--space-foot);
+}
+
 .note {
   margin: var(--space-6) var(--space-text) 0;
   color: var(--text-3);
