@@ -47,7 +47,9 @@ async function openRules(
     session,
     api: { [pagePaths.rules]: rules, [pagePaths.asks]: list },
   });
-  await view.page.getByRole("heading", { name: "Your rules" }).waitFor();
+  await view.page
+    .getByRole("heading", { name: "Your rules", exact: true })
+    .waitFor();
   return view;
 }
 
@@ -210,7 +212,9 @@ describe("the rules screen", () => {
     await page.getByRole("link", { name: "All asks" }).click();
     expect(asked).toEqual(["Leave without saving your rules?"]);
     expect(
-      await page.getByRole("heading", { name: "Your rules" }).isVisible(),
+      await page
+        .getByRole("heading", { name: "Your rules", exact: true })
+        .isVisible(),
     ).toBe(true);
     page.once("dialog", (dialog) => {
       void dialog.accept();

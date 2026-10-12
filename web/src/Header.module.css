@@ -48,6 +48,8 @@
 .link {
   display: none;
   align-items: center;
+  justify-content: center;
+  min-width: var(--tap);
   min-height: var(--tap);
   color: var(--ink);
   font-weight: var(--weight-label);

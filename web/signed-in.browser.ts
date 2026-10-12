@@ -148,7 +148,9 @@ describe.each([
     } else {
       expect(await connect.isVisible()).toBe(false);
       await rules.click();
-      await page.getByRole("heading", { name: "Your rules" }).waitFor();
+      await page
+        .getByRole("heading", { name: "Your rules", exact: true })
+        .waitFor();
       expect(await connect.isVisible()).toBe(true);
       await page.getByRole("link", { name: "All asks" }).click();
       await page.getByRole("article").waitFor();

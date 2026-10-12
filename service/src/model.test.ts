@@ -68,7 +68,9 @@ const model = (
   });
 
 describe("a call to the model", () => {
-  it("sends one chat completion with the schema, no tools, and providers that keep no prompts", async () => {
+  // No temperature: with require_parameters, OpenRouter refuses the call when
+  // no endpoint takes it, and none for anthropic/claude-haiku-5.5 does.
+  it("sends one chat completion with the schema, no tools, no temperature, and providers that keep no prompts", async () => {
     const fake = fakeFetch(() => completion('{"level":"high"}'));
     await model(fake.fetch).reply(request);
     expect(fake.sent).toHaveLength(1);
@@ -91,7 +93,6 @@ describe("a call to the model", () => {
         zdr: true,
         require_parameters: true,
       },
-      temperature: 0,
       max_tokens: 200,
     });
   });

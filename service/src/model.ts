@@ -91,7 +91,6 @@ export function createModel(config: {
               zdr: true,
               require_parameters: true,
             },
-            temperature: 0,
             max_tokens: request.maxTokens,
           }),
           signal: AbortSignal.timeout(request.timeoutMs),
