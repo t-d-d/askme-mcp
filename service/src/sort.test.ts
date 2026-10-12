@@ -129,8 +129,10 @@ describe("the sorting prompt", () => {
     expect(system).toContain(
       "give no weight to a date, a deadline or a time limit the ask names",
     );
-    // The lines #91 added, and a deadline as a cost, are gone.
-    expect(system).not.toMatch(/deadline,|or a deadline/u);
+    // Nothing about time makes an ask high, and the lines #91 added are gone.
+    const high = /^high: .*$/mu.exec(system)?.[0];
+    expect(high).toBeDefined();
+    expect(high).not.toMatch(/deadline|soon|time/u);
     expect(system).not.toMatch(/passkey|sign-in|times out/u);
   });
 
