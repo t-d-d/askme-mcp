@@ -18,7 +18,11 @@ import {
   openRouterEndpoint,
 } from "../service/src/model";
 import { parseSortReply, sortingPrompt, type Sort } from "../service/src/sort";
-import { sortAttempts } from "../service/src/sorter";
+import {
+  sortAttempts,
+  sortMaxTokens,
+  sortTimeoutMs,
+} from "../service/src/sorter";
 import { cases, evalRules, type EvalCase } from "./cases";
 
 const env = process.env;
@@ -124,8 +128,8 @@ describe("the eval set against the real model", () => {
         const reply = await client.reply({
           ...prompt,
           schemaName: "sort",
-          maxTokens: 300,
-          timeoutMs: 60_000,
+          maxTokens: sortMaxTokens,
+          timeoutMs: sortTimeoutMs,
         });
         const sort = parseSortReply(reply, evalRules.hashtags);
         return sort === undefined
