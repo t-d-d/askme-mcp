@@ -186,7 +186,7 @@ A white screen. "All asks" at the top left goes back, and "Dismiss" is at the to
 5. The reason, under a hairline, in `--text-3`.
 6. At the foot, the main button, and under it an outlined "Reply in the session" button when the ask has both links.
 
-Swiping a row or the top card dismisses it. A note with "Undo" shows for a few seconds, and the dismissal is sent when it goes. If it fails, the card comes back with a note.
+Swiping a row or the top card dismisses it. A note with "Undo" shows for a few seconds, and the dismissal is sent when it goes. If it fails, the card comes back with a note. If another dismissal is waiting at the time, its clock stops while the failure note shows. Its note with "Undo" then comes back for the full few seconds.
 
 ### All clear
 
