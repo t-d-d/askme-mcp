@@ -39,11 +39,11 @@ import { useOpening } from "./useOpening";
 // and shows them, or hides them again. With every ask held and hidden the
 // list is all clear, and the line sits at its foot. If its control has focus
 // as the line moves, the control in its new place takes it. If the line goes
-// with none in its place, the selected tab just above it takes focus, or
-// with no tabs, as the list is all clear, the All clear headline. Once
-// nothing is held, held asks are hidden again when they are next held. A
-// held ask dismissed here is still held until askme drops it, so Undo brings
-// it back shown. A former hashtag has no hours, so it holds nothing back.
+// with none in its place, the selected tab takes focus, or with no tabs, as
+// the list is all clear, the All clear headline. Once nothing is held, held
+// asks are hidden again when they are next held. A held ask dismissed here
+// is still held until askme drops it, so Undo brings it back shown. A former
+// hashtag has no hours, so it holds nothing back.
 //
 // An ask the person has opened shows as opened, and one they have dismissed
 // leaves the list, before the next poll says so.
@@ -135,7 +135,7 @@ export function Asks({ card }: { card: string | null }) {
   // The tabs also go when a card opens, so this moves focus only onto All
   // clear, and only in the render the tabs went in. A held line's control
   // that goes with no other to take its place hands focus on in the same
-  // way, or to the selected tab while the tabs stay, and to none that comes
+  // way, or to the selected tab while there are tabs, and to none that comes
   // later. With a card open there is neither, so focus is left alone.
   useLayoutEffect(() => {
     if (allClear && (tabsHadFocus.current || heldHadFocus.current)) {
