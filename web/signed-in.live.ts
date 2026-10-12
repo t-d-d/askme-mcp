@@ -129,11 +129,10 @@ describe("fitness: a person can sign in and out on the live page (test-tiers.md)
         .getByRole("link", { name: "Rules", exact: true })
         .click({ timeout: stepMs })
         .catch(failsWith(page, "The header showed no way to the rules."));
-      expect(
-        await page
-          .getByText(`Signed in as ${testAddress}`, { exact: true })
-          .isVisible(),
-      ).toBe(true);
+      // The address is used as it is, never built on (test-tiers.md).
+      const account = page.getByText(testAddress);
+      expect(await account.isVisible()).toBe(true);
+      expect(await account.innerText()).toMatch(/^Signed in as /u);
       await page.getByRole("button", { name: "Sign out" }).click();
       const signIn = page.getByRole("button", { name: "Sign in" });
       await signIn
