@@ -124,14 +124,21 @@ describe("fitness: a person can sign in and out on the live page (test-tiers.md)
   it(
     "signs out from the rules and shows the signed-out page",
     async () => {
-      await page.getByRole("link", { name: "All asks" }).click();
+      await page
+        .getByRole("link", { name: "All asks" })
+        .click({ timeout: stepMs })
+        .catch(failsWith(page, "Connect your agents showed no All asks link."));
       await page
         .getByRole("link", { name: "Rules", exact: true })
         .click({ timeout: stepMs })
         .catch(failsWith(page, "The header showed no way to the rules."));
       // The address is used as it is, never built on (test-tiers.md).
       const account = page.getByText(testAddress);
-      expect(await account.isVisible()).toBe(true);
+      await account
+        .waitFor({ timeout: stepMs })
+        .catch(
+          failsWith(page, "The rules did not name the signed-in account."),
+        );
       expect(await account.innerText()).toMatch(/^Signed in as /u);
       await page.getByRole("button", { name: "Sign out" }).click();
       const signIn = page.getByRole("button", { name: "Sign in" });

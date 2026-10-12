@@ -63,10 +63,14 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
     else event.preventDefault();
   };
 
-  // Signing out leaves the rules too, so unsaved text asks first. The screen
-  // goes from the address, so whoever signs in next starts at the list.
+  // Signing out leaves the rules too, so unsaved text asks first, and once
+  // the person agrees they are not asked again. The screen goes from the
+  // address, so whoever signs in next starts at the list.
   const signOut = () => {
-    if (changed && !window.confirm(leaving)) return;
+    if (changed) {
+      if (!window.confirm(leaving)) return;
+      askFirst(null);
+    }
     const { pathname, search } = window.location;
     window.history.replaceState(null, "", pathname + search);
     auth.signOut();
