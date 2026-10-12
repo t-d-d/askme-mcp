@@ -8,7 +8,13 @@ type Screen = "asks" | "connect" | "rules";
 
 // A screen with unsaved work gives the question to ask before it is left,
 // and null once it can be left without asking.
-type AskFirst = (question: string | null) => void;
+export type AskFirst = (question: string | null) => void;
+
+// Where this page's entry sits in the history, where the browser can say.
+const historyIndex = (): number | null =>
+  "navigation" in window
+    ? (window.navigation.currentEntry?.index ?? null)
+    : null;
 
 // The page is static files with no router (ADR 5), so its screens are
 // named in the address's fragment: #connect, #rules, and anything else for
@@ -17,14 +23,29 @@ function useScreen(): { screen: Screen; askFirst: AskFirst } {
   const [hash, setHash] = useState(() => window.location.hash);
   const question = useRef<string | null>(null);
   useEffect(() => {
+    let at = historyIndex();
+    let returning = false;
     // A link, Back or a typed address has changed the fragment before the
-    // page hears of it. If the person stays, the old address comes back
-    // and the screen is left as it was.
+    // page hears of it. If the person stays, the page goes back to the
+    // entry they were on, so the history is left as it was. A browser that
+    // cannot say where that entry is gets the old address as a new entry.
     const follow = (event: HashChangeEvent) => {
-      if (question.current !== null && !window.confirm(question.current)) {
-        window.history.pushState(null, "", event.oldURL);
+      if (returning) {
+        returning = false;
         return;
       }
+      const here = historyIndex();
+      if (question.current !== null && !window.confirm(question.current)) {
+        if (at !== null && here !== null && at !== here) {
+          returning = true;
+          window.history.go(at - here);
+        } else {
+          window.history.pushState(null, "", event.oldURL);
+          at = historyIndex();
+        }
+        return;
+      }
+      at = here;
       setHash(window.location.hash);
       window.scrollTo(0, 0);
     };

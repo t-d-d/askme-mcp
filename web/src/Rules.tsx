@@ -7,6 +7,7 @@ import {
 } from "react";
 import { rulesLimit } from "../../shared/page-api";
 import { Refusal } from "./load";
+import type { AskFirst } from "./SignedIn";
 import { colourOf, tagColour } from "./palette";
 import styles from "./Rules.module.css";
 import { useRules } from "./useRules";
@@ -17,11 +18,7 @@ const leaving = "Leave without saving your rules?";
 // from them. Saving waits while askme reads them. If it cannot, the text is
 // saved all the same, the old hashtags stay, and the page offers to try
 // again.
-export function Rules({
-  askFirst,
-}: {
-  askFirst: (question: string | null) => void;
-}) {
+export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const { loaded, save } = useRules();
   const { data, failed } = loaded;
   const boxId = useId();
@@ -48,8 +45,15 @@ export function Rules({
   }, [changed, askFirst]);
   // This screen's own links ask before the address changes, so staying adds
   // nothing to the history. Once the person agrees, they are not asked again.
+  // A link opened in a new tab or window leaves nothing, so it does not ask.
   const away = (event: MouseEvent) => {
-    if (!changed) return;
+    const elsewhere =
+      event.button !== 0 ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      event.altKey;
+    if (!changed || elsewhere) return;
     if (window.confirm(leaving)) askFirst(null);
     else event.preventDefault();
   };
