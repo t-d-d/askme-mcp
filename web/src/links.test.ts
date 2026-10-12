@@ -25,15 +25,15 @@ describe("what the main button says for an action link", () => {
     "https://github.com/t-d-d/askme-mcp/pull/12/files",
     "https://github.com/t-d-d/askme-mcp/pull/12#discussion_r1",
     "https://www.github.com/t-d-d/askme-mcp/pull/12",
-  ])("is See pull request for %s", (link) => {
-    expect(actionLabel(link)).toBe("See pull request");
+  ])("is Pull request for %s", (link) => {
+    expect(actionLabel(link)).toBe("Pull request");
   });
 
   it.each([
     "https://github.com/t-d-d/askme-mcp/issues/7",
     "https://github.com/t-d-d/askme-mcp/issues/7#issuecomment-1",
-  ])("is See issue for %s", (link) => {
-    expect(actionLabel(link)).toBe("See issue");
+  ])("is Issue for %s", (link) => {
+    expect(actionLabel(link)).toBe("Issue");
   });
 
   it.each([
@@ -53,7 +53,7 @@ describe("what the main button says for an action link", () => {
 
   it("never uses words from the link itself", () => {
     expect(
-      actionLabel("https://example.com/Approve%20now?label=See+pull+request"),
+      actionLabel("https://example.com/Approve%20now?label=Pull+request"),
     ).toBe("Go to example.com");
   });
 });
@@ -64,14 +64,14 @@ describe("where an ask's buttons lead", () => {
 
   it("leads the main button to the action link, with a second control for the session, when the ask has both", () => {
     expect(destinations({ actionLink: action, sessionLink: session })).toEqual({
-      main: { href: action, label: "See pull request", site: "github.com" },
+      main: { href: action, label: "Pull request", site: "github.com" },
       session: { href: session, label: sessionLabel, site: "claude.ai" },
     });
   });
 
   it("leads the main button to the action link alone", () => {
     expect(destinations({ actionLink: action })).toEqual({
-      main: { href: action, label: "See pull request", site: "github.com" },
+      main: { href: action, label: "Pull request", site: "github.com" },
     });
   });
 

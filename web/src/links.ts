@@ -14,8 +14,8 @@ export function siteOf(link: string): string {
 
 // The shapes askme recognises: a GitHub pull request or issue, by number.
 const shapes = [
-  { kind: "pull", label: "See pull request" },
-  { kind: "issues", label: "See issue" },
+  { kind: "pull", label: "Pull request" },
+  { kind: "issues", label: "Issue" },
 ] as const;
 
 // What the main button says for an action link: what it is, when askme
