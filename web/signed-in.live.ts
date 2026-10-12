@@ -153,7 +153,8 @@ async function signUp(page: Page): Promise<Attempt> {
 
 // An attempt that one of Clerk's screens started: Clerk's answer to it, and
 // Clerk's answer when the screen asks for the code to be sent, or undefined
-// if the screen did not ask within a step's time.
+// if the screen did not ask within two steps' time: one for Clerk to answer
+// the attempt, one for the code screen to ask.
 interface Attempt {
   answer: Response;
   codeSent: Promise<Response | undefined>;
@@ -179,7 +180,7 @@ async function giveAddress(
           sendCode.test(pathname)
         );
       },
-      { timeout: stepMs },
+      { timeout: 2 * stepMs },
     )
     .catch(() => undefined);
   const [answer] = await Promise.all([
@@ -208,9 +209,6 @@ async function giveCode(
     .getByRole("textbox", { name: "verification code" })
     .or(page.locator('input[autocomplete="one-time-code"]'))
     .first();
-  await field
-    .waitFor({ timeout: stepMs })
-    .catch(failsWith(page, "Clerk's screen asked for no code."));
   const sent = await codeSent;
   if (sent === undefined) {
     throw new Error(
@@ -221,6 +219,9 @@ async function giveCode(
     const [error] = refusal.parse(await sent.json()).errors;
     throw new Error(`Clerk did not send the code. ${said(error)}`);
   }
+  await field
+    .waitFor({ timeout: stepMs })
+    .catch(failsWith(page, "Clerk's screen asked for no code."));
   await field.click();
   await page.keyboard.type(testCode);
 }
