@@ -10,10 +10,12 @@ import {
   type PageAsk,
 } from "../shared/page-api";
 import {
+  allClearGaps,
   Answering,
   answerPoll,
   openPage,
   Status,
+  underTheNote,
   type OpenPage,
   type PageOptions,
 } from "../test/browser";
@@ -77,17 +79,20 @@ afterEach(async () => {
   view = undefined;
 });
 
-// The page with a list, and the API taking every change to an ask. With
-// the clock, time jumps a minute once the list shows, then stands still
-// until a test moves it. The clock runs until the pause, and a pause aimed at
-// a moment already gone throws, so it aims further ahead than
-// vitest.config.ts lets a browser test run.
+// The page with a list, on a phone unless another screen is given, and the
+// API taking every change to an ask. With the clock, time jumps a minute
+// once the list shows, then stands still until a test moves it. The clock
+// runs until the pause, and a pause aimed at a moment already gone throws,
+// so it aims further ahead than vitest.config.ts lets a browser test run.
 async function open(
   list: AsksAnswer,
-  options: PageOptions & { change?: unknown } = {},
+  options: PageOptions & {
+    change?: unknown;
+    screen?: { width: number; height: number };
+  } = {},
 ): Promise<OpenPage> {
-  const { change = new Status(204), ...rest } = options;
-  view = await openPage(inject("pageUrl"), phone, {
+  const { change = new Status(204), screen = phone, ...rest } = options;
+  view = await openPage(inject("pageUrl"), screen, {
     session,
     speech: "recorded",
     ...rest,
@@ -676,6 +681,45 @@ describe("dismissing", () => {
     expect((main?.y ?? 0) + (main?.height ?? 0)).toBeLessThanOrEqual(
       note?.y ?? 0,
     );
+  });
+
+  // The note shows as the last ask goes, and goes a few seconds later. At
+  // 360 by 580 there is room to hold the headline, but little to spare.
+  it.each([
+    ["390 by 844", phone],
+    ["360 by 690", { width: 360, height: 690 }],
+    ["360 by 580", { width: 360, height: 580 }],
+  ])(
+    "leaves All clear's headline where it is on a %s screen while the note shows and after it goes",
+    async (_, screen) => {
+      const opened = await open(listOf(neither), { clock: true, screen });
+      const { page } = opened;
+      await swipe(opened, page.getByRole("article"));
+      await page.getByRole("heading", { name: "All clear." }).waitFor();
+      await page.getByRole("button", { name: "Undo" }).waitFor();
+      const { last, note } = await underTheNote(page);
+      expect(last).toBeLessThanOrEqual(note);
+      const noted = await allClearGaps(page);
+      await page.clock.runFor(undoMs + 500);
+      await page.getByRole("status").waitFor({ state: "hidden" });
+      const gone = await allClearGaps(page);
+      expect(Math.abs(noted.above - gone.above)).toBeLessThanOrEqual(1);
+    },
+  );
+
+  // Some are too short to hold the headline where it is, and some too short
+  // for All clear at all, so the page scrolls.
+  it("keeps All clear's last line clear of the note on short screens", async () => {
+    const opened = await open(listOf(neither), { clock: true });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    for (const height of [400, 480, 560, 640]) {
+      await page.setViewportSize({ width: 360, height });
+      const { last, note } = await underTheNote(page);
+      expect(last).toBeLessThanOrEqual(note);
+    }
   });
 
   it("still opens a row's card from the keyboard after a short touch drag that went back", async () => {

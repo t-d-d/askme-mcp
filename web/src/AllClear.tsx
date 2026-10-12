@@ -14,10 +14,17 @@ const lines = [
 const thisVisit = lines[Math.floor(Math.random() * lines.length)];
 
 // Shown when nothing is waiting and the account has had an ask before. The
-// page can move focus to the headline, though Tab never stops there.
-export function AllClear({ ref }: { ref?: Ref<HTMLHeadingElement> }) {
+// page can move focus to the headline, though Tab never stops there. While a
+// note shows at the foot of the screen, the headline stays where it is.
+export function AllClear({
+  noted,
+  ref,
+}: {
+  noted: boolean;
+  ref?: Ref<HTMLHeadingElement>;
+}) {
   return (
-    <main className={styles.allClear}>
+    <main className={styles.allClear} data-noted={noted ? "" : undefined}>
       <h1 className={styles.headline} ref={ref} tabIndex={-1}>
         All clear.
       </h1>

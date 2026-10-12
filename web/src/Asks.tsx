@@ -212,7 +212,7 @@ export function Asks({ card }: { card: string | null }) {
             </main>
           ) : data.everAsked ? (
             <>
-              <AllClear ref={headline} />
+              <AllClear noted={noted} ref={headline} />
               {allClear && heldHere > 0 && heldLine(true)}
             </>
           ) : (
