@@ -479,7 +479,7 @@ describe("signing out", () => {
   it("names the account at the foot of the rules, with Sign out beside it", async () => {
     view = await openRules(saved);
     const { page } = view;
-    const account = page.getByText(`Signed in as ${email}`, { exact: true });
+    const account = page.getByText(email, { exact: true });
     const signOut = page.getByRole("button", { name: "Sign out" });
     expect(await account.isVisible()).toBe(true);
     expect(await signOut.isVisible()).toBe(true);
@@ -500,8 +500,58 @@ describe("signing out", () => {
       api: { [pagePaths.rules]: saved, [pagePaths.asks]: list },
     });
     const { page } = view;
-    await page.getByRole("button", { name: "Sign out" }).waitFor();
-    expect(await page.getByText("Signed in as").count()).toBe(0);
+    const signOut = page.getByRole("button", { name: "Sign out" });
+    await signOut.waitFor();
+    expect(await signOut.locator("..").innerText()).toBe("Sign out");
+  });
+
+  // Opens the rules at phone width for an account with this address, and
+  // measures the foot: the address, Sign out beside it, and one line of
+  // the address's text.
+  async function footFor(address: string) {
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      email: address,
+      api: { [pagePaths.rules]: saved, [pagePaths.asks]: list },
+    });
+    const { page } = view;
+    const account = page.getByText(address, { exact: true });
+    const signOut = page.getByRole("button", { name: "Sign out" });
+    await account.waitFor();
+    const [named, button] = await Promise.all([
+      account.boundingBox(),
+      signOut.boundingBox(),
+    ]);
+    if (named === null || button === null) {
+      throw new Error("The foot showed no account or no Sign out.");
+    }
+    const line = await account.evaluate((element) =>
+      parseFloat(getComputedStyle(element).lineHeight),
+    );
+    expect(button.y).toBeLessThan(named.y + named.height);
+    expect(named.y).toBeLessThan(button.y + button.height);
+    expect(button.x).toBeGreaterThanOrEqual(named.x + named.width);
+    return { page, named, line };
+  }
+
+  // An address of a common length, such as a 23-letter Gmail address, fits
+  // on the line beside Sign out at phone width, and so does one a little
+  // longer.
+  it("keeps an address of 30 characters on one line, with Sign out beside it", async () => {
+    const { named, line } = await footFor("samantha.okonkwo-r@example.com");
+    expect(named.height).toBeLessThan(2 * line);
+  });
+
+  // A long address wraps in its own column, and Sign out stays on its line
+  // rather than dropping below it or pushing the page sideways.
+  it("wraps a long address beside Sign out, with no sideways scroll", async () => {
+    const { page, named, line } = await footFor(
+      "samantha.okonkwo-richardson.accounts-payable@example-company.com",
+    );
+    expect(named.height).toBeGreaterThanOrEqual(2 * line);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(phone.width);
   });
 
   it("signs out through Clerk and shows the signed-out page, with no screen in the address", async () => {

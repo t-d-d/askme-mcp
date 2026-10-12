@@ -193,11 +193,11 @@
   margin: var(--space-10) 0 0;
 }
 
-/* Under a hairline at the foot: the account at the left, Sign out at the
-   right. A long address wraps rather than pushing the page sideways. */
+/* Under a hairline at the foot: the address at the left, Sign out at the
+   right. A long address wraps in its own column rather than pushing Sign
+   out down or the page sideways. */
 .account {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   column-gap: var(--space-16);
   margin: var(--space-26) var(--space-text) 0;
@@ -206,6 +206,7 @@
 }
 
 .signedIn {
+  flex: 1;
   min-width: 0;
   margin: 0;
   color: var(--text-3);
@@ -215,6 +216,7 @@
 }
 
 .signOut {
+  flex: none;
   min-width: var(--tap);
   min-height: var(--tap);
   margin-left: auto;
