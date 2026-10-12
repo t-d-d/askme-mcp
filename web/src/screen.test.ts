@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { cardHref, cardIn } from "./screen";
+import { cardHref, cardIn, screenIn } from "./screen";
+
+describe("the screen the address names", () => {
+  it.each([
+    ["#connect", "connect"],
+    ["#rules", "rules"],
+    ["", "asks"],
+    ["#asks", "asks"],
+    ["#ask/a1_B-2", "asks"],
+    ["#Rules", "asks"],
+  ])("is, for %j, %s", (hash, screen) => {
+    expect(screenIn(hash)).toBe(screen);
+  });
+});
 
 describe("the open card's address", () => {
   it("names the ask whose card is open", () => {

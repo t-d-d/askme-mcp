@@ -139,14 +139,16 @@ async function swipe(
   await mouse.up();
 }
 
+const hasFocus = (control: ReturnType<OpenPage["page"]["locator"]>) =>
+  control.evaluate((element) => element === document.activeElement);
+
 // Presses Tab until a control has the focus, as a keyboard user reaches it.
 async function tabTo(
   opened: OpenPage,
   control: ReturnType<OpenPage["page"]["locator"]>,
 ) {
   for (let presses = 0; presses < 20; presses += 1) {
-    if (await control.evaluate((element) => element === document.activeElement))
-      return;
+    if (await hasFocus(control)) return;
     await opened.page.keyboard.press("Tab");
   }
   throw new Error("Tab never reached the control.");
@@ -827,4 +829,130 @@ describe("dismissing", () => {
     expect(await page.getByText(both.summary).count()).toBe(0);
     expect(await page.getByRole("status").count()).toBe(0);
   });
+});
+
+describe("going back to the list from a card", () => {
+  const desktop = { width: 1280, height: 800 };
+  // A list longer than the screen: the top card and nineteen rows, in the
+  // order given.
+  const long = Array.from({ length: 20 }, (_, index) =>
+    ask(
+      `ask${String(index)}`,
+      `Ask number ${String(index + 1)}`,
+      (60 - index) * minute,
+    ),
+  );
+  const twelfthRow = (opened: OpenPage) =>
+    opened.page.getByRole("listitem").nth(11);
+  const summaryOf = (opened: OpenPage, summary: string) =>
+    opened.page.getByRole("article").getByRole("link", { name: summary });
+  const scrolled = (opened: OpenPage) =>
+    opened.page.evaluate(() => window.scrollY);
+
+  // Scrolls the twelfth row into view and opens its card, which starts at
+  // the top. Gives where the list was.
+  async function openTwelfth(opened: OpenPage) {
+    const row = twelfthRow(opened);
+    await row.scrollIntoViewIfNeeded();
+    const at = await scrolled(opened);
+    expect(at).toBeGreaterThan(0);
+    await row.getByRole("link").click();
+    await opened.page.getByRole("link", { name: "All asks" }).waitFor();
+    expect(await scrolled(opened)).toBe(0);
+    return at;
+  }
+
+  async function dismissCard(opened: OpenPage) {
+    await opened.page.getByRole("button", { name: "Dismiss" }).click();
+    await opened.page.getByRole("button", { name: "Undo" }).waitFor();
+  }
+
+  const goBack = {
+    "All asks": (opened: OpenPage) =>
+      opened.page.getByRole("link", { name: "All asks" }).click(),
+    Back: (opened: OpenPage) => opened.page.goBack(),
+  };
+
+  it.each(["All asks", "Back"] as const)(
+    "with %s leaves the list where it was, and focus on the row that opened the card",
+    async (way) => {
+      const opened = await open(listOf(...long));
+      const at = await openTwelfth(opened);
+      await goBack[way](opened);
+      await opened.page.getByRole("article").waitFor();
+      expect(await scrolled(opened)).toBe(at);
+      expect(await hasFocus(twelfthRow(opened).getByRole("link"))).toBe(true);
+    },
+  );
+
+  it.each(["All asks", "Back"] as const)(
+    "with %s puts focus on the top card's summary when it opened the card",
+    async (way) => {
+      const opened = await open(listOf(both, sessionOnly, neither));
+      await summaryOf(opened, both.summary).click();
+      await opened.page.getByRole("link", { name: "All asks" }).waitFor();
+      await goBack[way](opened);
+      await opened.page.getByRole("article").waitFor();
+      expect(await hasFocus(summaryOf(opened, both.summary))).toBe(true);
+    },
+  );
+
+  it("after Dismiss leaves the list where it was, and focus on the next row", async () => {
+    const opened = await open(listOf(...long));
+    const at = await openTwelfth(opened);
+    await dismissCard(opened);
+    expect(await scrolled(opened)).toBe(at);
+    const next = twelfthRow(opened);
+    expect((await next.innerText()).split("\n")[0]).toBe("Ask number 14");
+    expect(await hasFocus(next.getByRole("link"))).toBe(true);
+  });
+
+  it.each([
+    ["the last row", [both, sessionOnly, neither]],
+    ["the only row", [both, sessionOnly]],
+  ])(
+    "after Dismiss of %s puts focus on the top card's summary",
+    async (_, asks) => {
+      const opened = await open(listOf(...asks));
+      await opened.page.getByRole("listitem").last().getByRole("link").click();
+      await dismissCard(opened);
+      expect(await hasFocus(summaryOf(opened, both.summary))).toBe(true);
+    },
+  );
+
+  it("after Dismiss of the top card's ask puts focus on the summary of the ask after it, now on top", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither));
+    await summaryOf(opened, both.summary).click();
+    await dismissCard(opened);
+    expect(await hasFocus(summaryOf(opened, sessionOnly.summary))).toBe(true);
+  });
+
+  // The header's link is followed where it is, so the test scrolls nothing.
+  it.each([
+    ["the rules", phone, "Rules", "Your rules"],
+    ["Connect your agents", desktop, "Connect agents", "Connect your agents"],
+  ])(
+    "leaves the list for %s at the top",
+    async (_, viewport, link, heading) => {
+      view = await openPage(inject("pageUrl"), viewport, {
+        session,
+        api: {
+          [pagePaths.asks]: listOf(...long),
+          [pagePaths.rules]: { text: "", hashtags: [], readFailed: false },
+          [pagePaths.connection]: {
+            mcpUrl: "https://abc123.execute-api.us-east-1.amazonaws.com/mcp",
+          },
+        },
+      });
+      const { page } = view;
+      await page.getByRole("article").waitFor();
+      await page.evaluate(() => {
+        window.scrollTo(0, 400);
+      });
+      expect(await scrolled(view)).toBe(400);
+      await page.getByRole("link", { name: link }).dispatchEvent("click");
+      await page.getByRole("heading", { name: heading, exact: true }).waitFor();
+      expect(await scrolled(view)).toBe(0);
+    },
+  );
 });
