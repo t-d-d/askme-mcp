@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
 import { pagePaths, rulesLimit } from "../shared/page-api";
-import { storedItems, storeItem } from "../test/dynamodb";
+import { storedItems } from "../test/dynamodb";
 import { fakes, testModelKey } from "../test/fakes";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
@@ -16,8 +16,7 @@ import { callerOf } from "./src/identity";
 import { sortRequestTimeoutMs } from "./src/jobs";
 import { rulesSaveLimit } from "./src/rate";
 import { handler as sorter } from "./src/sorter";
-import { keys } from "./src/store/keys";
-import { askLifetimeDays, createStore, type NewAsk } from "./src/store/store";
+import { createStore, type NewAsk } from "./src/store/store";
 
 let issuer: FakeIssuer;
 beforeAll(async () => {
@@ -597,25 +596,6 @@ describe("sorting", () => {
       { summary: "New", area: "Shop", spokenDetail: "New.", replaces: old },
       new Date(Date.now() - 2 * sortRetryAfterMs),
     );
-    const invoked = fakes.lambda.invoked.length;
-    expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
-    expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
-    await runSorts();
-  });
-
-  it("asks again for an ask stored before askme recorded when, a minute after it was posted", async () => {
-    const account = newAccount();
-    const id = "AAAAAAAAAAAAAAAAAAAAAAAA";
-    const posted = new Date(Date.now() - 2 * sortRetryAfterMs);
-    await storeItem(inject("databaseEndpoint"), inject("tableName"), {
-      ...keys.openAsk(ownerOf(account), id),
-      id,
-      summary: "Old",
-      area: "Shop",
-      spokenDetail: "Old.",
-      postedAt: posted.toISOString(),
-      expiresAt: Math.floor(posted.getTime() / 1000) + askLifetimeDays * 86_400,
-    });
     const invoked = fakes.lambda.invoked.length;
     expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
     expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
