@@ -285,11 +285,7 @@ describe("the order of the list as asks near the time they lapse", () => {
       ask("low-in-25h", 1 * minute, sorted("low"), 25 * hour),
     ];
     expect(order(asks)).toEqual(["high", "old", "low-in-25h"]);
-    expect(order(asks, now + 2 * hour)).toEqual([
-      "high",
-      "low-in-25h",
-      "old",
-    ]);
+    expect(order(asks, now + 2 * hour)).toEqual(["high", "low-in-25h", "old"]);
     expect(order(asks, now + 24 * hour + 1)).toEqual([
       "low-in-25h",
       "high",
