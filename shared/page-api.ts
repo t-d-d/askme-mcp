@@ -84,6 +84,11 @@ const link = z.url({ protocol: /^https$/u });
 // sort: its hashtags, in the rules' order, its level, and the model's one
 // line on why. An ask not sorted yet carries null.
 //
+// An ask behind the rules, not sorted yet or sorted with rules saved
+// before, carries the time it turns from sorting to stopped (ADR 22). The
+// page works out which it is as time passes, with no new poll. An ask
+// sorted with the rules in force carries none.
+//
 // Saving the rules sorts every open ask again, and each keeps its old sort
 // until then, so an ask can carry a hashtag the rules no longer name. Those
 // are the former hashtags, each with its colour. They have no tab, and no
@@ -108,6 +113,7 @@ export const asksAnswer = z.object({
       postedAt: z.iso.datetime(),
       lapsesAt: z.iso.datetime().optional(),
       opened: z.boolean(),
+      sortingUntil: z.iso.datetime().optional(),
       sort: z
         .object({
           hashtags: z.array(z.string()),

@@ -54,22 +54,24 @@ export const events = [
   // A poll came over the account's limit for the minute, and was refused
   // with rate_limited. Expected, so logged at info.
   "poll-limited",
-  // The service could not hand an ask to the sorter, when it was posted or
+  // The sort queue did not take an ask's job, when the ask was posted or
   // the rules were saved. The ask keeps what it had, unsorted or its old
-  // sort, and a later poll asks again. Logged at warn.
+  // sort, and shows as stopped once its time is up. Logged at warn.
   "sort-request-failed",
-  // A poll found an ask not yet sorted with the rules in force a while
-  // after it was last handed to the sorter, and asked for it to be sorted
-  // again.
+  // A sort failed, by the model or by askme, and its job went back to the
+  // queue to be delivered again a few minutes later.
   "sort-retried",
   // An ask was sorted, and its sort stored.
   "ask-sorted",
-  // The model gave no reply that fitted, after every try, so the ask keeps
-  // what it had, unsorted or its old sort, until a poll asks again. Logged
-  // at warn.
+  // A sort failed on its job's last delivery, or a delivery past the last
+  // came, so the job was let go. The ask keeps what it had, unsorted or its
+  // old sort, until the rules are saved again. Logged at warn.
   "sort-failed",
   // The rules were saved, and the hashtags read from them.
   "rules-saved",
+  // The rules were saved unchanged, after a reading that succeeded, so
+  // askme read nothing and queued only the asks behind them.
+  "rules-resaved",
   // The rules were saved, but the model could not read them, so the old
   // hashtags stay. Logged at warn.
   "rules-read-failed",

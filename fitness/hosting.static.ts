@@ -114,6 +114,12 @@ describe("fitness: nothing runs continuously (hosting.md)", () => {
     "AWS::S3::BucketPolicy",
     "AWS::SNS::Subscription",
     "AWS::SNS::Topic",
+    // The sort queue is billed per request, but Lambda polls it for the
+    // sort function's trigger even while it is empty, and those requests
+    // are billed too. They are the one idle cost hosting.md allows. Its
+    // policy costs nothing.
+    "AWS::SQS::Queue",
+    "AWS::SQS::QueuePolicy",
   ]);
 
   // An alarm is billed by the month, for each metric it reads, past

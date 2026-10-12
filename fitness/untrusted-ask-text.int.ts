@@ -5,10 +5,11 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
-import { handler as sorter, sortAttempts } from "../service/src/sorter";
+import { sortAttempts } from "../service/src/sorter";
 import { pagePaths } from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
 import { fakes, type ModelCall } from "../test/fakes";
+import { runSorts } from "../test/sorts";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, origin } from "../test/mcp";
@@ -69,9 +70,6 @@ async function callTool(sub: string, name: string, args: object) {
     await client.close();
   }
 }
-
-const runSorts = () =>
-  fakes.lambda.drain((payload) => sorter(payload, { awsRequestId: "sort-1" }));
 
 // The sorting calls the model received for one ask, found by its summary.
 const sortingCallsFor = (summary: string): ModelCall[] =>

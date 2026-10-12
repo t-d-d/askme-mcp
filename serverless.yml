@@ -26,8 +26,8 @@ provider:
     CLERK_ISSUER: ${env:CLERK_ISSUER}
     # The one table (ADR 13).
     TABLE_NAME: !Ref Table
-    # The function that sorts an ask after it is posted.
-    SORT_FUNCTION: ${self:service}-${sls:stage}-sort
+    # The queue that hands asks to the sort function (ADR 22).
+    SORT_QUEUE: !Ref SortQueue
     # The name of the service's OpenRouter key in Parameter Store, which
     # issue #1 fixed. The functions read the key when they first need it,
     # so it is in neither this file nor their settings.
@@ -53,11 +53,12 @@ provider:
           Action:
             - ssm:GetParameter
           Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/askme/openrouter/api-key"
-        # Handing a posted ask to the sort function.
+        # Queueing an ask's sort (ADR 22). The framework lets the sort
+        # function's trigger read the queue by itself.
         - Effect: Allow
           Action:
-            - lambda:InvokeFunction
-          Resource: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${sls:stage}-sort"
+            - sqs:SendMessage
+          Resource: !GetAtt SortQueue.Arn
 
 build:
   esbuild:
@@ -87,15 +88,26 @@ functions:
       - httpApi: "POST /api/asks/samples"
 
   # Sorts one ask after the service has stored it and answered, so posting
-  # never waits on the model. The mcp function invokes it asynchronously,
-  # with an ask's id, for a new ask and for every open ask when the rules
-  # are saved. It has no route. A sort that fails leaves the ask as it was,
-  # and a later poll asks again, so Lambda does not retry it.
+  # never waits on the model. The mcp function queues a job, with an ask's
+  # id, for a new ask and for the open asks when the rules are saved, and
+  # the queue is this function's only trigger (ADR 22). It has no route. A
+  # sort that fails is reported to the queue as a failed message, never
+  # thrown, and the queue delivers it again once the message's visibility
+  # timeout ends. After the third delivery the function lets it go.
   sort:
     handler: service/src/sorter.handler
     # Two tries at the model, of up to 20 seconds each.
     timeout: 60
-    maximumRetryAttempts: 0
+    events:
+      # One message per run. At most five runs at once, to stay inside the
+      # model provider's rate limit. The limit is the trigger's, not the
+      # function's reserved concurrency, which would trip the
+      # function-failures alarm each time it throttled a run.
+      - sqs:
+          arn: !GetAtt SortQueue.Arn
+          batchSize: 1
+          maximumConcurrency: 5
+          functionResponseType: ReportBatchItemFailures
 
 resources:
   Resources:
@@ -120,6 +132,40 @@ resources:
         TimeToLiveSpecification:
           AttributeName: expiresAt
           Enabled: true
+
+    # Sort jobs (ADR 22). FIFO, with each ask as its own message group, so
+    # one ask's jobs run one after another and never at once. A received job
+    # is hidden for six times the sort function's timeout, as AWS advises,
+    # so a failed sort comes round again about six minutes later. No
+    # dead-letter queue: a sort that never works is a warn line. Billed per
+    # request, but Lambda polls it for the trigger even while it is empty,
+    # and AWS bills those polls too (hosting.md).
+    SortQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: askme-sort.fifo
+        FifoQueue: true
+        ContentBasedDeduplication: false
+        VisibilityTimeout: 360
+
+    # Only the service's own role may queue a job, so the account a job names
+    # always comes from the service that checked a token for it.
+    SortQueuePolicy:
+      Type: AWS::SQS::QueuePolicy
+      Properties:
+        Queues:
+          - !Ref SortQueue
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Sid: OnlyTheServiceQueuesSorts
+              Effect: Deny
+              Principal: "*"
+              Action: sqs:SendMessage
+              Resource: !GetAtt SortQueue.Arn
+              Condition:
+                ArnNotEquals:
+                  aws:PrincipalArn: !GetAtt IamRoleLambdaExecution.Arn
 
     # The page's static files. Private: only the distribution below reads it.
     WebBucket:
@@ -648,7 +694,7 @@ resources:
           filter message.event = "poll-limited"
           | stats count(*) as polls, count_distinct(message.accountId) as accounts by bin(1h)
 
-    # How often the service could not hand an ask to the sort function.
+    # How often the sort queue did not take an ask's job.
     SortRequestFailedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
@@ -660,7 +706,8 @@ resources:
           filter message.event = "sort-request-failed"
           | stats count(*) as failures by message.errorClass, bin(1h)
 
-    # How often a poll asked again for an ask left unsorted.
+    # How often a failed sort went back to the queue to be tried again, by
+    # why it failed.
     SortRetriedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
@@ -670,7 +717,7 @@ resources:
           - !Ref SortLogGroup
         QueryString: |
           filter message.event = "sort-retried"
-          | stats count(*) as retries, count_distinct(message.accountId) as accounts by bin(1h)
+          | stats count(*) as retries, count_distinct(message.accountId) as accounts by message.errorClass, bin(1h)
 
     AskSortedQuery:
       Type: AWS::Logs::QueryDefinition
@@ -683,8 +730,9 @@ resources:
           filter message.event = "ask-sorted"
           | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
 
-    # Sorts the model gave no fitting reply for, by why: a status, a
-    # timeout, or a reply the check discarded.
+    # Sorts let go after their last delivery, by why the last one failed: a
+    # status, a timeout, a reply the check discarded, a failure of askme's
+    # own, or deliveries-spent for a delivery past the last.
     SortFailedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
@@ -705,6 +753,18 @@ resources:
           - !Ref SortLogGroup
         QueryString: |
           filter message.event = "rules-saved"
+          | stats count(*) as saves, count_distinct(message.accountId) as accounts by bin(1d)
+
+    # Saves of unchanged rules, which sort again only the asks behind them.
+    RulesResavedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/rules-resaved
+        LogGroupNames:
+          - !Ref McpLogGroup
+          - !Ref SortLogGroup
+        QueryString: |
+          filter message.event = "rules-resaved"
           | stats count(*) as saves, count_distinct(message.accountId) as accounts by bin(1d)
 
     RulesReadFailedQuery:

@@ -12,7 +12,9 @@ import type { AskFirst } from "./SignedIn";
 import { hoursText } from "./hours";
 import { colourOf, tagColour } from "./palette";
 import styles from "./Rules.module.css";
+import { sortingState } from "./sorting";
 import { elsewhere, followToList } from "./toList";
+import { useAsks } from "./useAsks";
 import { browserTimeZone, useRules } from "./useRules";
 
 const leaving = "Leave without saving your rules?";
@@ -20,19 +22,38 @@ const leaving = "Leave without saving your rules?";
 // The rules: one box in plain English, and below it the hashtags askme read
 // from them, each with its hours. Saving waits while askme reads them. If
 // it cannot, the text is saved all the same, the old hashtags and hours
-// stay, and the page offers to try again. Either way, saving re-sorts every
-// open ask, and a last note says so, after the time zone the hours use. At
-// the foot, the address of the account signed in, and Sign out.
+// stay, and the page offers to try again. Either way, saving changed rules
+// re-sorts every open ask, and a last note says so, after the time zone the
+// hours use. At the foot, the address of the account signed in, and Sign
+// out.
+//
+// While some asks couldn't be sorted, "Save rules" works on unchanged text
+// too. When the last reading succeeded, that save reads nothing, and sorts
+// again only the asks still behind the rules (ADR 22). The screen polls the
+// list, as the list does, to know when asks stopped.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const auth = useAuth();
   const { loaded, save } = useRules();
   const { data, failed } = loaded;
+  const listed = useAsks();
   const boxId = useId();
   const readId = useId();
   // What the person has typed since the rules last loaded or saved.
   const [draft, setDraft] = useState<string | null>(null);
+  // Whether the last save sent the text unchanged, after a reading that
+  // succeeded, so askme sorts the asks again and reads nothing.
+  const [resorting, setResorting] = useState(false);
   const text = draft ?? data?.text ?? "";
   const changed = data !== undefined && draft !== null && draft !== data.text;
+  const stopped =
+    data !== undefined &&
+    sortingState(listed.data?.asks ?? [], listed.polledAt).stopped > 0;
+  const ready = changed || stopped;
+  // The note for a save of unchanged text stands until a poll that came
+  // back after the save finds asks stopped again, and the button wakes.
+  const resorted =
+    resorting &&
+    !(stopped && !save.isPending && listed.receivedAt > save.submittedAt);
 
   // Leaving with unsaved text asks first. The screens ask when Back or a
   // typed address changes the fragment, and the browser asks before the tab
@@ -73,6 +94,7 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
 
   const saveText = () => {
     const sent = text;
+    setResorting(!changed && data?.readFailed === false);
     save.mutate(sent, {
       // Text typed while the save was under way stays as typed.
       onSuccess: () => {
@@ -82,7 +104,7 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
   };
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
-    if (changed) saveText();
+    if (ready) saveText();
   };
 
   return (
@@ -131,14 +153,15 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
             disabled={data === undefined}
             onChange={(event) => {
               setDraft(event.target.value);
+              setResorting(false);
               // A failed save's note goes once the text changes.
               if (save.isError) save.reset();
             }}
           />
           <button
-            className={changed ? styles.save : styles.saved}
+            className={ready ? styles.save : styles.saved}
             type="submit"
-            disabled={!changed || save.isPending}
+            disabled={!ready || save.isPending}
           >
             Save rules
           </button>
@@ -147,6 +170,8 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
             pending={save.isPending}
             error={save.error}
             changed={changed}
+            stopped={stopped}
+            resorting={resorted}
             readFailed={data?.readFailed ?? false}
             saved={data !== undefined && (data.text !== "" || save.isSuccess)}
             onRetry={saveText}
@@ -198,9 +223,9 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
 }
 
 // The last note: the time zone the hours use, once the rules have loaded,
-// and that saving re-sorts every open ask. A save takes this browser's time
-// zone, so when another browser saved the rules, the note says which one
-// saving here uses.
+// and what saving sorts again. A save takes this browser's time zone, so
+// when another browser saved the rules, the note says which one saving
+// here uses.
 function Footnote({
   loaded,
   saved,
@@ -215,7 +240,8 @@ function Footnote({
       : `Hours use ${saved}, taken from the browser that saved them. Saving here uses ${here}. `;
   return (
     <p className={styles.footnote}>
-      {loaded && zone}Saving re-sorts every open ask.
+      {loaded && zone}Saving changed rules re-sorts every open ask, and saving
+      them unchanged sorts again any that couldn&apos;t be sorted.
     </p>
   );
 }
@@ -226,6 +252,8 @@ function Note({
   pending,
   error,
   changed,
+  stopped,
+  resorting,
   readFailed,
   saved,
   onRetry,
@@ -234,6 +262,8 @@ function Note({
   pending: boolean;
   error: Error | null;
   changed: boolean;
+  stopped: boolean;
+  resorting: boolean;
   readFailed: boolean;
   saved: boolean;
   onRetry: () => void;
@@ -253,7 +283,7 @@ function Note({
   if (pending) {
     return (
       <p className={styles.note} role="status">
-        Reading your rules.
+        {resorting ? "Sorting your asks again." : "Reading your rules."}
       </p>
     );
   }
@@ -277,9 +307,19 @@ function Note({
       </p>
     );
   }
+  if (resorting) {
+    return (
+      <p className={styles.note} role="status">
+        Sorting your asks again.
+      </p>
+    );
+  }
+  // While some asks couldn't be sorted, the button is already awake.
   return saved ? (
     <p className={styles.note} role="status">
-      Saved. The button wakes up when you change the text.
+      {stopped
+        ? "Saved."
+        : "Saved. The button wakes up when you change the text."}
     </p>
   ) : null;
 }

@@ -12,6 +12,8 @@ import { heldAsks } from "./hours";
 import { NewAccount } from "./NewAccount";
 import { OpenCard } from "./OpenCard";
 import { hashtagColours } from "./palette";
+import { sortingLine, sortingState } from "./sorting";
+import { SortingLine } from "./SortingLine";
 import { browserSpeech } from "./speech";
 import { Tabs, type TabsHandle } from "./Tabs";
 import { useAsks } from "./useAsks";
@@ -53,6 +55,11 @@ import { inListOrder, lapsedAsks } from "./waiting";
 // next held, and lapsed asks the same. A held or lapsed ask dismissed here
 // is still held until askme drops it, so Undo brings it back shown. A former
 // hashtag has no hours, so it holds nothing back.
+//
+// One line under the tabs, below the held and lapsed lines, says how
+// sorting stands: how many asks are being sorted with the rules, or how
+// many couldn't be sorted. It counts every ask, on every tab, as of the last
+// poll, so an ask turns from sorting to stopped with no reload.
 //
 // An ask the person has opened shows as opened, and one they have dismissed
 // leaves the list, before the next poll says so.
@@ -116,6 +123,7 @@ export function Asks({ card }: { card: string | null }) {
   );
   if (showingHeld && held.size === 0) showHeld(false);
   if (showingLapsed && lapsed.size === 0) showLapsed(false);
+  const sorting = sortingLine(sortingState(asks, polledAt));
   const waiting = (list: readonly PageAsk[]) =>
     list.filter(
       ({ id }) =>
@@ -225,6 +233,7 @@ export function Asks({ card }: { card: string | null }) {
               {anyHeld && (
                 <div className={styles.lines}>{heldLines(false)}</div>
               )}
+              {sorting !== null && <SortingLine words={sorting} />}
             </div>
           )}
           {failed && (

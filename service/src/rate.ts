@@ -29,18 +29,6 @@ export const rulesSaveLimit: Readonly<{
   windowMinutes: 1,
 };
 
-// A poll asking again for an ask not yet sorted with the rules in force:
-// one sorting left unsorted, or one still sorted with older rules. Each one
-// is a model call, and a page can poll often, so the retries are limited
-// apart from the polls.
-export const sortRetryLimit: Readonly<{
-  retries: number;
-  windowMinutes: number;
-}> = {
-  retries: 10,
-  windowMinutes: 1,
-};
-
 export interface RateWindow {
   // The minute the window starts, such as "2026-10-11T09:30".
   name: string;

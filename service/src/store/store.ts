@@ -30,7 +30,6 @@ import {
   pollLimit,
   rulesSaveLimit,
   secondsLeft,
-  sortRetryLimit,
   windowOf,
 } from "../rate";
 import { exampleRules, hashtagWindow, type HashtagWindow } from "../rules";
@@ -194,9 +193,10 @@ const windowsOf = (hours: HashtagWindow[] | undefined) =>
 
 // The rules of an account that has never saved any: the example rules,
 // already read (PRD, "Rules"). Their hashtags are seen, so each keeps its
-// colour once the person saves their own. They are never written, so the
-// version stays at 0 until the first save, and they name no time zone, so
-// the page uses its own.
+// colour once the person saves their own. They are not stored until a save,
+// and a save of them unchanged stores them at version 0 (ADR 22), so the
+// version stays at 0 until the first save that reads rules. They name no
+// time zone until a save sends one, so the page uses its own.
 const firstRules: AccountRules = {
   text: exampleRules.text,
   hashtags: [...exampleRules.reading.hashtags],
@@ -284,6 +284,16 @@ export interface Store {
     rules: NewRules,
     now: Date,
   ): Promise<AccountRules>;
+  // Records a save of the text the rules already hold, whose last reading
+  // succeeded, with no new reading (ADR 22): when it was made, and the time
+  // zone. The rules version stays where it was, so no ask sorted with them
+  // falls behind. Undefined, with nothing saved, when the rules no longer
+  // hold that text read with success, as when another save landed first.
+  resaveRules(
+    account: AccountId,
+    rules: Pick<NewRules, "text" | "timeZone">,
+    now: Date,
+  ): Promise<AccountRules | undefined>;
   // Counts a save of the rules against the account's limit for the minute.
   countRulesSave(account: AccountId, now: Date): Promise<Counted>;
   // An open ask and the account's rules, or undefined when the ask is not
@@ -301,9 +311,6 @@ export interface Store {
     sort: NewSort,
     now: Date,
   ): Promise<boolean>;
-  // Counts a poll's request to sort an ask again against the account's
-  // limit for the minute.
-  countSortRetry(account: AccountId, now: Date): Promise<Counted>;
   close(): void;
 }
 
@@ -471,6 +478,27 @@ export function createStore(config: {
       }),
     );
     return Item === undefined ? firstRules : rulesSchema.parse(Item);
+  }
+
+  // Writes the rules over the ones a save read, unless another save has
+  // landed since, which the version tells. The example rules a new account
+  // starts with are not stored, so they are the ones read while there is no
+  // rules item. A save of them unchanged stores them at version 0.
+  async function replaceRules(
+    account: AccountId,
+    current: AccountRules,
+    next: AccountRules,
+  ): Promise<void> {
+    await write(account, [
+      {
+        Put: {
+          TableName,
+          Item: { ...keys.rules(account), ...next },
+          ConditionExpression: "attribute_not_exists(sk) OR version = :current",
+          ExpressionAttributeValues: { ":current": current.version },
+        },
+      },
+    ]);
   }
 
   // The item under one key, unless it is missing or has expired.
@@ -817,25 +845,28 @@ export function createStore(config: {
           timeZone: timeZone ?? current.timeZone,
         };
         try {
-          await write(account, [
-            {
-              Put: {
-                TableName,
-                Item: { ...keys.rules(account), ...next },
-                ConditionExpression:
-                  current.version === 0
-                    ? "attribute_not_exists(sk)"
-                    : "version = :current",
-                ...(current.version === 0
-                  ? {}
-                  : {
-                      ExpressionAttributeValues: {
-                        ":current": current.version,
-                      },
-                    }),
-              },
-            },
-          ]);
+          await replaceRules(account, current, next);
+          return next;
+        } catch (error) {
+          // Another save landed after this one read the rules.
+          if (!conditionFailed(error) || tries >= 4) throw error;
+        }
+      }
+    },
+
+    // The rules stay as they are but for when they were saved and the time
+    // zone, and are written only if no other save landed in between.
+    async resaveRules(account, { text, timeZone }, now) {
+      for (let tries = 0; ; tries += 1) {
+        const current = await readRules(account);
+        if (current.text !== text || current.readFailed) return undefined;
+        const next: AccountRules = {
+          ...current,
+          savedAt: now.toISOString(),
+          timeZone: timeZone ?? current.timeZone,
+        };
+        try {
+          await replaceRules(account, current, next);
           return next;
         } catch (error) {
           // Another save landed after this one read the rules.
@@ -891,15 +922,6 @@ export function createStore(config: {
         if (conditionFailed(error)) return false;
         throw error;
       }
-    },
-
-    async countSortRetry(account, now) {
-      return countIn(
-        (window) => keys.sortRetryCount(account, window),
-        sortRetryLimit.retries,
-        sortRetryLimit.windowMinutes,
-        now,
-      );
     },
 
     close() {

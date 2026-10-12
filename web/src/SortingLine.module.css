@@ -1,0 +1,27 @@
+/* The held line's text, with no clock and no control. One line of it is as
+   tall as the held line, so the list sits the same under either. */
+.line {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap);
+  box-sizing: border-box;
+  margin: 0;
+  padding: var(--space-11) var(--space-text);
+  color: var(--text-2);
+  font-size: var(--size-note);
+  line-height: var(--leading-note);
+}
+
+.sentence {
+  white-space: nowrap;
+}
+
+/* At desktop width the held line sits beside the tabs. This line takes the
+   row under them. */
+@media (min-width: 768px) {
+  .line {
+    flex-basis: 100%;
+    padding-right: 0;
+    padding-left: 0;
+  }
+}

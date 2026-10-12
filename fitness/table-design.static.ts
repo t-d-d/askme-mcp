@@ -119,7 +119,6 @@ describe("fitness: one key builder (table-design.md)", () => {
     "export const k = (w: string) => ({ sk: `POLL#${w}` });\n",
     "export const k = (w: string) => ({ sk: `RATE#${w}` });\n",
     "export const k = (w: string) => ({ sk: `SAVE#${w}` });\n",
-    "export const k = (w: string) => ({ sk: `SORT#${w}` });\n",
   ])("refuses a key written by hand: %s", async (code) => {
     expect(await reported(code, servicePath)).toContain(
       "askme/no-hand-built-key",

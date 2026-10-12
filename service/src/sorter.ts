@@ -1,13 +1,14 @@
 // The sort function (PRD, "Back end"): it sorts one ask after the service
-// has stored it and answered, so posting never waits on the model. The ask
-// tool hands it each new ask, saving the rules hands it every open ask, and
-// a poll hands it any ask not yet sorted with the rules in force a while
-// after it was last handed on.
+// has stored it and answered, so posting never waits on the model. It runs
+// the jobs on the sort queue (ADR 22), which posting an ask and saving the
+// rules put there, one message per run.
 //
-// A sort that fails leaves the ask as it was and is logged at warn. The ask
-// is kept, shown as not sorted yet or with its old hashtags, and a later
-// poll asks again. The function does not fail for it, so it alerts no one,
-// and Lambda does not run it again by itself.
+// A sort that fails leaves the ask as it was, kept and shown as not sorted
+// yet or with its old hashtags. The function never fails a run for it,
+// which would alert. It reports the message as failed, and the queue
+// delivers it again about six minutes later. On the third delivery it logs
+// the failure at warn and lets the message go, and the ask waits for the
+// rules to be saved again.
 import { z } from "zod";
 import { readEnv } from "./env";
 import { jobAccount, type AccountId } from "./identity";
@@ -20,6 +21,9 @@ import { createStore, type Store } from "./store/store";
 
 // How many times one run asks the model before it leaves the ask unsorted.
 export const sortAttempts = 2;
+
+// How many times the queue delivers one job before the function lets it go.
+export const sortDeliveries = 3;
 
 // How long one try may take. The function's timeout leaves room for both.
 // The eval sends this too.
@@ -44,17 +48,24 @@ export interface SortContext {
   now: Date;
 }
 
-// Sorts one open ask with the account's rules, unless it is already sorted
-// with them, and stores the sort.
+// What became of a sort: done, as the ask is sorted with the rules in force,
+// already was, or has closed; or failed, and why.
+export type SortOutcome = "done" | { failed: string };
+
+// Sorts one open ask with the rules in force, unless it is already sorted
+// with them, and stores the sort. A job for an ask already up to date ends
+// here, before any model call.
 export async function sortAsk(
   account: AccountId,
   askId: string,
   { store, model, log, now }: SortContext,
-): Promise<void> {
+): Promise<SortOutcome> {
   const found = await store.askToSort(account, askId, now);
-  if (found === undefined) return;
+  if (found === undefined) return "done";
   const { ask, rules } = found;
-  if (ask.sort !== undefined && ask.sort.rulesVersion >= rules.version) return;
+  if (ask.sort !== undefined && ask.sort.rulesVersion >= rules.version) {
+    return "done";
+  }
   let sort: Sort | undefined;
   let failure = "reply-rejected";
   if (rules.text.trim() === "") {
@@ -87,14 +98,7 @@ export async function sortAsk(
       }
     }
   }
-  if (sort === undefined) {
-    log.warn("sort-failed", {
-      accountId: account,
-      askId,
-      errorClass: failure,
-    });
-    return;
-  }
+  if (sort === undefined) return { failed: failure };
   const stored = await store.recordSort(
     account,
     askId,
@@ -102,6 +106,65 @@ export async function sortAsk(
     now,
   );
   if (stored) log.info("ask-sorted", { accountId: account, askId });
+  return "done";
+}
+
+// One message from the queue: its id, the text of its body, and how many
+// times the queue has delivered it, this time included.
+export interface QueueMessage {
+  messageId: string;
+  text: string;
+  receives: number;
+}
+
+// The job a message holds, parsed by its schema, or undefined.
+const jobOf = (text: string) => {
+  try {
+    return sortJobSchema.safeParse(JSON.parse(text)).data;
+  } catch {
+    return undefined;
+  }
+};
+
+// Runs one delivery of a job, and says whether the queue should deliver it
+// again. A failed sort, or a failure of askme's own, goes back to the queue
+// until the delivery numbered sortDeliveries, which logs it at warn and lets
+// it go. A later delivery, which comes only when a run crashed, is let go
+// before any work. The services are set up inside, so a failure to set
+// them up is reported as askme's own.
+export async function runJob(
+  message: QueueMessage,
+  log: Logger,
+  context: () => SortContext,
+): Promise<boolean> {
+  const job = jobOf(message.text);
+  if (job === undefined) {
+    // Only askme queues a job, so one it cannot read is its own fault, and
+    // reading it again would not help.
+    log.error("request-failed", { errorClass: "UnreadableJob" });
+    return false;
+  }
+  const at = { accountId: job.accountId, askId: job.askId };
+  if (message.receives > sortDeliveries) {
+    log.warn("sort-failed", { ...at, errorClass: "deliveries-spent" });
+    return false;
+  }
+  let outcome: SortOutcome;
+  try {
+    outcome = await sortAsk(jobAccount(job.accountId), job.askId, context());
+  } catch (error) {
+    // Anything else is askme's own fault, such as the table or the key
+    // failing, so it alerts.
+    log.error("request-failed", { errorClass: errorClass(error) });
+    outcome = { failed: errorClass(error) };
+  }
+  if (outcome === "done") return false;
+  if (message.receives >= sortDeliveries) {
+    log.warn("sort-failed", { ...at, errorClass: outcome.failed });
+    return false;
+  }
+  log.info("sort-retried", { ...at, errorClass: outcome.failed });
+  return true;
 }
 
 interface Services {
@@ -138,20 +201,55 @@ const contextSchema = z.object({
   awsRequestId: z.string().regex(/^[\w-]{1,128}$/u),
 });
 
-export async function handler(event: unknown, context: unknown): Promise<void> {
+// What the queue's trigger hands a run, of which only these parts are read.
+const queueEventSchema = z.object({
+  Records: z.array(
+    z.object({
+      messageId: z.string(),
+      body: z.string(),
+      attributes: z.object({
+        ApproximateReceiveCount: z
+          .string()
+          .regex(/^[1-9]\d{0,5}$/u)
+          .transform(Number),
+      }),
+    }),
+  ),
+});
+
+// What a run answers the trigger: the messages it reports as failed, which
+// the queue delivers again. Every other message is deleted.
+export interface QueueAnswer {
+  batchItemFailures: { itemIdentifier: string }[];
+}
+
+export async function handler(
+  event: unknown,
+  context: unknown,
+): Promise<QueueAnswer> {
   const log = createLogger(
     contextSchema.safeParse(context).data?.awsRequestId ?? "unknown",
   );
-  try {
-    const job = sortJobSchema.parse(event);
-    await sortAsk(jobAccount(job.accountId), job.askId, {
-      ...ready(),
-      log,
-      now: new Date(),
-    });
-  } catch (error) {
-    // Anything else is askme's own fault, such as the table or the key
-    // failing, so it alerts.
-    log.error("request-failed", { errorClass: errorClass(error) });
+  const parsed = queueEventSchema.safeParse(event);
+  if (!parsed.success) {
+    // The trigger always sends a well-formed event, so this is askme's
+    // fault. With no message ids to report, the run lets them go.
+    log.error("request-failed", { errorClass: "UnreadableEvent" });
+    return { batchItemFailures: [] };
   }
+  const failed: QueueAnswer["batchItemFailures"] = [];
+  for (const record of parsed.data.Records) {
+    const again = await runJob(
+      {
+        messageId: record.messageId,
+        // eslint-disable-next-line no-restricted-syntax -- a queue message's body, which runJob parses with sortJobSchema, not a request body
+        text: record.body,
+        receives: record.attributes.ApproximateReceiveCount,
+      },
+      log,
+      () => ({ ...ready(), log, now: new Date() }),
+    );
+    if (again) failed.push({ itemIdentifier: record.messageId });
+  }
+  return { batchItemFailures: failed };
 }

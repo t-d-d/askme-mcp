@@ -4,7 +4,7 @@ import { captureLogs, lineText } from "../../test/logs";
 import { askTool, limits } from "./ask";
 import { Refused, retryBudget } from "./errors";
 import { callerOf } from "./identity";
-import type { SortJob, SortRequests } from "./jobs";
+import type { SortRequests } from "./jobs";
 import { createLogger } from "./log";
 import { askLimit } from "./rate";
 import {
@@ -115,10 +115,10 @@ const storeAnswering = (
     countPoll: unused,
     rules: unused,
     saveRules: unused,
+    resaveRules: unused,
     countRulesSave: unused,
     askToSort: unused,
     recordSort: unused,
-    countSortRetry: unused,
     close: () => undefined,
   };
 };
@@ -136,15 +136,17 @@ const caller = callerOf({
   extra: { accountId: "user_1", requestId: "req-1" },
 });
 
-// A sorter that keeps every ask it is handed, or refuses them all.
+// A queue that keeps every sort it is sent, or takes none of them.
 const sorter = (refuses = false) => {
-  const handed: SortJob[] = [];
+  const handed: { account: string; askIds: readonly string[] }[] = [];
   const sorts: SortRequests = {
-    request: (job) => {
-      handed.push(job);
-      return refuses
-        ? Promise.reject(new Error("Lambda is unreachable."))
-        : Promise.resolve();
+    queue: (account, askIds) => {
+      handed.push({ account, askIds });
+      return Promise.resolve(
+        refuses
+          ? askIds.map((askId) => ({ askId, errorClass: "InternalError" }))
+          : [],
+      );
     },
   };
   return { handed, sorts };
@@ -225,7 +227,7 @@ describe("the ask tool's answer", () => {
   });
 });
 
-describe("handing an ask to the sorter", () => {
+describe("queueing an ask's sort", () => {
   let capture: ReturnType<typeof captureLogs>;
   beforeEach(() => {
     capture = captureLogs();
@@ -235,16 +237,18 @@ describe("handing an ask to the sorter", () => {
   });
   const logged = () => capture.lines.map(lineText).join("\n");
 
-  it("hands a new ask to the sorter, with the account and the id", async () => {
+  it("queues a new ask's sort, with the account and the id", async () => {
     const { handed, sorts } = sorter();
     expect(await run(posted, { counted: true }, sorts)).toEqual({
       id: posted.id,
       status: "posted",
     });
-    expect(handed).toEqual([{ accountId: caller.accountId, askId: posted.id }]);
+    expect(handed).toEqual([
+      { account: caller.accountId, askIds: [posted.id] },
+    ]);
   });
 
-  it("answers as posted when the sorter cannot be reached, and says so at warn", async () => {
+  it("answers as posted when the queue does not take the sort, and says so at warn", async () => {
     const { sorts } = sorter(true);
     expect(await run(posted, { counted: true }, sorts)).toEqual({
       id: posted.id,
