@@ -193,7 +193,7 @@ The second line is always the site's name, such as github.com. The list of recog
 
 A recognised shape's label names what the link opens, with no verb. The button only ever opens a page, so a word such as "See" adds nothing, and the shorter label stays on one line beside the Listen and session buttons.
 
-Any other link gets "Open". askme cannot say what that link is, and the second line already names the site, so the label does not name it again. One short word stays on one line however long the site's name is.
+Any other link gets "Open". It is a verb because askme has nothing to name. It cannot say what the link is, and the second line already names the site. One short word stays on one line however long the site's name is.
 
 ### List rows
 
