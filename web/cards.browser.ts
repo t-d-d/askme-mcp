@@ -882,21 +882,52 @@ describe("dismissing", () => {
 
 describe("going back to the list from a card", () => {
   const desktop = { width: 1280, height: 800 };
-  // A list longer than the screen: the top card and nineteen rows, in the
-  // order given.
-  const long = Array.from({ length: 20 }, (_, index) =>
-    ask(
-      `ask${String(index)}`,
-      `Ask number ${String(index + 1)}`,
-      (60 - index) * minute,
-    ),
-  );
+  // Numbered asks, in the order given.
+  const numbered = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      ask(
+        `ask${String(index)}`,
+        `Ask number ${String(index + 1)}`,
+        (60 - index) * minute,
+      ),
+    );
+  // A list longer than the screen: the top card and nineteen rows.
+  const long = numbered(20);
   const twelfthRow = (opened: OpenPage) =>
     opened.page.getByRole("listitem").nth(11);
   const summaryOf = (opened: OpenPage, summary: string) =>
     opened.page.getByRole("article").getByRole("link", { name: summary });
   const scrolled = (opened: OpenPage) =>
     opened.page.evaluate(() => window.scrollY);
+  // The focus outline reaches 2px out from a control, 2px away
+  // (docs/design.md).
+  const outlineReach = 4;
+
+  // Scrolls the page until one edge of a link is so far down the screen.
+  const edgeAt = (
+    link: ReturnType<OpenPage["page"]["locator"]>,
+    edge: "top" | "bottom",
+    y: number,
+  ) =>
+    link.evaluate(
+      (each, [side, to]) => {
+        window.scrollBy(0, each.getBoundingClientRect()[side] - to);
+      },
+      [edge, y] as const,
+    );
+
+  // How far a link sits below the top of the screen, and above its foot, or
+  // above the note while one shows.
+  const room = (link: ReturnType<OpenPage["page"]["locator"]>) =>
+    link.evaluate((each) => {
+      const note = document
+        .querySelector('div[role="status"]')
+        ?.getBoundingClientRect();
+      const foot =
+        note === undefined || note.height === 0 ? window.innerHeight : note.top;
+      const box = each.getBoundingClientRect();
+      return { over: box.top, under: foot - box.bottom };
+    });
 
   // Scrolls the twelfth row into view and opens its card, which starts at
   // the top. Gives where the list was.
@@ -1044,6 +1075,95 @@ describe("going back to the list from a card", () => {
     },
   );
 
+  // Following a link from a card marks its ask opened, which sinks it below
+  // the unopened asks at its level, here to the foot of the list.
+  it.each(["All asks", "Back"] as const)(
+    "with %s after a link on the card sank its ask leaves the list where it was, and focus on the ask that came after it",
+    async (way) => {
+      const opened = await open(
+        listOf(
+          ...long.map((each, index) =>
+            index === 12 ? { ...each, sessionLink } : each,
+          ),
+        ),
+      );
+      const at = await openTwelfth(opened);
+      await opened.page
+        .getByRole("link", { name: /^Reply in the session/u })
+        .click();
+      await expect
+        .poll(() => sentTo(opened, askChangePaths.opened))
+        .toEqual(["ask12"]);
+      await goBack[way](opened);
+      await opened.page.getByRole("article").waitFor();
+      expect((await rowTexts(opened)).at(-1)).toBe("Ask number 13");
+      expect(await scrolled(opened)).toBe(at);
+      const next = twelfthRow(opened);
+      expect((await next.innerText()).split("\n")[0]).toBe("Ask number 14");
+      expect(await hasFocus(next.getByRole("link"))).toBe(true);
+    },
+  );
+
+  it("after a link on the top card's card sank its ask puts focus on the summary of the ask now on top", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither));
+    await summaryOf(opened, both.summary).click();
+    await opened.page.getByRole("link", { name: /^See pull request/u }).click();
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.opened))
+      .toEqual(["both"]);
+    await goBack["All asks"](opened);
+    await opened.page.getByRole("article").waitFor();
+    expect(await rowTexts(opened)).toEqual([neither.summary, both.summary]);
+    expect(await hasFocus(summaryOf(opened, sessionOnly.summary))).toBe(true);
+  });
+
+  it("shows the row that opened the card when it is below the screen, scrolling only as far as it takes", async () => {
+    const opened = await open(listOf(...long));
+    const link = twelfthRow(opened).getByRole("link");
+    await edgeAt(link, "bottom", 700);
+    await openTwelfth(opened);
+    // A shorter window leaves the row below the foot of the screen.
+    await opened.page.setViewportSize({ width: phone.width, height: 500 });
+    await goBack["All asks"](opened);
+    await opened.page.getByRole("article").waitFor();
+    expect(await hasFocus(link)).toBe(true);
+    expect((await room(link)).under).toBeCloseTo(outlineReach, 0);
+  });
+
+  it("shows the row that opened the card when it is above the screen, scrolling only as far as it takes", async () => {
+    // Long enough to scroll the twelfth row to the top of a phone's screen.
+    const opened = await open(listOf(...numbered(40)));
+    const link = twelfthRow(opened).getByRole("link");
+    await edgeAt(link, "top", 20);
+    await openTwelfth(opened);
+    // At desktop width the rows sit beside the top card, not under it, so
+    // the row is higher up the page, above the top of the screen.
+    await opened.page.setViewportSize(desktop);
+    await goBack["All asks"](opened);
+    await opened.page.getByRole("article").waitFor();
+    expect(await hasFocus(link)).toBe(true);
+    expect((await room(link)).over).toBeCloseTo(outlineReach, 0);
+  });
+
+  it("after Dismiss shows the next row clear of the note, scrolling only as far as it takes", async () => {
+    const opened = await open(listOf(...long));
+    // The note will cover where the row is.
+    await edgeAt(
+      twelfthRow(opened).getByRole("link"),
+      "bottom",
+      phone.height - 10,
+    );
+    await openTwelfth(opened);
+    await dismissCard(opened);
+    const next = twelfthRow(opened);
+    expect((await next.innerText()).split("\n")[0]).toBe("Ask number 14");
+    expect(await hasFocus(next.getByRole("link"))).toBe(true);
+    expect((await room(next.getByRole("link"))).under).toBeCloseTo(
+      outlineReach,
+      0,
+    );
+  });
+
   // The list's screen is drawn anew on the way back from the rules.
   it("after a visit to the rules leaves the list where it was, and focus on the row that opened the card", async () => {
     const opened = await open(listOf(...long), {
@@ -1074,18 +1194,29 @@ describe("going back to the list from a card", () => {
     expect(await hasFocus(next.getByRole("link"))).toBe(true);
   });
 
-  it.each([
-    ["the last row", [both, sessionOnly, neither]],
-    ["the only row", [both, sessionOnly]],
-  ])(
-    "after Dismiss of %s puts focus on the top card's summary",
-    async (_, asks) => {
-      const opened = await open(listOf(...asks));
-      await opened.page.getByRole("listitem").last().getByRole("link").click();
-      await dismissCard(opened);
-      expect(await hasFocus(summaryOf(opened, both.summary))).toBe(true);
-    },
-  );
+  it("after Dismiss of the last row leaves the list where it was, and focus on the row now last", async () => {
+    const opened = await open(listOf(...long));
+    const last = opened.page.getByRole("listitem").last();
+    await last.scrollIntoViewIfNeeded();
+    const at = await scrolled(opened);
+    await last.getByRole("link").click();
+    await opened.page.getByRole("link", { name: "All asks" }).waitFor();
+    await dismissCard(opened);
+    // As far as the page, a row shorter, still scrolls.
+    const most = await opened.page.evaluate(
+      () => document.documentElement.scrollHeight - window.innerHeight,
+    );
+    expect(await scrolled(opened)).toBe(Math.min(at, most));
+    expect((await last.innerText()).split("\n")[0]).toBe("Ask number 19");
+    expect(await hasFocus(last.getByRole("link"))).toBe(true);
+  });
+
+  it("after Dismiss of the only row puts focus on the top card's summary", async () => {
+    const opened = await open(listOf(both, sessionOnly));
+    await opened.page.getByRole("listitem").getByRole("link").click();
+    await dismissCard(opened);
+    expect(await hasFocus(summaryOf(opened, both.summary))).toBe(true);
+  });
 
   it("after Dismiss of the top card's ask puts focus on the summary of the ask after it, now on top", async () => {
     const opened = await open(listOf(both, sessionOnly, neither));
