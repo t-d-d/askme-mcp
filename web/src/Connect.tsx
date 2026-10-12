@@ -2,6 +2,7 @@ import { useId, useRef } from "react";
 import { connectionAnswer, pagePaths } from "../../shared/page-api";
 import styles from "./Connect.module.css";
 import { cursorInstallLink } from "./cursor";
+import { NewTabLink } from "./NewTabLink";
 import { SampleAsks } from "./SampleAsks";
 import { backToList, followToList } from "./toList";
 import { useAnswer } from "./useAnswer";
@@ -90,15 +91,13 @@ export function Connect() {
           {data !== undefined && (
             // Cursor's page stays open once it hands the server to Cursor,
             // so it opens in a new tab and askme stays where it was.
-            <a
+            <NewTabLink
               className={styles.cursor}
               href={cursorInstallLink(data.mcpUrl)}
-              target="_blank"
-              rel="noopener noreferrer"
             >
               Add askme to Cursor
               <span className={styles.site}>cursor.com</span>
-            </a>
+            </NewTabLink>
           )}
         </section>
         <section className={styles.section} aria-labelledby={samples}>
