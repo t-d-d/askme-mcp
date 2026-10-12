@@ -7,7 +7,7 @@ import {
 } from "react";
 import { rulesLimit } from "../../shared/page-api";
 import { useAuth } from "./auth";
-import { Refusal } from "./load";
+import { capped, Refusal } from "./load";
 import type { AskFirst } from "./SignedIn";
 import { hoursText } from "./hours";
 import { colourOf, tagColour } from "./palette";
@@ -263,9 +263,6 @@ function Footnote({
     </p>
   );
 }
-
-const capped = (error: Error | null) =>
-  error instanceof Refusal && error.code === "cap_reached";
 
 // One short note under the button, giving the state.
 function Note({

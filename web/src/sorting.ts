@@ -48,10 +48,10 @@ const asks = (count: number) => `${String(count)} ask${count === 1 ? "" : "s"}`;
 // then asks that stopped. With none of them, there is no line.
 export function sortingLine(
   { sorting, stopped }: SortingState,
-  resetsAt: string | null = null,
+  resetTime: string | null = null,
 ): string | null {
-  if (resetsAt !== null) {
-    return `Today's sorting limit is reached. It resets at ${resetsAt}.`;
+  if (resetTime !== null) {
+    return `Today's sorting limit is reached. It resets at ${resetTime}.`;
   }
   if (sorting > 0) return `Sorting ${asks(sorting)} with your rules`;
   if (stopped > 0) {

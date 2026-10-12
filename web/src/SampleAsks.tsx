@@ -1,4 +1,4 @@
-import { Refusal } from "./load";
+import { capped, Refusal } from "./load";
 import { resetsAt, resetTime } from "./resets";
 import styles from "./SampleAsks.module.css";
 import { useAfter } from "./useAfter";
@@ -46,9 +46,6 @@ export function SampleAsks({
     </div>
   );
 }
-
-const capped = (error: Error | null) =>
-  error instanceof Refusal && error.code === "cap_reached";
 
 // The daily cap resets at the next midnight UTC after the press, given in
 // this browser's time zone.
