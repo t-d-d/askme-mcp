@@ -43,9 +43,11 @@ export function Rules() {
   };
 
   const saveText = () => {
-    save.mutate(text, {
+    const sent = text;
+    save.mutate(sent, {
+      // Text typed while the save was under way stays as typed.
       onSuccess: () => {
-        setDraft(null);
+        setDraft((typed) => (typed === sent ? null : typed));
       },
     });
   };
@@ -93,6 +95,8 @@ export function Rules() {
             disabled={data === undefined}
             onChange={(event) => {
               setDraft(event.target.value);
+              // A failed save's note goes once the text changes.
+              if (save.isError) save.reset();
             }}
           />
           <button

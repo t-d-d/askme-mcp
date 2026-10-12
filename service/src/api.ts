@@ -209,17 +209,17 @@ async function saveRules(
   let read: Awaited<ReturnType<typeof readHashtags>>;
   try {
     read = await readHashtags(text, model);
+    if ("failed" in read) {
+      log.warn("rules-read-failed", {
+        accountId: account,
+        errorClass: read.failed,
+      });
+    }
   } catch (error) {
     // Not the model's failure but askme's own, such as its key being
     // unreadable, so it alerts. The text is kept all the same.
     log.error("request-failed", { errorClass: errorClass(error) });
     read = { failed: errorClass(error) };
-  }
-  if ("failed" in read) {
-    log.warn("rules-read-failed", {
-      accountId: account,
-      errorClass: read.failed,
-    });
   }
   const saved = await store.saveRules(
     account,
