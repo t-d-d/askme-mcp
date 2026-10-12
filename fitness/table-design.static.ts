@@ -260,9 +260,7 @@ describe("fitness: lint refuses every key the key module builds, written by hand
     ['export const other = { sk: "METADATA" };\n', "METADATA"],
     ['export const other = { sk: "OPEN" };\n', "OPEN"],
   ])("finds a key lint lets through: %s", async (code, key) => {
-    expect(await letThrough(`${readRepoFile(keysPath)}${code}`)).toEqual([
-      key,
-    ]);
+    expect(await letThrough(`${readRepoFile(keysPath)}${code}`)).toEqual([key]);
   });
 });
 
