@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Asks } from "./Asks";
 import { Connect } from "./Connect";
 import { Rules } from "./Rules";
+import { cardIn } from "./screen";
 
 type Screen = "asks" | "connect" | "rules";
 
@@ -18,8 +19,13 @@ const historyIndex = (): number | null =>
 
 // The page is static files with no router (ADR 5), so its screens are
 // named in the address's fragment: #connect, #rules, and anything else for
-// the list. Links between them are real links, and Back works.
-function useScreen(): { screen: Screen; askFirst: AskFirst } {
+// the list, with #ask/<id> opening one ask's card over it. Links between
+// them are real links, and Back works.
+function useScreen(): {
+  screen: Screen;
+  card: string | null;
+  askFirst: AskFirst;
+} {
   const [hash, setHash] = useState(() => window.location.hash);
   const question = useRef<string | null>(null);
   useEffect(() => {
@@ -59,7 +65,7 @@ function useScreen(): { screen: Screen; askFirst: AskFirst } {
   }, []);
   const screen =
     hash === "#connect" ? "connect" : hash === "#rules" ? "rules" : "asks";
-  return { screen, askFirst };
+  return { screen, card: cardIn(hash), askFirst };
 }
 
 // A failed load shows at once, and the page's own timers try again, so
@@ -72,18 +78,28 @@ const newQueries = () =>
 // and the next one's first poll carries no version.
 export function SignedIn() {
   const [queries] = useState(newQueries);
-  const { screen, askFirst } = useScreen();
+  const { screen, card, askFirst } = useScreen();
   return (
     <QueryClientProvider client={queries}>
-      <Shown screen={screen} askFirst={askFirst} />
+      <Shown screen={screen} card={card} askFirst={askFirst} />
     </QueryClientProvider>
   );
 }
 
-function Shown({ screen, askFirst }: { screen: Screen; askFirst: AskFirst }) {
+// The list and an open card are one screen, so the list keeps its tab
+// while a card is open.
+function Shown({
+  screen,
+  card,
+  askFirst,
+}: {
+  screen: Screen;
+  card: string | null;
+  askFirst: AskFirst;
+}) {
   switch (screen) {
     case "asks":
-      return <Asks />;
+      return <Asks card={card} />;
     case "connect":
       return <Connect />;
     case "rules":

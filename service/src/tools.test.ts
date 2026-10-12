@@ -25,6 +25,8 @@ const unused = () => Promise.reject(new Error("The store is not used here."));
 const store: Store = {
   postAsk: unused,
   resolveAsk: unused,
+  markOpened: unused,
+  dismissAsk: unused,
   openAsks: unused,
   asksSince: unused,
   countPoll: unused,

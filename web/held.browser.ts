@@ -51,7 +51,8 @@ const ask = (
   summary,
   spokenDetail: `The spoken detail of ${summary}`,
   postedAt: new Date(postedAt.getTime() - 30 * minute).toISOString(),
-  sort,
+  opened: false,
+  sort: { ...sort, reason: "Sorted for the test." },
 });
 
 // Two asks for work, one of them for the shop too, and one each for the

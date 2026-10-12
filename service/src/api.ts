@@ -5,6 +5,8 @@
 // a missing or bad token is refused with a bare 401.
 import { z } from "zod";
 import {
+  askChange,
+  askIdLimit,
   asksAnswer,
   asksUnchanged,
   connectionAnswer,
@@ -253,15 +255,22 @@ async function poll(
       hashtags: hashtagsOf(rules),
       formerHashtags: formerHashtagsOf(rules, asks),
       timeZone: rules.timeZone,
-      asks: asks.map(({ id, summary, spokenDetail, postedAt, sort }) => ({
-        id,
-        summary,
-        spokenDetail,
-        postedAt,
+      asks: asks.map((ask) => ({
+        id: ask.id,
+        summary: ask.summary,
+        spokenDetail: ask.spokenDetail,
+        actionLink: ask.actionLink,
+        sessionLink: ask.sessionLink,
+        postedAt: ask.postedAt,
+        opened: ask.openedAt !== undefined,
         sort:
-          sort === undefined
+          ask.sort === undefined
             ? null
-            : { hashtags: sort.hashtags, level: sort.level },
+            : {
+                hashtags: ask.sort.hashtags,
+                level: ask.sort.level,
+                reason: ask.sort.reason,
+              },
       })),
     }),
   );
@@ -320,6 +329,52 @@ async function saveRules(
   return answer(rulesView(saved));
 }
 
+// What the person did to an ask from the page.
+type AskChangeKind = "opened" | "dismissed";
+
+// Marks an ask as opened, or dismisses it, by the id in the body. A repeat
+// changes nothing and succeeds, and so does a change to an ask its agent
+// has closed meanwhile. An id the account has no ask for, another
+// account's included, is refused as not_found.
+async function changeAsk(
+  kind: AskChangeKind,
+  request: Request,
+  account: AccountId,
+  { store, log }: PageContext,
+): Promise<Response> {
+  const input = askChange.safeParse(await jsonBody(request));
+  if (!input.success) {
+    log.info("input-invalid");
+    return pageRefusal(
+      "invalid_input",
+      `Send the ask's id as JSON, as {"id": "..."}, exactly as the list gave it: at most ${String(askIdLimit)} letters, digits, - or _, with nothing else. Then send it again.`,
+    );
+  }
+  const { id } = input.data;
+  const now = new Date();
+  const done =
+    kind === "opened"
+      ? await store.markOpened(account, id, now)
+      : await store.dismissAsk(account, id, now);
+  switch (done) {
+    case "opened":
+      log.info("ask-opened", { accountId: account, askId: id });
+      break;
+    case "dismissed":
+      log.info("ask-dismissed", { accountId: account, askId: id });
+      break;
+    case "unchanged":
+      break;
+    case "not-found":
+      log.info("ask-not-found", { accountId: account });
+      return pageRefusal(
+        "not_found",
+        "The account has no ask with this id. It may have expired. Load the list again, and do not retry.",
+      );
+  }
+  return new Response(null, { status: 204, headers: noStore });
+}
+
 // The bearer token in a request, if it has one.
 function bearerToken(request: Request): string | undefined {
   const match = /^Bearer\s+(\S+)\s*$/iu.exec(authorizationOf(request) ?? "");
@@ -345,6 +400,10 @@ async function respond(
       return answer(rulesView(await context.store.rules(account)));
     case "PUT /api/rules":
       return saveRules(request, account, context);
+    case "POST /api/asks/opened":
+      return changeAsk("opened", request, account, context);
+    case "POST /api/asks/dismissed":
+      return changeAsk("dismissed", request, account, context);
   }
 }
 

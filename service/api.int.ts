@@ -3,7 +3,12 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
-import { pagePaths, rulesLimit, timeZoneLimit } from "../shared/page-api";
+import {
+  askChangePaths,
+  pagePaths,
+  rulesLimit,
+  timeZoneLimit,
+} from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
 import { fakes, testModelKey } from "../test/fakes";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
@@ -133,11 +138,41 @@ describe("the list of open asks", () => {
       id,
       summary: ask.summary,
       spokenDetail: ask.spoken_detail,
+      actionLink: ask.action_link,
+      opened: false,
       sort: null,
     });
     const postedAt = Date.parse(posted);
     expect(postedAt).toBeGreaterThanOrEqual(before - 1000);
     expect(postedAt).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("holds both of an ask's links, and leaves out one the agent did not send", async () => {
+    const account = newAccount();
+    const both = await post(account, {
+      ...ask,
+      session_link: "https://claude.ai/code/session_1",
+    });
+    const neither = await post(account, {
+      summary: "Which date format should the export use?",
+      area: ask.area,
+      spoken_detail: ask.spoken_detail,
+    });
+    const response = await get(
+      pagePaths.asks,
+      await issuer.sessionToken({ claims: { sub: account } }),
+    );
+    const { asks } = z
+      .object({ asks: z.array(z.looseObject({ id: z.string() })) })
+      .parse(await response.json());
+    expect(asks.find((listed) => listed.id === both)).toMatchObject({
+      actionLink: ask.action_link,
+      sessionLink: "https://claude.ai/code/session_1",
+    });
+    const bare = asks.find((listed) => listed.id === neither);
+    expect(bare).toBeDefined();
+    expect(bare).not.toHaveProperty("actionLink");
+    expect(bare).not.toHaveProperty("sessionLink");
   });
 
   it("drops an ask once its agent resolves it", async () => {
@@ -178,6 +213,153 @@ describe("the list of open asks", () => {
     });
   });
 });
+
+// A change from the page to one ask, as the signed-in person.
+async function change(
+  account: string,
+  path: string,
+  body: unknown,
+): Promise<Response> {
+  return invoke(
+    handler,
+    new Request(`${origin}${path}`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await issuer.sessionToken({ claims: { sub: account } })}`,
+        "content-type": "application/json",
+      },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    }),
+  );
+}
+
+// Each ask's id and whether it was opened, as the page reads them.
+async function openedOf(account: string) {
+  const response = await get(
+    pagePaths.asks,
+    await issuer.sessionToken({ claims: { sub: account } }),
+  );
+  return z
+    .object({
+      version: z.number(),
+      asks: z.array(z.object({ id: z.string(), opened: z.boolean() })),
+    })
+    .parse(await response.json());
+}
+
+describe("opening an ask from the page", () => {
+  it("marks the ask as opened, keeps it in the list, and raises the version", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    const response = await change(account, askChangePaths.opened, { id });
+    expect(response.status).toBe(204);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await openedOf(account)).toEqual({
+      version: 2,
+      asks: [{ id, opened: true }],
+    });
+  });
+
+  it("succeeds again for an ask already opened, and changes nothing", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    await change(account, askChangePaths.opened, { id });
+    const response = await change(account, askChangePaths.opened, { id });
+    expect(response.status).toBe(204);
+    expect((await openedOf(account)).version).toBe(2);
+  });
+
+  it("succeeds for an ask its agent has resolved, and leaves it closed", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    await call(account, "resolve", { id });
+    const response = await change(account, askChangePaths.opened, { id });
+    expect(response.status).toBe(204);
+    expect(await openedOf(account)).toEqual({ version: 2, asks: [] });
+  });
+});
+
+describe("dismissing an ask from the page", () => {
+  it("drops the ask from the list, and raises the version", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    const response = await change(account, askChangePaths.dismissed, { id });
+    expect(response.status).toBe(204);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await openedOf(account)).toEqual({ version: 2, asks: [] });
+  });
+
+  it("succeeds for an ask its agent resolved first, and changes nothing", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    await call(account, "resolve", { id });
+    const response = await change(account, askChangePaths.dismissed, { id });
+    expect(response.status).toBe(204);
+    expect((await openedOf(account)).version).toBe(2);
+  });
+
+  it("lets the agent resolve the ask afterwards, which succeeds", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    await change(account, askChangePaths.dismissed, { id });
+    expect(await call(account, "resolve", { id })).toEqual({
+      id,
+      status: "resolved",
+    });
+  });
+});
+
+describe.each(Object.entries(askChangePaths))(
+  "a change to an ask, %s,",
+  (_, path) => {
+    it("refuses an id the account has no ask for as not_found, and changes nothing", async () => {
+      const account = newAccount();
+      await post(account);
+      const response = await change(account, path, {
+        id: "AAAAAAAAAAAAAAAAAAAAAAAA",
+      });
+      expect(response.status).toBe(404);
+      const refusal = refusalSchema.parse(await response.json());
+      expect(refusal.code).toBe("not_found");
+      expect(refusal.class).toBe("do not retry");
+      expect((await openedOf(account)).version).toBe(1);
+    });
+
+    it("refuses another account's ask exactly as an id that does not exist, and leaves it alone", async () => {
+      const [owner, other] = [newAccount(), newAccount()];
+      const id = await post(owner);
+      const borrowed = await change(other, path, { id });
+      const unknown = await change(other, path, {
+        id: "AAAAAAAAAAAAAAAAAAAAAAAA",
+      });
+      expect(borrowed.status).toBe(404);
+      expect(await borrowed.json()).toEqual(await unknown.json());
+      expect(await openedOf(owner)).toEqual({
+        version: 1,
+        asks: [{ id, opened: false }],
+      });
+    });
+
+    it.each([
+      ["no body", ""],
+      ["text that is not JSON", "opened"],
+      ["no id", {}],
+      ["an id that is not text", { id: 12 }],
+      ["an id longer than any askme gives", { id: "A".repeat(65) }],
+      ["an id with characters askme never uses", { id: "a/b" }],
+      ["a field besides the id", { id: "AAAA", account: "user_other" }],
+    ])("refuses %s as invalid_input", async (_, body) => {
+      const account = newAccount();
+      await post(account);
+      const response = await change(account, path, body);
+      expect(response.status).toBe(400);
+      const refusal = refusalSchema.parse(await response.json());
+      expect(refusal.code).toBe("invalid_input");
+      expect(refusal.class).toBe("do not retry");
+      expect((await openedOf(account)).version).toBe(1);
+    });
+  },
+);
 
 describe("a poll for the list", () => {
   it.each(["abc", "-1", "1.5", ""])(
@@ -594,6 +776,34 @@ describe("sorting", () => {
     expect((await sorted(account)).asks).toEqual([
       { id, sort: { hashtags: ["work"], level: "high" } },
     ]);
+  });
+
+  it("lists the reason with the sort, for the open card", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
+    await saveRules(account, { text: rulesText });
+    await runSorts();
+    const id = await post(account);
+    fakes.model.reply({
+      json: {
+        hashtags: ["work"],
+        level: "high",
+        reason: "The electrician waits.",
+      },
+    });
+    await runSorts();
+    const response = await get(pagePaths.asks, await session(account));
+    const { asks } = z
+      .object({
+        asks: z.array(
+          z.object({
+            id: z.string(),
+            sort: z.object({ reason: z.string() }).nullable(),
+          }),
+        ),
+      })
+      .parse(await response.json());
+    expect(asks).toEqual([{ id, sort: { reason: "The electrician waits." } }]);
   });
 
   it("lists every ask with no hashtag while the box is empty, asking no model", async () => {

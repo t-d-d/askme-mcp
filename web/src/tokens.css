@@ -95,6 +95,12 @@
   --space-inside-card: var(--space-22);
   --gap-buttons: var(--space-8);
 
+  /* An opened ask, which sinks below the unopened ones at its level */
+  --opacity-opened: 0.55;
+
+  /* Movement: a swiped card going back to its place */
+  --duration-move: 150ms;
+
   /* Width */
   --content-width: 1080px;
   --measure: 34rem;

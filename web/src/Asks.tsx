@@ -1,19 +1,27 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { PageAsk } from "../../shared/page-api";
+import type { AskActions } from "./actions";
 import { AllClear } from "./AllClear";
 import { AskList } from "./AskList";
+import { DismissedNote } from "./DismissedNote";
 import { everything, onTab, type Tab } from "./tab";
 import styles from "./Asks.module.css";
 import { Header } from "./Header";
 import { Held } from "./Held";
 import { heldAsks } from "./hours";
 import { NewAccount } from "./NewAccount";
+import { OpenCard } from "./OpenCard";
+import { hashtagColours } from "./palette";
+import { browserSpeech } from "./speech";
 import { Tabs } from "./Tabs";
 import { useAsks } from "./useAsks";
+import { useDismissing } from "./useDismissing";
+import { useOpening } from "./useOpening";
 
 // The main screen: the person's open asks, or when none are waiting, All
 // clear, or for an account that has never had an ask, how to begin. The list
-// updates on its own while the page is visible.
+// updates on its own while the page is visible. With a card named in the
+// address, that ask is open in place of the list.
 //
 // The tabs show every ask, or one hashtag's. A tab whose hashtag has left
 // the rules gives way to Everything, and so does any tab when the whole list
@@ -31,12 +39,31 @@ import { useAsks } from "./useAsks";
 // list is all clear, and the line sits at its foot. Once nothing is held,
 // held asks are hidden again when they are next held. A former hashtag has
 // no hours, so it holds nothing back.
-export function Asks() {
+//
+// An ask the person has opened shows as opened, and one they have dismissed
+// leaves the list, before the next poll says so.
+export function Asks({ card }: { card: string | null }) {
   const { data, receivedAt, polledAt, failed } = useAsks();
   const [chosen, choose] = useState<Tab>(everything);
   const [showingHeld, showHeld] = useState(false);
+  const [speak] = useState(browserSpeech);
+  const { opened, markOpened } = useOpening();
+  const { dismissed, note, dismiss, undo } = useDismissing();
+  const actions = useMemo<AskActions>(
+    () => ({ speak, markOpened, dismiss }),
+    [speak, markOpened, dismiss],
+  );
+  const asks = useMemo(
+    () =>
+      (data?.asks ?? [])
+        .filter(({ id }) => !dismissed.has(id))
+        .map((ask) => (opened.has(ask.id) ? { ...ask, opened: true } : ask)),
+    [data, dismissed, opened],
+  );
   const hashtags = data?.hashtags ?? [];
-  const asks = data?.asks ?? [];
+  // Every hashtag an ask may carry, the former ones included, for colour.
+  const coloured =
+    data === undefined ? [] : [...hashtags, ...data.formerHashtags];
   const held = heldAsks(asks, hashtags, data?.timeZone, polledAt);
   if (showingHeld && held.size === 0) showHeld(false);
   const waiting = (list: readonly PageAsk[]) =>
@@ -60,37 +87,57 @@ export function Asks() {
       }}
     />
   );
+  const noted = note !== null;
+  const open = card === null ? undefined : asks.find(({ id }) => id === card);
+
+  // The note stays in one place in the tree, whichever screen shows, so a
+  // screen reader hears a note that comes as the card closes.
   return (
-    <div className={styles.screen}>
-      <Header />
-      {!allClear && (
-        <div className={styles.bar}>
-          <Tabs hashtags={hashtags} selected={tab} onSelect={choose} />
-          {heldHere > 0 && heldLine(false)}
+    <>
+      {open !== undefined ? (
+        <OpenCard
+          ask={open}
+          tab={tab}
+          now={receivedAt}
+          colours={hashtagColours(coloured)}
+          actions={actions}
+          noted={noted}
+        />
+      ) : (
+        <div className={styles.screen} data-noted={noted ? "" : undefined}>
+          <Header />
+          {!allClear && (
+            <div className={styles.bar}>
+              <Tabs hashtags={hashtags} selected={tab} onSelect={choose} />
+              {heldHere > 0 && heldLine(false)}
+            </div>
+          )}
+          {failed && (
+            <p className={styles.note} role="status">
+              Not connected. Trying again.
+            </p>
+          )}
+          {data === undefined ? null : shown.length > 0 ? (
+            <main>
+              <AskList
+                asks={shown}
+                hashtags={coloured}
+                tab={tab}
+                now={receivedAt}
+                actions={actions}
+              />
+            </main>
+          ) : data.everAsked ? (
+            <>
+              <AllClear />
+              {allClear && heldHere > 0 && heldLine(true)}
+            </>
+          ) : (
+            <NewAccount />
+          )}
         </div>
       )}
-      {failed && (
-        <p className={styles.note} role="status">
-          Not connected. Trying again.
-        </p>
-      )}
-      {data === undefined ? null : shown.length > 0 ? (
-        <main>
-          <AskList
-            asks={shown}
-            hashtags={[...data.hashtags, ...data.formerHashtags]}
-            tab={tab}
-            now={receivedAt}
-          />
-        </main>
-      ) : data.everAsked ? (
-        <>
-          <AllClear />
-          {allClear && heldHere > 0 && heldLine(true)}
-        </>
-      ) : (
-        <NewAccount />
-      )}
-    </div>
+      <DismissedNote note={note} onUndo={undo} />
+    </>
   );
 }

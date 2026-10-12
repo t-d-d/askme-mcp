@@ -71,12 +71,17 @@ export const timeZoneShape = /^[A-Za-z][\w+-]*(?:\/[\w+-]+)*$/u;
 // about 30.
 export const timeZoneLimit = 64;
 
+// A link an agent gave with its ask. The ask tool took only https.
+const link = z.url({ protocol: /^https$/u });
+
 // The account's open asks, the version they were read at, and whether the
 // account has ever had an ask, which tells a new account from one that is
 // all clear.
 //
-// Each ask carries its sort: its hashtags, in the rules' order, and its
-// level. An ask not sorted yet carries null.
+// Each ask carries the links its agent gave, if any, and whether the person
+// has opened it by following one. It carries its sort: its hashtags, in the
+// rules' order, its level, and the model's one line on why. An ask not
+// sorted yet carries null.
 //
 // Saving the rules sorts every open ask again, and each keeps its old sort
 // until then, so an ask can carry a hashtag the rules no longer name. Those
@@ -97,9 +102,16 @@ export const asksAnswer = z.object({
       id: z.string(),
       summary: z.string(),
       spokenDetail: z.string(),
+      actionLink: link.optional(),
+      sessionLink: link.optional(),
       postedAt: z.iso.datetime(),
+      opened: z.boolean(),
       sort: z
-        .object({ hashtags: z.array(z.string()), level: z.enum(levels) })
+        .object({
+          hashtags: z.array(z.string()),
+          level: z.enum(levels),
+          reason: z.string(),
+        })
         .nullable(),
     }),
   ),
@@ -107,6 +119,33 @@ export const asksAnswer = z.object({
 
 export type AsksAnswer = z.infer<typeof asksAnswer>;
 export type PageAsk = AsksAnswer["asks"][number];
+
+// The changes the page makes to one ask, each a route of its own that takes
+// the ask's id in its body. Each one raises the account's version, so the
+// next poll brings the list as it now is.
+export const askChangePaths = {
+  // The person followed one of the ask's links. It stays open, and sinks
+  // below the unopened asks at its level.
+  opened: "/api/asks/opened",
+  // The person dismissed the ask, which closes.
+  dismissed: "/api/asks/dismissed",
+} as const;
+
+// The most characters an ask's id may hold, and the pattern of one: the
+// letters, digits, - and _ askme's ids are made of. The page's card address
+// and the changes it sends both use it.
+export const askIdLimit = 64;
+export const askIdPattern = new RegExp(
+  `^[A-Za-z0-9_-]{1,${String(askIdLimit)}}$`,
+  "u",
+);
+
+// What the page sends to change an ask: its id, as the list gave it.
+export const askChange = z.strictObject({
+  id: z.string().regex(askIdPattern),
+});
+
+export type AskChange = z.infer<typeof askChange>;
 
 // A poll carries the version of the last answer in this query parameter, and
 // gets the whole list only when the account's version has moved on (ADR 1).

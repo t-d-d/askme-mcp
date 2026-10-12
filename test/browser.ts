@@ -7,8 +7,14 @@
 // Headless Chromium always reports a page as visible, so the page's
 // visibility is replaced before it loads, and a test hides and shows it.
 import { chromium, type Page } from "playwright";
+import { z } from "zod";
 import { sinceParam, type AsksAnswer } from "../shared/page-api";
-import { askedForKey, sessionChangedEvent, sessionKey } from "./page/keys";
+import {
+  askedForKey,
+  sessionChangedEvent,
+  sessionKey,
+  spokenKey,
+} from "./page/keys";
 import { isLoopbackHost } from "./loopback";
 
 export interface ApiCall {
@@ -27,6 +33,9 @@ export interface OpenPage {
   apiCalls: ApiCall[];
   // Which of Clerk's screens the page asked for, if any.
   askedFor(): Promise<string | null>;
+  // What the page asked the browser's speech to read aloud, in order, when
+  // the page was opened with speech "recorded".
+  spoken(): Promise<string[]>;
   // Hide or show the page, as switching tabs or locking the phone would.
   hide(): Promise<void>;
   show(): Promise<void>;
@@ -48,6 +57,10 @@ export interface PageOptions {
   // The browser's time zone, such as Europe/London. Without one it is the
   // machine's.
   timeZone?: string;
+  // The browser's speech: "absent", as in a browser that cannot speak, or
+  // "recorded", which says nothing and records what it was asked to read.
+  // Left out, the page has Chromium's own.
+  speech?: "absent" | "recorded";
 }
 
 // An answer that is a status, such as a failure, with a JSON body when one
@@ -187,6 +200,27 @@ export async function openPage(
   } else if (options.clock === true) {
     await context.clock.install();
   }
+  if (options.speech === "absent") {
+    await context.addInitScript(() => {
+      Reflect.deleteProperty(window, "speechSynthesis");
+      Reflect.deleteProperty(window, "SpeechSynthesisUtterance");
+    });
+  }
+  if (options.speech === "recorded") {
+    await context.addInitScript((key) => {
+      const spoken: string[] = [];
+      Reflect.set(window, key, spoken);
+      Object.defineProperty(window, "speechSynthesis", {
+        configurable: true,
+        value: {
+          speak: (utterance: SpeechSynthesisUtterance) => {
+            spoken.push(utterance.text);
+          },
+          cancel: () => undefined,
+        },
+      });
+    }, spokenKey);
+  }
   if (options.session !== undefined) {
     await context.addInitScript(
       ([key, token]) => {
@@ -204,6 +238,13 @@ export async function openPage(
     apiCalls,
     askedFor: () =>
       page.evaluate((key) => sessionStorage.getItem(key), askedForKey),
+    spoken: async () =>
+      z.array(z.string()).parse(
+        await page.evaluate((key) => {
+          const spoken: unknown = Reflect.get(window, key);
+          return spoken ?? [];
+        }, spokenKey),
+      ),
     hide: () => setHidden(page, true),
     show: () => setHidden(page, false),
     signInAs: (session) =>

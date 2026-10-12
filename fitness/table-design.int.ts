@@ -6,7 +6,7 @@ import { handler } from "../service/src/handler";
 import { callerOf, type AccountId } from "../service/src/identity";
 import { keys } from "../service/src/store/keys";
 import { askLifetimeDays, createStore } from "../service/src/store/store";
-import { pagePaths } from "../shared/page-api";
+import { askChangePaths, pagePaths } from "../shared/page-api";
 import { handler as sorter } from "../service/src/sorter";
 import { storedItems } from "../test/dynamodb";
 import { fakes } from "../test/fakes";
@@ -94,6 +94,20 @@ async function saveRules(sub: string, text: string, hashtags: string[]) {
   expect(response.status).toBe(200);
 }
 
+// A change from the page to one ask, as the signed-in person.
+const changeAsk = async (sub: string, path: string, id: string) =>
+  invoke(
+    handler,
+    new Request(`${origin}${path}`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await issuer.sessionToken({ claims: { sub } })}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ id }),
+    }),
+  );
+
 // Runs the sorts handed on so far, as Lambda would.
 const runSorts = () =>
   fakes.lambda.drain((payload) => sorter(payload, { awsRequestId: "sort-1" }));
@@ -163,6 +177,61 @@ describe("fitness: every change raises the version (table-design.md)", () => {
         replaces: old,
       });
       expect(await listed(sub)).toEqual({ version: 2, asks: [{ id }] });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("raises it on opening, and leaves it alone when the ask was already opened", async () => {
+    const sub = newAccount();
+    const client = await connect(handler, {
+      token: await issuer.token({ claims: { sub } }),
+    });
+    try {
+      const id = await postWith(client, ask);
+      expect(await version(sub)).toBe(1);
+      expect((await changeAsk(sub, askChangePaths.opened, id)).status).toBe(
+        204,
+      );
+      expect(await version(sub)).toBe(2);
+      await changeAsk(sub, askChangePaths.opened, id);
+      expect(await version(sub)).toBe(2);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("raises it on dismissing, and leaves it alone when the ask was already closed", async () => {
+    const sub = newAccount();
+    const client = await connect(handler, {
+      token: await issuer.token({ claims: { sub } }),
+    });
+    try {
+      const id = await postWith(client, ask);
+      expect(await version(sub)).toBe(1);
+      expect((await changeAsk(sub, askChangePaths.dismissed, id)).status).toBe(
+        204,
+      );
+      expect(await listed(sub)).toEqual({ version: 2, asks: [] });
+      await changeAsk(sub, askChangePaths.dismissed, id);
+      await changeAsk(sub, askChangePaths.opened, id);
+      expect(await version(sub)).toBe(2);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("leaves it alone when the page names an ask the account does not have", async () => {
+    const sub = newAccount();
+    const client = await connect(handler, {
+      token: await issuer.token({ claims: { sub } }),
+    });
+    try {
+      await postWith(client, ask);
+      for (const path of Object.values(askChangePaths)) {
+        await changeAsk(sub, path, "AAAAAAAAAAAAAAAAAAAAAAAA");
+      }
+      expect(await version(sub)).toBe(1);
     } finally {
       await client.close();
     }

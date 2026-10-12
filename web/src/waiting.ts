@@ -33,20 +33,27 @@ export function longestWaitingFirst<
 }
 
 // Where each level goes in the list, and an ask not sorted yet after all
-// of them.
-const place = (sort: { level: Level } | null) =>
-  sort === null ? levels.length : levels.indexOf(sort.level);
+// of them. At each, an opened ask goes after the unopened ones.
+const place = ({
+  sort,
+  opened,
+}: {
+  sort: { level: Level } | null;
+  opened: boolean;
+}) =>
+  (sort === null ? levels.length : levels.indexOf(sort.level)) * 2 +
+  (opened ? 1 : 0);
 
 // Higher level first, then longest waiting (PRD, "Web page"). An ask not
-// sorted yet waits below the sorted ones until it is.
+// sorted yet waits below the sorted ones until it is. An opened ask sinks
+// below the unopened ones at its level, and no further.
 export function inListOrder<
   Ask extends {
     id: string;
     postedAt: string;
+    opened: boolean;
     sort: { level: Level } | null;
   },
 >(asks: readonly Ask[]): Ask[] {
-  return longestWaitingFirst(asks).sort(
-    (a, b) => place(a.sort) - place(b.sort),
-  );
+  return longestWaitingFirst(asks).sort((a, b) => place(a) - place(b));
 }

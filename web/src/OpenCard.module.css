@@ -1,0 +1,172 @@
+/* A white screen. Its buttons sit at the foot, however short the text. */
+.screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  background: var(--surface);
+}
+
+/* Room at the foot for the note after a dismissal, so it covers nothing. */
+.screen[data-noted] {
+  padding-bottom: calc(var(--tap) + 2 * var(--space-6));
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-14) var(--space-12) 0 var(--space-8);
+}
+
+.back {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  padding: 0 var(--space-12) 0 var(--space-4);
+  color: var(--ink);
+  font-weight: var(--weight-label);
+  text-decoration: none;
+}
+
+.dismiss {
+  min-height: var(--tap);
+  padding: 0 var(--space-12);
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  font-weight: var(--weight-label);
+  cursor: pointer;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-14);
+  padding: var(--space-14) var(--space-inside-card) 0;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+
+.age {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--size-meta);
+  line-height: var(--leading-meta);
+}
+
+.summary {
+  margin: 0;
+  font-size: var(--size-title);
+  line-height: var(--leading-title);
+  font-weight: var(--weight-strong);
+  letter-spacing: var(--tracking-title);
+  overflow-wrap: anywhere;
+}
+
+/* Listen: a wide tint button, with the speaker, the word and the length. */
+.listen {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  min-height: var(--button-height);
+  padding: 0 var(--space-18);
+  border: 0;
+  border-radius: var(--radius-button);
+  background: var(--tag-tint);
+  color: var(--tag-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.length {
+  margin-left: auto;
+  font-size: var(--size-meta);
+  line-height: var(--leading-meta);
+}
+
+.spoken {
+  margin: var(--space-4) 0 0;
+  font-size: var(--size-spoken);
+  line-height: var(--leading-spoken);
+  overflow-wrap: anywhere;
+}
+
+/* The reason, under a hairline, in the third text colour. */
+.reason {
+  margin: 0;
+  padding-top: var(--space-14);
+  border-top: var(--hairline) solid var(--line);
+  color: var(--text-3);
+  font-size: var(--size-note);
+  line-height: var(--leading-body);
+  overflow-wrap: anywhere;
+}
+
+.foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-buttons);
+  margin-top: auto;
+  padding: var(--space-20) var(--space-outside-card);
+}
+
+/* The main button: a strong fill carries white text, the surface colour. */
+.main,
+.second {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: var(--button-height);
+  padding: var(--space-8) var(--space-20);
+  border-radius: var(--radius-button);
+  text-decoration: none;
+}
+
+.main {
+  background: var(--tag-strong);
+  color: var(--surface);
+}
+
+/* The session, under it: outlined, in ink. */
+.second {
+  border: var(--border-width) solid var(--border);
+  color: var(--ink);
+}
+
+.label {
+  font-size: var(--size-row);
+  line-height: var(--leading-row);
+  font-weight: var(--weight-strong);
+}
+
+.site {
+  font-size: var(--size-meta-small);
+  line-height: var(--leading-meta);
+  overflow-wrap: anywhere;
+}
+
+.second .site {
+  color: var(--text-3);
+}
+
+/* At desktop width the card keeps to the spoken text's measure, centred. */
+@media (min-width: 768px) {
+  .header,
+  .body,
+  .foot {
+    width: 100%;
+    max-width: calc(var(--measure) + 2 * var(--space-inside-card));
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .foot {
+    margin-top: var(--space-26);
+  }
+}
