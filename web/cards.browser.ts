@@ -20,6 +20,8 @@ import {
   type PageOptions,
 } from "../test/browser";
 
+type Locator = ReturnType<OpenPage["page"]["locator"]>;
+
 const phone = { width: 390, height: 844 };
 const session = "test-session-token";
 const minute = 60_000;
@@ -192,7 +194,7 @@ async function narrowCard(top: PageAsk) {
 }
 
 // How many lines an element's text takes, in the page's own font.
-const lineCount = (element: ReturnType<OpenPage["page"]["locator"]>) =>
+const lineCount = (element: Locator) =>
   element.evaluate(async (each) => {
     await document.fonts.ready;
     const range = document.createRange();
@@ -262,15 +264,23 @@ describe("the top card's buttons", () => {
   // A site's name of more than 15 characters is set smaller, so a name as
   // long as dash.cloudflare.com fits whole on one line (docs/design.md).
   it.each([
-    { site: "docs.google.com", top: googleDocAndSession, size: "13px" },
-    { site: "dash.cloudflare.com", top: cloudflareAndSession, size: "11px" },
+    {
+      site: "docs.google.com",
+      top: googleDocAndSession,
+      link: googleDoc,
+      size: "13px",
+    },
+    {
+      site: "dash.cloudflare.com",
+      top: cloudflareAndSession,
+      link: cloudflare,
+      size: "11px",
+    },
   ])(
     "keep $site whole on one line on a narrow phone, beside both icon buttons, at $size",
-    async ({ site, top, size }) => {
+    async ({ site, top, link, size }) => {
       const card = await narrowCard(top);
-      const name = card
-        .locator(`a[href="${top.actionLink ?? ""}"] span`)
-        .nth(1);
+      const name = card.locator(`a[href="${link}"] span`).nth(1);
       expect(await name.innerText()).toBe(site);
       expect(await lineCount(name)).toBe(1);
       expect(
