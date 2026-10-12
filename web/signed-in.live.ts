@@ -151,7 +151,7 @@ describe("fitness: a person can sign in and out on the live page (test-tiers.md)
         .catch(
           failsWith(page, "The rules did not name the signed-in account."),
         );
-      expect(await account.innerText()).toMatch(/^Signed in as /u);
+      expect(await account.innerText()).toBe(testAddress);
       await page.getByRole("button", { name: "Sign out" }).click();
       const signIn = page.getByRole("button", { name: "Sign in" });
       await signIn

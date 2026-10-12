@@ -479,7 +479,7 @@ describe("signing out", () => {
   it("names the account at the foot of the rules, with Sign out beside it", async () => {
     view = await openRules(saved);
     const { page } = view;
-    const account = page.getByText(`Signed in as ${email}`, { exact: true });
+    const account = page.getByText(email, { exact: true });
     const signOut = page.getByRole("button", { name: "Sign out" });
     expect(await account.isVisible()).toBe(true);
     expect(await signOut.isVisible()).toBe(true);
@@ -500,8 +500,39 @@ describe("signing out", () => {
       api: { [pagePaths.rules]: saved, [pagePaths.asks]: list },
     });
     const { page } = view;
-    await page.getByRole("button", { name: "Sign out" }).waitFor();
-    expect(await page.getByText("Signed in as").count()).toBe(0);
+    const signOut = page.getByRole("button", { name: "Sign out" });
+    await signOut.waitFor();
+    expect(await signOut.locator("..").innerText()).toBe("Sign out");
+  });
+
+  // An address of a common length, such as a 23-letter Gmail address, fits
+  // on the line beside Sign out at phone width, and so does one a little
+  // longer.
+  it("keeps an address of 30 characters on one line, with Sign out beside it", async () => {
+    const address = "samantha.okonkwo-r@example.com";
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      email: address,
+      api: { [pagePaths.rules]: saved, [pagePaths.asks]: list },
+    });
+    const { page } = view;
+    const account = page.getByText(address, { exact: true });
+    const signOut = page.getByRole("button", { name: "Sign out" });
+    await account.waitFor();
+    const [named, button] = await Promise.all([
+      account.boundingBox(),
+      signOut.boundingBox(),
+    ]);
+    if (named === null || button === null) {
+      throw new Error("The foot showed no account or no Sign out.");
+    }
+    const line = await account.evaluate((element) =>
+      parseFloat(getComputedStyle(element).lineHeight),
+    );
+    expect(named.height).toBeLessThan(2 * line);
+    expect(button.y).toBeLessThan(named.y + named.height);
+    expect(named.y).toBeLessThan(button.y + button.height);
+    expect(button.x).toBeGreaterThanOrEqual(named.x + named.width);
   });
 
   it("signs out through Clerk and shows the signed-out page, with no screen in the address", async () => {

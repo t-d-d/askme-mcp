@@ -21,7 +21,7 @@ const leaving = "Leave without saving your rules?";
 // it cannot, the text is saved all the same, the old hashtags and hours
 // stay, and the page offers to try again. Either way, saving re-sorts every
 // open ask, and a last note says so, after the time zone the hours use. At
-// the foot, the account signed in, and Sign out.
+// the foot, the address of the account signed in, and Sign out.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const auth = useAuth();
   const { loaded, save } = useRules();
@@ -184,7 +184,7 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
         </section>
         <div className={styles.account}>
           {auth.email !== null && (
-            <p className={styles.signedIn}>Signed in as {auth.email}</p>
+            <p className={styles.signedIn}>{auth.email}</p>
           )}
           <button className={styles.signOut} type="button" onClick={signOut}>
             Sign out
