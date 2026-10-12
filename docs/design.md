@@ -205,7 +205,7 @@ Swiping a row or the top card dismisses it. A note with "Undo" shows for a few s
 
 Shown when nothing is waiting and the account has had at least one ask.
 
-- "All clear." at 146px, on two lines.
+- "All clear." at 146px. On a phone it takes two lines. On a screen 517px wide or more, such as at desktop width, it fits on one line and takes one.
 - On a screen narrower than 354px, "clear." does not fit at 146px inside the 22px side padding. There the headline shrinks with the screen, so "clear." keeps 22px on each side. At 320px wide it is 130px.
 - The headline and its two lines sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the held line. On a screen too short for that, 26px stays above them.
 - They stay where they are while a note shows at the foot of the screen. The held line moves up out of the note's way. On a screen too short for that, they move up too, or the screen scrolls further, until 26px stays between the last line and the held line or the note.
