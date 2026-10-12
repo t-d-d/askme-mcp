@@ -26,6 +26,12 @@ provider:
     CLERK_ISSUER: ${env:CLERK_ISSUER}
     # The one table (ADR 13).
     TABLE_NAME: !Ref Table
+    # The function that sorts an ask after it is posted.
+    SORT_FUNCTION: ${self:service}-${sls:stage}-sort
+    # The name of the service's OpenRouter key in Parameter Store, which
+    # issue #1 fixed. The functions read the key when they first need it,
+    # so it is in neither this file nor their settings.
+    MODEL_KEY_PARAMETER: /askme/openrouter/api-key
   iam:
     role:
       statements:
@@ -40,6 +46,18 @@ provider:
             - dynamodb:DeleteItem
             - dynamodb:ConditionCheckItem
           Resource: !GetAtt Table.Arn
+        # The service's model key, and nothing else in Parameter Store. It
+        # is encrypted with AWS's own key for Parameter Store, which lets
+        # any role in the account that may read the parameter decrypt it.
+        - Effect: Allow
+          Action:
+            - ssm:GetParameter
+          Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/askme/openrouter/api-key"
+        # Handing a posted ask to the sort function.
+        - Effect: Allow
+          Action:
+            - lambda:InvokeFunction
+          Resource: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${sls:stage}-sort"
 
 build:
   esbuild:
@@ -62,6 +80,18 @@ functions:
       - httpApi: "GET /.well-known/oauth-protected-resource/mcp"
       - httpApi: "GET /api/asks"
       - httpApi: "GET /api/connection"
+      - httpApi: "GET /api/rules"
+      - httpApi: "PUT /api/rules"
+
+  # Sorts one ask after the service has stored it and answered, so posting
+  # never waits on the model. The mcp function invokes it asynchronously,
+  # with an ask's id. It has no route. A sort that fails leaves the ask
+  # unsorted, and a later poll asks again, so Lambda does not retry it.
+  sort:
+    handler: service/src/sorter.handler
+    # Two tries at the model, of up to 20 seconds each.
+    timeout: 60
+    maximumRetryAttempts: 0
 
 resources:
   Resources:
@@ -146,10 +176,12 @@ resources:
             # Authorization header, so nothing is cached and every header
             # but Host goes on. AWS managed policies: CachingDisabled,
             # AllViewerExceptHostHeader and SecurityHeadersPolicy.
+            # Saving the rules is a PUT, and CloudFront allows it only
+            # within its full set of methods.
             - PathPattern: /api/*
               TargetOriginId: api
               ViewerProtocolPolicy: https-only
-              AllowedMethods: [GET, HEAD]
+              AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
               CachedMethods: [GET, HEAD]
               Compress: true
               CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
@@ -211,6 +243,16 @@ resources:
             MetricName: ErrorLines
             MetricValue: "1"
 
+    SortErrorLines:
+      Type: AWS::Logs::MetricFilter
+      Properties:
+        LogGroupName: !Ref SortLogGroup
+        FilterPattern: '{ $.level = "ERROR" }'
+        MetricTransformations:
+          - MetricNamespace: askme
+            MetricName: ErrorLines
+            MetricValue: "1"
+
     ErrorLinesAlarm:
       Type: AWS::CloudWatch::Alarm
       Properties:
@@ -261,6 +303,28 @@ resources:
                 Dimensions:
                   - Name: FunctionName
                     Value: !Ref McpLambdaFunction
+              Period: 60
+              Stat: Sum
+          - Id: sortErrors
+            ReturnData: false
+            MetricStat:
+              Metric:
+                Namespace: AWS/Lambda
+                MetricName: Errors
+                Dimensions:
+                  - Name: FunctionName
+                    Value: !Ref SortLambdaFunction
+              Period: 60
+              Stat: Sum
+          - Id: sortThrottles
+            ReturnData: false
+            MetricStat:
+              Metric:
+                Namespace: AWS/Lambda
+                MetricName: Throttles
+                Dimensions:
+                  - Name: FunctionName
+                    Value: !Ref SortLambdaFunction
               Period: 60
               Stat: Sum
           - Id: failures
@@ -355,6 +419,7 @@ resources:
         Name: askme/errors
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           fields @timestamp, message.event, message.errorClass, message.status, message.requestId, errorType, @logStream
           | filter level = "ERROR"
@@ -367,6 +432,7 @@ resources:
         Name: askme/function-failures
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           fields @timestamp, type, record.status, record.errorType, record.requestId, @logStream
           | filter ispresent(record.status) and record.status != "success"
@@ -381,6 +447,7 @@ resources:
         Name: askme/lines-by-event
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter ispresent(message.event)
           | stats count(*) as lines by level, message.event
@@ -392,6 +459,7 @@ resources:
         Name: askme/token-missing
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "token-missing"
           | stats count(*) as calls by bin(1h)
@@ -402,6 +470,7 @@ resources:
         Name: askme/token-rejected
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "token-rejected"
           | stats count(*) as calls by message.errorClass, bin(1h)
@@ -412,6 +481,7 @@ resources:
         Name: askme/scope-missing
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "scope-missing"
           | stats count(*) as calls by message.tool, bin(1h)
@@ -422,6 +492,7 @@ resources:
         Name: askme/agent-token-refused
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "agent-token-refused"
           | stats count(*) as calls by bin(1h)
@@ -432,6 +503,7 @@ resources:
         Name: askme/input-invalid
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "input-invalid"
           | stats count(*) as calls by message.tool, bin(1d)
@@ -442,6 +514,7 @@ resources:
         Name: askme/ask-posted
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "ask-posted"
           | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
@@ -452,6 +525,7 @@ resources:
         Name: askme/ask-replaced
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "ask-replaced"
           | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
@@ -462,6 +536,7 @@ resources:
         Name: askme/ask-resolved
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "ask-resolved"
           | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
@@ -472,6 +547,7 @@ resources:
         Name: askme/ask-already-closed
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "ask-already-closed"
           | stats count(*) as calls, count_distinct(message.accountId) as accounts by bin(1d)
@@ -482,6 +558,7 @@ resources:
         Name: askme/ask-not-found
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "ask-not-found"
           | stats count(*) as calls, count_distinct(message.accountId) as accounts by bin(1d)
@@ -494,6 +571,7 @@ resources:
         Name: askme/ask-deduplicated
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "ask-deduplicated"
           | stats count(*) as repeats, count_distinct(message.accountId) as accounts by bin(1d)
@@ -504,6 +582,7 @@ resources:
         Name: askme/cap-reached
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "cap-reached"
           | stats count(*) as refusals by message.accountId, bin(1d)
@@ -514,6 +593,7 @@ resources:
         Name: askme/rate-limited
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "rate-limited"
           | stats count(*) as refusals by message.accountId, bin(1h)
@@ -524,9 +604,91 @@ resources:
         Name: askme/poll-limited
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "poll-limited"
           | stats count(*) as polls, count_distinct(message.accountId) as accounts by bin(1h)
+
+    # How often the service could not hand an ask to the sort function.
+    SortRequestFailedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/sort-request-failed
+        LogGroupNames:
+          - !Ref McpLogGroup
+          - !Ref SortLogGroup
+        QueryString: |
+          filter message.event = "sort-request-failed"
+          | stats count(*) as failures by message.errorClass, bin(1h)
+
+    # How often a poll asked again for an ask left unsorted.
+    SortRetriedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/sort-retried
+        LogGroupNames:
+          - !Ref McpLogGroup
+          - !Ref SortLogGroup
+        QueryString: |
+          filter message.event = "sort-retried"
+          | stats count(*) as retries, count_distinct(message.accountId) as accounts by bin(1h)
+
+    AskSortedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/ask-sorted
+        LogGroupNames:
+          - !Ref McpLogGroup
+          - !Ref SortLogGroup
+        QueryString: |
+          filter message.event = "ask-sorted"
+          | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
+
+    # Sorts the model gave no fitting reply for, by why: a status, a
+    # timeout, or a reply the check discarded.
+    SortFailedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/sort-failed
+        LogGroupNames:
+          - !Ref McpLogGroup
+          - !Ref SortLogGroup
+        QueryString: |
+          filter message.event = "sort-failed"
+          | stats count(*) as failures by message.errorClass, bin(1h)
+
+    RulesSavedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/rules-saved
+        LogGroupNames:
+          - !Ref McpLogGroup
+          - !Ref SortLogGroup
+        QueryString: |
+          filter message.event = "rules-saved"
+          | stats count(*) as saves, count_distinct(message.accountId) as accounts by bin(1d)
+
+    RulesReadFailedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/rules-read-failed
+        LogGroupNames:
+          - !Ref McpLogGroup
+          - !Ref SortLogGroup
+        QueryString: |
+          filter message.event = "rules-read-failed"
+          | stats count(*) as failures by message.errorClass, bin(1h)
+
+    RulesLimitedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/rules-limited
+        LogGroupNames:
+          - !Ref McpLogGroup
+          - !Ref SortLogGroup
+        QueryString: |
+          filter message.event = "rules-limited"
+          | stats count(*) as saves, count_distinct(message.accountId) as accounts by bin(1h)
 
     RequestFailedQuery:
       Type: AWS::Logs::QueryDefinition
@@ -534,6 +696,7 @@ resources:
         Name: askme/request-failed
         LogGroupNames:
           - !Ref McpLogGroup
+          - !Ref SortLogGroup
         QueryString: |
           filter message.event = "request-failed"
           | stats count(*) as failures by message.errorClass, message.status, bin(1d)

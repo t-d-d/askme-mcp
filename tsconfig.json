@@ -9,6 +9,7 @@
     "test",
     "fitness",
     "conformance",
+    "evals",
     "service",
     "shared",
     "web/*.ts"

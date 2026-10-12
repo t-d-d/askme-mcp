@@ -5,6 +5,7 @@ import { z } from "zod";
 import { askTool, limits } from "../service/src/ask";
 import { resolveTool } from "../service/src/resolve";
 import { callerOf } from "../service/src/identity";
+import type { SortRequests } from "../service/src/jobs";
 import type { Store } from "../service/src/store/store";
 import { addTool } from "../service/src/tools";
 import { captureLogs } from "../test/logs";
@@ -20,8 +21,17 @@ const store: Store = {
   asksSince: unused,
   countPoll: unused,
   countAsk: unused,
+  rules: unused,
+  saveRules: unused,
+  countRulesSave: unused,
+  askToSort: unused,
+  recordSort: unused,
+  countSortRetry: unused,
   close: () => undefined,
 };
+
+// A sorter the tools never reach either.
+const sorts: SortRequests = { request: unused };
 
 let client: Client;
 let capture: ReturnType<typeof captureLogs>;
@@ -34,8 +44,8 @@ beforeAll(async () => {
     scopes: ["asks:create"],
     extra: { accountId: "user_1", requestId: "req-1" },
   });
-  addTool(server, askTool, caller, store);
-  addTool(server, resolveTool, caller, store);
+  addTool(server, askTool, caller, { store, sorts });
+  addTool(server, resolveTool, caller, { store, sorts });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await server.connect(serverSide);
   client = new Client({ name: "askme-test", version: "1.0.0" });

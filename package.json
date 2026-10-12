@@ -13,6 +13,7 @@
     "test": "vitest run --project static --project unit --project int --project browser",
     "test:live": "vitest run --project live",
     "conformance": "vitest run --project conformance",
+    "eval": "NODE_USE_ENV_PROXY=1 vitest run --config evals/vitest.config.ts",
     "build": "vite build web"
   },
   "devDependencies": {
@@ -37,6 +38,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "3.1149.0",
+    "@aws-sdk/client-lambda": "3.1149.0",
+    "@aws-sdk/client-ssm": "3.1149.0",
     "@aws-sdk/lib-dynamodb": "3.1149.0",
     "@clerk/react": "6.17.8",
     "@fontsource-variable/bricolage-grotesque": "5.3.0",

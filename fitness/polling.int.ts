@@ -82,6 +82,7 @@ const unchangedSchema = z.strictObject({
 const listSchema = z.strictObject({
   version: z.number(),
   everAsked: z.boolean(),
+  hashtags: z.array(z.object({ name: z.string(), colour: z.number() })),
   asks: z.array(z.looseObject({ id: z.string(), summary: z.string() })),
 });
 
@@ -154,11 +155,17 @@ describe("fitness: an idle poll is one read (table-design.md)", () => {
     });
   });
 
-  it("reads the list too when something changed", async () => {
+  it("reads the list, and the rules for their hashtags, when something changed", async () => {
     const sub = newAccount();
     await post(sub);
-    const actions = (await callsFor(sub, 0)).map((call) => call.action);
-    expect(actions).toEqual(["UpdateItem", "GetItem", "Query"]);
+    const calls = await callsFor(sub, 0);
+    expect(calls.map((call) => call.action)).toEqual([
+      "UpdateItem",
+      "GetItem",
+      "Query",
+      "GetItem",
+    ]);
+    expect(calls[3]?.sortKeys).toEqual([keys.rules(accountId(sub)).sk]);
   });
 });
 

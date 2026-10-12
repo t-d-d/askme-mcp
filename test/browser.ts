@@ -12,10 +12,13 @@ import { askedForKey, sessionChangedEvent, sessionKey } from "./page/keys";
 import { isLoopbackHost } from "./loopback";
 
 export interface ApiCall {
+  method: string;
   path: string;
   // The query string, such as "?since=5", or "" for none.
   query: string;
   authorization: string | null;
+  // What the page sent, such as the rules it saved, or null for none.
+  body: string | null;
 }
 
 export interface OpenPage {
@@ -44,16 +47,25 @@ export interface PageOptions {
   clock?: boolean;
 }
 
-// An answer that is only a status, such as a failure.
+// An answer that is a status, such as a failure, with a JSON body when one
+// is given, such as a refusal.
 export class Status {
-  constructor(readonly code: number) {}
+  constructor(
+    readonly code: number,
+    readonly body?: unknown,
+  ) {}
 }
 
-// An answer worked out for each call, from the address the page asked for
-// and the Authorization header it sent. It may give JSON or a status.
+// An answer worked out for each call, from the address the page asked for,
+// the Authorization header it sent, and its method and body. It may give
+// JSON or a status, at once or after a while.
 export class Answering {
   constructor(
-    readonly answer: (url: URL, authorization: string | null) => unknown,
+    readonly answer: (
+      url: URL,
+      authorization: string | null,
+      sent: { method: string; body: string | null },
+    ) => unknown,
   ) {}
 }
 
@@ -63,6 +75,23 @@ export function answerPoll(url: URL, list: AsksAnswer): unknown {
   return url.searchParams.get(sinceParam) === String(list.version)
     ? { version: list.version, unchanged: true }
     : list;
+}
+
+// A colour, or a custom property that holds one, as the page's browser
+// computes it. A test compares an element's colour with this, so no colour
+// is written in a test of the page (styling.md).
+export async function computedColour(
+  page: Page,
+  colour: string,
+): Promise<string> {
+  return page.evaluate((value) => {
+    const probe = document.createElement("span");
+    probe.style.color = value;
+    document.body.append(probe);
+    const computed = getComputedStyle(probe).color;
+    probe.remove();
+    return computed;
+  }, colour);
 }
 
 const hiddenFlag = "testHidden";
@@ -108,16 +137,29 @@ export async function openPage(
     (target) =>
       isLoopbackHost(target.hostname) && target.pathname.startsWith("/api/"),
     async (route) => {
-      const url = new URL(route.request().url());
-      const authorization = await route.request().headerValue("authorization");
-      apiCalls.push({ path: url.pathname, query: url.search, authorization });
+      const request = route.request();
+      const url = new URL(request.url());
+      const authorization = await request.headerValue("authorization");
+      const sent = { method: request.method(), body: request.postData() };
+      apiCalls.push({
+        ...sent,
+        path: url.pathname,
+        query: url.search,
+        authorization,
+      });
       const given = options.api?.[url.pathname];
-      const answer =
-        given instanceof Answering ? given.answer(url, authorization) : given;
+      const answer: unknown =
+        given instanceof Answering
+          ? await given.answer(url, authorization, sent)
+          : given;
       if (answer === undefined) {
         await route.fulfill({ status: 404 });
       } else if (answer instanceof Status) {
-        await route.fulfill({ status: answer.code });
+        await route.fulfill(
+          answer.body === undefined
+            ? { status: answer.code }
+            : { status: answer.code, json: answer.body },
+        );
       } else {
         await route.fulfill({ json: answer });
       }

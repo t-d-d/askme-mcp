@@ -25,6 +25,14 @@ const accountIdSchema = z
 
 export type AccountId = z.output<typeof accountIdSchema>;
 
+// An account id carried from a verified token to work the service does after
+// it has answered, such as sorting an ask it has just stored. Only the
+// service can start that work, and it hands on the id its own token check
+// gave, so the id still comes from a token (ADR 13).
+export function jobAccount(value: unknown): AccountId {
+  return accountIdSchema.parse(value);
+}
+
 // The claims the service reads from Clerk's OAuth access tokens. Clerk puts
 // the scopes in scp as a list, or in scope as one string, and reads either.
 const claimsSchema = z.object({

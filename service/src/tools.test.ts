@@ -5,6 +5,7 @@ import { z } from "zod";
 import { captureLogs, lineText } from "../../test/logs";
 import { refusalOf } from "../../test/mcp";
 import { callerOf } from "./identity";
+import type { SortRequests } from "./jobs";
 import type { Store } from "./store/store";
 import { addTool, type ToolDefinition } from "./tools";
 
@@ -28,8 +29,17 @@ const store: Store = {
   asksSince: unused,
   countPoll: unused,
   countAsk: unused,
+  rules: unused,
+  saveRules: unused,
+  countRulesSave: unused,
+  askToSort: unused,
+  recordSort: unused,
+  countSortRetry: unused,
   close: () => undefined,
 };
+
+// A sorter this tool never reaches.
+const sorts: SortRequests = { request: unused };
 
 // A tool whose answer passes its type but not its schema, as a bug in a
 // later store read might give.
@@ -53,7 +63,7 @@ describe("a tool whose answer breaks its own schema", () => {
         scopes: ["asks:create"],
         extra: { accountId: "user_1", requestId: "req-1" },
       }),
-      store,
+      { store, sorts },
     );
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     await server.connect(serverSide);
@@ -85,7 +95,7 @@ describe("a tool called without the asks:create scope", () => {
         scopes: [],
         extra: { accountId: "user_1", requestId: "req-1" },
       }),
-      store,
+      { store, sorts },
     );
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     await server.connect(serverSide);

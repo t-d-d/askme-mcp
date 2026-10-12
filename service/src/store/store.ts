@@ -8,6 +8,7 @@
 // shows, so it leaves the version alone and an idle poll stays idle
 // (ADR 18). Lint holds every other write out.
 import { randomBytes } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   ConditionalCheckFailedException,
   DynamoDBClient,
@@ -22,8 +23,17 @@ import {
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
+import { awsClientConfig } from "../aws";
 import type { AccountId } from "../identity";
-import { askLimit, pollLimit, secondsLeft, windowOf } from "../rate";
+import {
+  askLimit,
+  pollLimit,
+  rulesSaveLimit,
+  secondsLeft,
+  sortRetryLimit,
+  windowOf,
+} from "../rate";
+import { levels, type Sort } from "../sort";
 import { fingerprint } from "./fingerprint";
 import { keys, type Key } from "./keys";
 
@@ -50,6 +60,14 @@ const minuteMs = 60_000;
 // it expires (ADR 18).
 const counterLifetimeMs = 3_600_000;
 
+// How many times write() sends a transaction that DynamoDB keeps cancelling
+// because another transaction holds one of its items, as two writes to one
+// account do on META. Before each retry it waits a random time, up to a
+// limit that starts at firstWaitMs and doubles, so that two writes which met
+// once are unlikely to meet again. All the waits together are under 200ms.
+export const writeTries = 4;
+const firstWaitMs = 25;
+
 // An ask as the agent sent it, once its schema has parsed it.
 export interface NewAsk {
   summary: string;
@@ -59,6 +77,21 @@ export interface NewAsk {
   sessionLink?: string;
   replaces?: string;
 }
+
+// What sorting decided about an ask, with the version of the rules it read
+// (ADR 13), so a sort made with older rules can be told apart.
+const sortSchema = z.object({
+  hashtags: z.array(z.string()),
+  level: z.enum(levels),
+  reason: z.string(),
+  rulesVersion: z.number().int().nonnegative(),
+  sortedAt: z.iso.datetime(),
+});
+
+export type StoredSort = z.output<typeof sortSchema>;
+
+// A sort as the sorter hands it in, with the rules version it read.
+export type NewSort = Sort & { rulesVersion: number };
 
 const storedAskSchema = z.object({
   id: z.string(),
@@ -71,6 +104,8 @@ const storedAskSchema = z.object({
   postedAt: z.iso.datetime(),
   // When DynamoDB may delete the item, in seconds since the epoch.
   expiresAt: z.number().int(),
+  // Absent until the ask is sorted.
+  sort: sortSchema.optional(),
 });
 
 export type StoredAsk = Omit<z.output<typeof storedAskSchema>, "expiresAt">;
@@ -105,6 +140,44 @@ const dedupeSchema = z.object({
   askId: z.string(),
   expiresAt: z.number().int(),
 });
+
+// The account's rules: the text the person wrote, the hashtags read from
+// it in the order the rules give them, and every hashtag the account has
+// had, in the order each first appeared, which keeps each one's colour
+// (docs/design.md). The version goes up on every save. When the last save
+// could not be read, the hashtags are the ones read before it.
+const rulesSchema = z.object({
+  text: z.string(),
+  hashtags: z.array(z.string()),
+  seen: z.array(z.string()),
+  version: z.number().int().nonnegative(),
+  readFailed: z.boolean(),
+});
+
+export type AccountRules = z.output<typeof rulesSchema>;
+
+// The rules of an account that has never saved any: an empty box, and no
+// hashtags.
+const noRules: AccountRules = {
+  text: "",
+  hashtags: [],
+  seen: [],
+  version: 0,
+  readFailed: false,
+};
+
+// Rules as a save hands them in: the text, and the hashtags read from it,
+// or none when the rules could not be read.
+export interface NewRules {
+  text: string;
+  hashtags?: string[];
+}
+
+// An open ask, with the account's rules, for the sorter.
+export interface AskToSort {
+  ask: StoredAsk;
+  rules: AccountRules;
+}
 
 const metaSchema = z.object({
   version: z.number().int().nonnegative(),
@@ -150,6 +223,36 @@ export interface Store {
   // Counts a call to the ask tool against the account's limit for the
   // minute.
   countAsk(account: AccountId, now: Date): Promise<Counted>;
+  // The account's rules.
+  rules(account: AccountId): Promise<AccountRules>;
+  // Saves the rules text, and the hashtags read from it when there are
+  // some. With none, the old hashtags stay, and the rules are marked as not
+  // read.
+  saveRules(
+    account: AccountId,
+    rules: NewRules,
+    now: Date,
+  ): Promise<AccountRules>;
+  // Counts a save of the rules against the account's limit for the minute.
+  countRulesSave(account: AccountId, now: Date): Promise<Counted>;
+  // An open ask and the account's rules, or undefined when the ask is not
+  // open.
+  askToSort(
+    account: AccountId,
+    askId: string,
+    now: Date,
+  ): Promise<AskToSort | undefined>;
+  // Stores what sorting decided on an open ask. False when the ask is no
+  // longer open, or already holds a sort made with newer rules.
+  recordSort(
+    account: AccountId,
+    askId: string,
+    sort: NewSort,
+    now: Date,
+  ): Promise<boolean>;
+  // Counts a poll's request to sort an ask again against the account's
+  // limit for the minute.
+  countSortRetry(account: AccountId, now: Date): Promise<Counted>;
   close(): void;
 }
 
@@ -161,14 +264,20 @@ const newAskId = () => randomBytes(18).toString("base64url");
 
 const seconds = (time: number) => Math.floor(time / 1000);
 
+// When a transaction was cancelled, the reason DynamoDB gave for each of its
+// changes, in order.
+const reasonCodes = (error: unknown): (string | undefined)[] | undefined =>
+  error instanceof TransactionCanceledException
+    ? (error.CancellationReasons ?? []).map((reason) => reason.Code)
+    : undefined;
+
 // When a transaction was refused because a condition failed, whether each
 // of its changes, in order, was one whose condition failed.
 function failedChanges(error: unknown): boolean[] | undefined {
-  if (!(error instanceof TransactionCanceledException)) return undefined;
-  const failed = (error.CancellationReasons ?? []).map(
-    (reason) => reason.Code === "ConditionalCheckFailed",
+  const failed = reasonCodes(error)?.map(
+    (code) => code === "ConditionalCheckFailed",
   );
-  return failed.includes(true) ? failed : undefined;
+  return failed?.includes(true) === true ? failed : undefined;
 }
 
 // Whether a transaction was refused because one of its conditions failed,
@@ -179,22 +288,24 @@ const conditionFailed = (error: unknown) => failedChanges(error) !== undefined;
 const nextDay = (now: Date) =>
   Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
 
+// Whether a transaction was refused only because another transaction held
+// one of its items: an item names a conflict, and no item names anything
+// else. DynamoDB cancels it whole, so sending it again is safe. Any other
+// reason, such as a failed condition, goes back to the caller.
+const conflicted = (error: unknown) => {
+  const codes = reasonCodes(error) ?? [];
+  return (
+    codes.includes("TransactionConflict") &&
+    codes.every((code) => code === "TransactionConflict" || code === "None")
+  );
+};
+
 export function createStore(config: {
   tableName: string;
   endpoint?: string | undefined;
 }): Store {
   const { tableName: TableName, endpoint } = config;
-  // In production the client finds its region and credentials in Lambda's
-  // environment. The local DynamoDB of the tests accepts any.
-  const client = new DynamoDBClient(
-    endpoint === undefined
-      ? {}
-      : {
-          endpoint,
-          region: "us-east-1",
-          credentials: { accessKeyId: "local", secretAccessKey: "local" },
-        },
-  );
+  const client = new DynamoDBClient(awsClientConfig(endpoint));
   const db = DynamoDBDocumentClient.from(client, {
     marshallOptions: { removeUndefinedValues: true },
   });
@@ -207,24 +318,30 @@ export function createStore(config: {
     marks: { everAsked?: true } = {},
   ): Promise<void> {
     const set = marks.everAsked === true ? " SET everAsked = :yes" : "";
-    await db.send(
-      new TransactWriteCommand({
-        TransactItems: [
-          ...changes,
-          {
-            Update: {
-              TableName,
-              Key: keys.meta(account),
-              UpdateExpression: `ADD version :one${set}`,
-              ExpressionAttributeValues: {
-                ":one": 1,
-                ...(set === "" ? {} : { ":yes": true }),
-              },
-            },
+    const items: Change[] = [
+      ...changes,
+      {
+        Update: {
+          TableName,
+          Key: keys.meta(account),
+          UpdateExpression: `ADD version :one${set}`,
+          ExpressionAttributeValues: {
+            ":one": 1,
+            ...(set === "" ? {} : { ":yes": true }),
           },
-        ],
-      }),
-    );
+        },
+      },
+    ];
+    // The SDK does not retry a cancelled transaction, so this does.
+    for (let tries = 1; ; tries += 1) {
+      try {
+        await db.send(new TransactWriteCommand({ TransactItems: items }));
+        return;
+      } catch (error) {
+        if (!conflicted(error) || tries === writeTries) throw error;
+      }
+      await sleep(Math.random() * firstWaitMs * 2 ** (tries - 1));
+    }
   }
 
   // The update that adds one to a counter while it is under its limit, and
@@ -292,6 +409,17 @@ export function createStore(config: {
     return Item === undefined
       ? { version: 0, everAsked: false }
       : metaSchema.parse(Item);
+  }
+
+  async function readRules(account: AccountId): Promise<AccountRules> {
+    const { Item } = await db.send(
+      new GetCommand({
+        TableName,
+        Key: keys.rules(account),
+        ConsistentRead: true,
+      }),
+    );
+    return Item === undefined ? noRules : rulesSchema.parse(Item);
   }
 
   // The item under one key, unless it is missing or has expired.
@@ -538,6 +666,114 @@ export function createStore(config: {
         (window) => keys.askCount(account, window),
         askLimit.asks,
         askLimit.windowMinutes,
+        now,
+      );
+    },
+
+    rules: readRules,
+
+    // Each save starts from the rules as they are, and is written only if
+    // no other save landed in between, so no hashtag drops out of seen.
+    async saveRules(account, { text, hashtags }, now) {
+      for (let tries = 0; ; tries += 1) {
+        const current = await readRules(account);
+        const read = hashtags ?? current.hashtags;
+        const next: AccountRules = {
+          text,
+          hashtags: read,
+          seen: [
+            ...current.seen,
+            ...read.filter((name) => !current.seen.includes(name)),
+          ],
+          version: current.version + 1,
+          readFailed: hashtags === undefined,
+        };
+        try {
+          await write(account, [
+            {
+              Put: {
+                TableName,
+                Item: {
+                  ...keys.rules(account),
+                  ...next,
+                  savedAt: now.toISOString(),
+                },
+                ConditionExpression:
+                  current.version === 0
+                    ? "attribute_not_exists(sk)"
+                    : "version = :current",
+                ...(current.version === 0
+                  ? {}
+                  : {
+                      ExpressionAttributeValues: {
+                        ":current": current.version,
+                      },
+                    }),
+              },
+            },
+          ]);
+          return next;
+        } catch (error) {
+          // Another save landed after this one read the rules.
+          if (!conditionFailed(error) || tries >= 4) throw error;
+        }
+      }
+    },
+
+    async countRulesSave(account, now) {
+      return countIn(
+        (window) => keys.rulesSaveCount(account, window),
+        rulesSaveLimit.saves,
+        rulesSaveLimit.windowMinutes,
+        now,
+      );
+    },
+
+    async askToSort(account, askId, now) {
+      const open = await stored(
+        keys.openAsk(account, askId),
+        storedAskSchema,
+        now,
+      );
+      if (open === undefined) return undefined;
+      return {
+        ask: storedAskSchema.omit({ expiresAt: true }).parse(open),
+        rules: await readRules(account),
+      };
+    },
+
+    // The sort is written only onto an ask that is still open, and never
+    // over one made with newer rules.
+    async recordSort(account, askId, sort, now) {
+      try {
+        await write(account, [
+          {
+            Update: {
+              TableName,
+              Key: keys.openAsk(account, askId),
+              UpdateExpression: "SET #sort = :sort",
+              ConditionExpression:
+                "attribute_exists(sk) AND (attribute_not_exists(#sort) OR #sort.rulesVersion <= :rulesVersion)",
+              ExpressionAttributeNames: { "#sort": "sort" },
+              ExpressionAttributeValues: {
+                ":sort": { ...sort, sortedAt: now.toISOString() },
+                ":rulesVersion": sort.rulesVersion,
+              },
+            },
+          },
+        ]);
+        return true;
+      } catch (error) {
+        if (conditionFailed(error)) return false;
+        throw error;
+      }
+    },
+
+    async countSortRetry(account, now) {
+      return countIn(
+        (window) => keys.sortRetryCount(account, window),
+        sortRetryLimit.retries,
+        sortRetryLimit.windowMinutes,
         now,
       );
     },

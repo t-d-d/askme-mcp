@@ -1,9 +1,12 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { askTool } from "../service/src/ask";
 import { handler } from "../service/src/handler";
 import { events } from "../service/src/log";
+import { handler as sorter } from "../service/src/sorter";
 import { pagePaths } from "../shared/page-api";
+import { fakes } from "../test/fakes";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, lineText } from "../test/logs";
@@ -149,6 +152,45 @@ describe("fitness: no content reaches the output (logging.md)", () => {
     expect(await response.text()).toContain(marker);
   });
 
+  it("runs the paths that save the rules and sort an ask", async () => {
+    // An account of its own, so its rules reach no other test file.
+    const sub = `user_${randomUUID().slice(0, 8)}`;
+    const agent = await connect(handler, {
+      token: await token({ claims: { sub } }),
+    });
+    for (const summary of [`First ${marker}`, `Second ${marker}`]) {
+      await agent.callTool({ name: "ask", arguments: { ...ask, summary } });
+    }
+    await agent.close();
+    const session = await issuer.sessionToken({ claims: { sub } });
+    tokens.push(session);
+    const save = (text: string) =>
+      invoke(
+        handler,
+        new Request(`${origin}${pagePaths.rules}`, {
+          method: "PUT",
+          headers: {
+            authorization: `Bearer ${session}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ text }),
+        }),
+      );
+    // Rules the model reads, then rules it cannot.
+    fakes.model.reply({ json: { hashtags: ["work"] } });
+    expect((await save(`#work is ${marker}`)).status).toBe(200);
+    fakes.model.reply({ status: 502 });
+    expect((await save(`#work and #home are ${marker}`)).status).toBe(200);
+    // The first ask sorted with a reply that holds the marker, and the
+    // second failed by the model.
+    fakes.model.reply({
+      json: { hashtags: ["work"], level: "high", reason: `For ${marker}` },
+    });
+    await fakes.lambda.drain((payload) =>
+      sorter(payload, { awsRequestId: "sort-1" }),
+    );
+  });
+
   it("wrote lines on those paths", () => {
     const written = new Set(
       capture.lines.map((line) => JSON.stringify(line.args[0] ?? {})),
@@ -161,6 +203,10 @@ describe("fitness: no content reaches the output (logging.md)", () => {
       "ask-posted",
       "agent-token-refused",
       "request-failed",
+      "rules-saved",
+      "rules-read-failed",
+      "ask-sorted",
+      "sort-failed",
     ]) {
       expect(
         [...written].some((line) => line.includes(`"event":"${event}"`)),

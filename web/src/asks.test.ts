@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { age, longestWaitingFirst, waiting } from "./asks";
+import { age, inListOrder, longestWaitingFirst, waiting } from "./asks";
 
 const now = Date.parse("2026-10-11T12:00:00.000Z");
 const ago = (ms: number) => new Date(now - ms).toISOString();
@@ -60,5 +60,40 @@ describe("the order of the list", () => {
     ];
     longestWaitingFirst(asks);
     expect(asks.map((ask) => ask.id)).toEqual(["b", "a"]);
+  });
+});
+
+describe("the order of a sorted list", () => {
+  const sorted = (level: "high" | "normal" | "low") => ({
+    hashtags: [],
+    level,
+  });
+
+  it("puts the higher level first, then the ask that has waited longest", () => {
+    const asks = [
+      { id: "low-old", postedAt: ago(60 * minute), sort: sorted("low") },
+      { id: "high-new", postedAt: ago(1 * minute), sort: sorted("high") },
+      { id: "normal", postedAt: ago(30 * minute), sort: sorted("normal") },
+      { id: "high-old", postedAt: ago(20 * minute), sort: sorted("high") },
+    ];
+    expect(inListOrder(asks).map((ask) => ask.id)).toEqual([
+      "high-old",
+      "high-new",
+      "normal",
+      "low-old",
+    ]);
+  });
+
+  it("puts asks not sorted yet after the sorted ones, longest waiting first", () => {
+    const asks = [
+      { id: "unsorted-new", postedAt: ago(1 * minute), sort: null },
+      { id: "low", postedAt: ago(2 * minute), sort: sorted("low") },
+      { id: "unsorted-old", postedAt: ago(9 * minute), sort: null },
+    ];
+    expect(inListOrder(asks).map((ask) => ask.id)).toEqual([
+      "low",
+      "unsorted-old",
+      "unsorted-new",
+    ]);
   });
 });

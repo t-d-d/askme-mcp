@@ -23,9 +23,11 @@ const testCode = "424242";
 const stepMs = 30_000;
 
 // Clerk's screens start a sign-in or a sign-up with a POST to its Frontend
-// API, and Clerk answers there.
+// API, and Clerk answers there. Once Clerk has taken the address, the screen
+// asks for the code to be sent with a POST to the attempt it started.
 const signIns = "/v1/client/sign_ins";
 const signUps = "/v1/client/sign_ups";
+const sendCode = /\/prepare_(?:first_factor|verification)$/u;
 
 const refusal = z.object({
   errors: z
@@ -110,35 +112,35 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
 // same address. Any other answer from Clerk fails the check.
 async function signIn(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Sign in" }).click();
-  const answer = await giveAddress(
+  let attempt = await giveAddress(
     page,
     page.locator('input[name="identifier"]'),
     signIns,
   );
-  if (!answer.ok()) {
-    const [error] = refusal.parse(await answer.json()).errors;
+  if (!attempt.answer.ok()) {
+    const [error] = refusal.parse(await attempt.answer.json()).errors;
     if (error?.code !== "form_identifier_not_found") {
       throw new Error(`Clerk refused the sign-in. ${said(error)}`);
     }
-    await signUp(page);
+    attempt = await signUp(page);
   }
-  await giveCode(page);
+  await giveCode(page, attempt.codeSent);
   await landBack(page);
 }
 
-async function signUp(page: Page): Promise<void> {
+async function signUp(page: Page): Promise<Attempt> {
   await page.goto(pageUrl());
   await page.getByRole("button", { name: "Sign up" }).click();
-  const answer = await giveAddress(
+  const attempt = await giveAddress(
     page,
     page.locator('input[name="emailAddress"]'),
     signUps,
   );
-  if (!answer.ok()) {
-    const [error] = refusal.parse(await answer.json()).errors;
+  if (!attempt.answer.ok()) {
+    const [error] = refusal.parse(await attempt.answer.json()).errors;
     throw new Error(`Clerk refused the sign-up. ${said(error)}`);
   }
-  const { response } = signUpAnswer.parse(await answer.json());
+  const { response } = signUpAnswer.parse(await attempt.answer.json());
   expect(response.email_address).toBe(testAddress);
   const more = response.missing_fields ?? [];
   if (more.length > 0) {
@@ -146,17 +148,41 @@ async function signUp(page: Page): Promise<void> {
       `Clerk's sign-up asks for more than the address and the code: ${more.join(", ")}. Going on needs a new decision (ADR 16).`,
     );
   }
+  return attempt;
+}
+
+// An attempt that one of Clerk's screens started: Clerk's answer to it, and
+// Clerk's answer when the screen asks for the code to be sent, or undefined
+// if the screen did not ask within two steps' time: one for Clerk to answer
+// the attempt, one for the code screen to ask.
+interface Attempt {
+  answer: Response;
+  codeSent: Promise<Response | undefined>;
 }
 
 // Gives the address on one of Clerk's screens, presses Continue, and returns
-// Clerk's answer to the attempt that starts.
+// the attempt that starts. The wait for the code to be sent starts before
+// Continue is pressed, so a quick answer is not missed.
 async function giveAddress(
   page: Page,
   field: Locator,
   path: string,
-): Promise<Response> {
+): Promise<Attempt> {
   await field.waitFor({ timeout: stepMs });
   await field.fill(testAddress);
+  const codeSent = page
+    .waitForResponse(
+      (response) => {
+        const { pathname } = new URL(response.url());
+        return (
+          response.request().method() === "POST" &&
+          pathname.startsWith(`${path}/`) &&
+          sendCode.test(pathname)
+        );
+      },
+      { timeout: 2 * stepMs },
+    )
+    .catch(() => undefined);
   const [answer] = await Promise.all([
     page
       .waitForResponse(
@@ -168,16 +194,31 @@ async function giveAddress(
       .catch(failsWith(page, "Clerk's screen sent nothing after Continue.")),
     page.getByRole("button", { name: "Continue", exact: true }).click(),
   ]);
-  return answer;
+  return { answer, codeSent };
 }
 
 // Clerk's field for the code: one box, or one box per digit, where typing
-// into the first fills the rest. Clerk goes on once the last digit is in.
-async function giveCode(page: Page): Promise<void> {
+// into the first fills the rest. Clerk goes on once the last digit is in, so
+// the code is typed only after Clerk has sent it. Typed sooner, Clerk takes
+// the digits before the code exists and refuses them.
+async function giveCode(
+  page: Page,
+  codeSent: Attempt["codeSent"],
+): Promise<void> {
   const field = page
     .getByRole("textbox", { name: "verification code" })
     .or(page.locator('input[autocomplete="one-time-code"]'))
     .first();
+  const sent = await codeSent;
+  if (sent === undefined) {
+    throw new Error(
+      `Clerk's screen did not ask for the code to be sent. It showed: ${await screen(page)}`,
+    );
+  }
+  if (!sent.ok()) {
+    const [error] = refusal.parse(await sent.json()).errors;
+    throw new Error(`Clerk did not send the code. ${said(error)}`);
+  }
   await field
     .waitFor({ timeout: stepMs })
     .catch(failsWith(page, "Clerk's screen asked for no code."));

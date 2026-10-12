@@ -39,9 +39,12 @@ import {
   type AccountId,
 } from "./identity";
 import { instructions } from "./instructions";
+import { createSortRequests, type SortRequests } from "./jobs";
 import { createLogger, errorClass, type Logger } from "./log";
+import { createModel, defaultModel, type Model } from "./model";
 import { resolveTool } from "./resolve";
 import { isPageRoute, isRoute, mcpPath, routes } from "./routes";
+import { createKeyReader } from "./secrets";
 import { createStore, type Store } from "./store/store";
 import { addTool } from "./tools";
 
@@ -59,9 +62,9 @@ function buildServer(context: McpRequestContext): McpServer {
     { instructions },
   );
   const caller = callerOf(context.authInfo);
-  const { store } = ready();
-  addTool(server, askTool, caller, store);
-  addTool(server, resolveTool, caller, store);
+  const { store, sorts } = ready();
+  addTool(server, askTool, caller, { store, sorts });
+  addTool(server, resolveTool, caller, { store, sorts });
   return server;
 }
 
@@ -77,6 +80,10 @@ interface Services {
   // Checks the page's session token.
   verifySession: (token: string) => Promise<AccountId>;
   store: Store;
+  // Hands a stored ask to the sort function.
+  sorts: SortRequests;
+  // Reads the rules when they are saved.
+  model: Model;
 }
 
 // Set up on the first request, so that a test can set the environment first.
@@ -84,13 +91,28 @@ let services: Services | undefined;
 
 function ready(): Services {
   if (services === undefined) {
-    const { clerkIssuer, tableName, databaseEndpoint } = readEnv();
-    const keys = keySet(clerkIssuer);
+    const env = readEnv();
+    const keys = keySet(env.clerkIssuer);
     services = {
-      issuer: clerkIssuer,
-      verifier: tokenVerifier(clerkIssuer, keys),
-      verifySession: sessionVerifier(clerkIssuer, keys),
-      store: createStore({ tableName, endpoint: databaseEndpoint }),
+      issuer: env.clerkIssuer,
+      verifier: tokenVerifier(env.clerkIssuer, keys),
+      verifySession: sessionVerifier(env.clerkIssuer, keys),
+      store: createStore({
+        tableName: env.tableName,
+        endpoint: env.databaseEndpoint,
+      }),
+      sorts: createSortRequests({
+        functionName: env.sortFunction,
+        endpoint: env.lambdaEndpoint,
+      }),
+      model: createModel({
+        endpoint: env.modelEndpoint,
+        model: defaultModel,
+        key: createKeyReader({
+          parameter: env.modelKeyParameter,
+          endpoint: env.ssmEndpoint,
+        }),
+      }),
     };
   }
   return services;
@@ -122,12 +144,14 @@ async function serve(
   log: Logger,
 ): Promise<Response> {
   if (!isRoute(route)) return new Response(null, { status: 404 });
-  const { issuer, verifier, verifySession, store } = ready();
+  const { issuer, verifier, verifySession, store, sorts, model } = ready();
   if (isPageRoute(route)) {
     return servePage(route, request, {
       origin,
       verify: verifySession,
       store,
+      sorts,
+      model,
       log,
     });
   }

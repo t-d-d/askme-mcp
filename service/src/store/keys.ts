@@ -15,6 +15,8 @@ const dedupePrefix = "DEDUPE#";
 const usagePrefix = "USAGE#";
 const pollCountPrefix = "POLL#";
 const askCountPrefix = "RATE#";
+const rulesSaveCountPrefix = "SAVE#";
+const sortRetryCountPrefix = "SORT#";
 
 export const keys = {
   // The account marker, which holds the version.
@@ -24,6 +26,9 @@ export const keys = {
     pk: account,
     sk: `${openAskPrefix}${askId}`,
   }),
+  // The rules text, the hashtags read from it, and every hashtag the
+  // account has had, in the order each first appeared.
+  rules: (account: AccountId): Key => ({ pk: account, sk: "RULES" }),
   // The prefix every open ask's sort key starts with, to list them.
   openAsks: (account: AccountId) => ({ pk: account, prefix: openAskPrefix }),
   // An ask that has closed. It moves here from its open key, so listing the
@@ -55,5 +60,17 @@ export const keys = {
   askCount: (account: AccountId, window: string): Key => ({
     pk: account,
     sk: `${askCountPrefix}${window}`,
+  }),
+  // The rate counter for saving the rules, for one window, named by the
+  // minute it starts (ADR 18).
+  rulesSaveCount: (account: AccountId, window: string): Key => ({
+    pk: account,
+    sk: `${rulesSaveCountPrefix}${window}`,
+  }),
+  // The rate counter for asking again for unsorted asks, for one window,
+  // named by the minute it starts (ADR 18).
+  sortRetryCount: (account: AccountId, window: string): Key => ({
+    pk: account,
+    sk: `${sortRetryCountPrefix}${window}`,
   }),
 };

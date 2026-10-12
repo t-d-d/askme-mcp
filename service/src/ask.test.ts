@@ -4,6 +4,7 @@ import { captureLogs, lineText } from "../../test/logs";
 import { askTool } from "./ask";
 import { Refused, retryBudget } from "./errors";
 import { callerOf } from "./identity";
+import type { SortJob, SortRequests } from "./jobs";
 import { createLogger } from "./log";
 import { askLimit } from "./rate";
 import {
@@ -88,6 +89,12 @@ const storeAnswering = (posting: Posting, counted: Counted): Store => {
     openAsks: unused,
     asksSince: unused,
     countPoll: unused,
+    rules: unused,
+    saveRules: unused,
+    countRulesSave: unused,
+    askToSort: unused,
+    recordSort: unused,
+    countSortRetry: unused,
     close: () => undefined,
   };
 };
@@ -105,11 +112,30 @@ const caller = callerOf({
   extra: { accountId: "user_1", requestId: "req-1" },
 });
 
-const run = (posting: Posting, counted: Counted = { counted: true }) =>
+// A sorter that keeps every ask it is handed, or refuses them all.
+const sorter = (refuses = false) => {
+  const handed: SortJob[] = [];
+  const sorts: SortRequests = {
+    request: (job) => {
+      handed.push(job);
+      return refuses
+        ? Promise.reject(new Error("Lambda is unreachable."))
+        : Promise.resolve();
+    },
+  };
+  return { handed, sorts };
+};
+
+const run = (
+  posting: Posting,
+  counted: Counted = { counted: true },
+  sorts: SortRequests = sorter().sorts,
+) =>
   askTool.run(input, {
     caller,
     log: createLogger(caller.requestId),
     store: storeAnswering(posting, counted),
+    sorts,
   });
 
 // What the store would post, if the call got that far.
@@ -172,5 +198,52 @@ describe("the ask tool's answer", () => {
     expect(z.object({ message: z.string() }).parse(answer).message).toContain(
       "Wait 1 second,",
     );
+  });
+});
+
+describe("handing an ask to the sorter", () => {
+  let capture: ReturnType<typeof captureLogs>;
+  beforeEach(() => {
+    capture = captureLogs();
+  });
+  afterEach(() => {
+    capture.restore();
+  });
+  const logged = () => capture.lines.map(lineText).join("\n");
+
+  it("hands a new ask to the sorter, with the account and the id", async () => {
+    const { handed, sorts } = sorter();
+    expect(await run(posted, { counted: true }, sorts)).toEqual({
+      id: posted.id,
+      status: "posted",
+    });
+    expect(handed).toEqual([{ accountId: caller.accountId, askId: posted.id }]);
+  });
+
+  it("answers as posted when the sorter cannot be reached, and says so at warn", async () => {
+    const { sorts } = sorter(true);
+    expect(await run(posted, { counted: true }, sorts)).toEqual({
+      id: posted.id,
+      status: "posted",
+    });
+    expect(capture.lines.map(({ method }) => method)).toContain("warn");
+    expect(logged()).toContain("sort-request-failed");
+  });
+
+  it("hands nothing on for a repeat, which was handed on when it was new", async () => {
+    const { handed, sorts } = sorter();
+    await run({ kind: "matched", id: posted.id }, { counted: true }, sorts);
+    expect(handed).toEqual([]);
+  });
+
+  it("hands nothing on for a refused ask", async () => {
+    const { handed, sorts } = sorter();
+    await run(posted, { counted: false, secondsLeft: 5 }, sorts);
+    await run(
+      { kind: "over-cap", resetsAt: new Date("2026-10-12T00:00:00.000Z") },
+      { counted: true },
+      sorts,
+    );
+    expect(handed).toEqual([]);
   });
 });
