@@ -15,6 +15,7 @@ const list: AsksAnswer = {
   version: 1,
   everAsked: true,
   hashtags: [{ name: "shop", colour: 1 }],
+  formerHashtags: [],
   asks: [
     {
       id: "hostile",

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
 import { askChangePaths, pagePaths, rulesLimit } from "../shared/page-api";
-import { storedItems, storeItem } from "../test/dynamodb";
+import { storedItems } from "../test/dynamodb";
 import { fakes, testModelKey } from "../test/fakes";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
@@ -16,8 +16,7 @@ import { callerOf } from "./src/identity";
 import { sortRequestTimeoutMs } from "./src/jobs";
 import { rulesSaveLimit } from "./src/rate";
 import { handler as sorter } from "./src/sorter";
-import { keys } from "./src/store/keys";
-import { askLifetimeDays, createStore, type NewAsk } from "./src/store/store";
+import { createStore, type NewAsk } from "./src/store/store";
 
 let issuer: FakeIssuer;
 beforeAll(async () => {
@@ -103,6 +102,7 @@ describe("the list of open asks", () => {
       version: 0,
       everAsked: false,
       hashtags: [],
+      formerHashtags: [],
       asks: [],
     });
   });
@@ -203,6 +203,7 @@ describe("the list of open asks", () => {
       version: 0,
       everAsked: false,
       hashtags: [],
+      formerHashtags: [],
       asks: [],
     });
   });
@@ -582,18 +583,16 @@ describe("the rules", () => {
 // The list with each ask's sort, as the page reads it.
 async function sorted(account: string) {
   const response = await get(pagePaths.asks, await session(account));
+  const hashtags = z.array(z.object({ name: z.string(), colour: z.number() }));
   return z
     .object({
-      hashtags: z.array(z.object({ name: z.string(), colour: z.number() })),
+      hashtags,
+      formerHashtags: hashtags,
       asks: z.array(
         z.object({
           id: z.string(),
           sort: z
-            .object({
-              hashtags: z.array(z.string()),
-              level: z.string(),
-              reason: z.string(),
-            })
+            .object({ hashtags: z.array(z.string()), level: z.string() })
             .nullable(),
         }),
       ),
@@ -614,6 +613,15 @@ const ownerOf = (account: string) =>
     extra: { accountId: account, requestId: "r" },
   }).accountId;
 
+// The store, for writing past the service.
+const store = createStore({
+  tableName: inject("tableName"),
+  endpoint: inject("databaseEndpoint"),
+});
+afterAll(() => {
+  store.close();
+});
+
 // Posts an ask straight to the store at a time in the past, so it is not
 // handed to the sort function, as when its sort failed back then. Gives its
 // id.
@@ -622,17 +630,9 @@ async function postEarlier(
   newAsk: NewAsk,
   at: Date,
 ): Promise<string> {
-  const store = createStore({
-    tableName: inject("tableName"),
-    endpoint: inject("databaseEndpoint"),
-  });
-  try {
-    const posting = await store.postAsk(ownerOf(account), newAsk, at);
-    if (posting.kind !== "posted") throw new Error("Not posted.");
-    return posting.id;
-  } finally {
-    store.close();
-  }
+  const posting = await store.postAsk(ownerOf(account), newAsk, at);
+  if (posting.kind !== "posted") throw new Error("Not posted.");
+  return posting.id;
 }
 
 // The sort function, handed one of the account's asks.
@@ -652,16 +652,13 @@ describe("sorting", () => {
     const id = await post(account);
     // Posting asked the model nothing: it handed the ask on.
     expect(fakes.model.calls).toHaveLength(calls);
-    expect(fakes.lambda.invoked.at(-1)).toEqual({
-      functionName: "askme-prod-sort",
-      invocationType: "Event",
-      payload: { accountId: account, askId: id },
-    });
+    expect(fakes.lambda.invoked.at(-1)).toEqual(sortOf(account, id));
     expect(await sorted(account)).toEqual({
       hashtags: [
         { name: "work", colour: 0 },
         { name: "shop", colour: 1 },
       ],
+      formerHashtags: [],
       asks: [{ id, sort: null }],
     });
 
@@ -674,15 +671,36 @@ describe("sorting", () => {
     });
     expect(await runSorts()).toBe(1);
     expect((await sorted(account)).asks).toEqual([
-      {
-        id,
-        sort: {
-          hashtags: ["work"],
-          level: "high",
-          reason: "The electrician waits.",
-        },
-      },
+      { id, sort: { hashtags: ["work"], level: "high" } },
     ]);
+  });
+
+  it("lists the reason with the sort, for the open card", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    await saveRules(account, { text: rulesText });
+    await runSorts();
+    const id = await post(account);
+    fakes.model.reply({
+      json: {
+        hashtags: ["work"],
+        level: "high",
+        reason: "The electrician waits.",
+      },
+    });
+    await runSorts();
+    const response = await get(pagePaths.asks, await session(account));
+    const { asks } = z
+      .object({
+        asks: z.array(
+          z.object({
+            id: z.string(),
+            sort: z.object({ reason: z.string() }).nullable(),
+          }),
+        ),
+      })
+      .parse(await response.json());
+    expect(asks).toEqual([{ id, sort: { reason: "The electrician waits." } }]);
   });
 
   it("lists every ask with no hashtag while the box is empty, asking no model", async () => {
@@ -693,17 +711,8 @@ describe("sorting", () => {
     expect(fakes.model.calls).toHaveLength(calls);
     expect(await sorted(account)).toEqual({
       hashtags: [],
-      asks: [
-        {
-          id,
-          sort: {
-            hashtags: [],
-            level: "normal",
-            reason:
-              "There are no rules yet, so askme lists this ask without sorting it.",
-          },
-        },
-      ],
+      formerHashtags: [],
+      asks: [{ id, sort: { hashtags: [], level: "normal" } }],
     });
   });
 
@@ -734,8 +743,12 @@ describe("sorting", () => {
 
   it("leaves the ask unsorted when the model fails, and a poll asks again after a minute", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
-    await saveRules(account, { text: rulesText });
+    // Rules saved before the ask was posted, so the save did not hand it on.
+    await store.saveRules(
+      ownerOf(account),
+      { text: rulesText, hashtags: ["work", "shop"] },
+      new Date(Date.now() - 3 * sortRetryAfterMs),
+    );
     // An ask posted two minutes ago, whose sort failed.
     const old = await postEarlier(
       account,
@@ -763,7 +776,7 @@ describe("sorting", () => {
     await runSorts();
     expect((await sorted(account)).asks).toContainEqual({
       id: old,
-      sort: { hashtags: ["shop"], level: "low", reason: "Routine." },
+      sort: { hashtags: ["shop"], level: "low" },
     });
   });
 
@@ -800,23 +813,212 @@ describe("sorting", () => {
     expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
     await runSorts();
   });
+});
 
-  it("asks again for an ask stored before askme recorded when, a minute after it was posted", async () => {
+// An ask posted at a time in the past, sorted then into #work with the
+// rules saved then. Gives its id.
+async function sortedEarlier(account: string, at: Date): Promise<string> {
+  const owner = ownerOf(account);
+  const { version } = await store.saveRules(
+    owner,
+    { text: "#work first.", hashtags: ["work"] },
+    at,
+  );
+  const id = await postEarlier(
+    account,
+    { summary: "Old", area: "Work", spokenDetail: "Old." },
+    at,
+  );
+  await store.recordSort(
+    owner,
+    id,
+    {
+      hashtags: ["work"],
+      level: "normal",
+      reason: "Routine.",
+      rulesVersion: version,
+    },
+    at,
+  );
+  return id;
+}
+
+describe("saving the rules again", () => {
+  it("hands every open ask to the sort function, sorted or not", async () => {
     const account = newAccount();
-    const id = "AAAAAAAAAAAAAAAAAAAAAAAA";
-    const posted = new Date(Date.now() - 2 * sortRetryAfterMs);
-    await storeItem(inject("databaseEndpoint"), inject("tableName"), {
-      ...keys.openAsk(ownerOf(account), id),
-      id,
-      summary: "Old",
-      area: "Shop",
-      spokenDetail: "Old.",
-      postedAt: posted.toISOString(),
-      expiresAt: Math.floor(posted.getTime() / 1000) + askLifetimeDays * 86_400,
+    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    await saveRules(account, { text: rulesText });
+    const sortedAsk = await post(account);
+    // The model has no reply for the second ask, so it stays unsorted.
+    fakes.model.reply({
+      json: { hashtags: ["work"], level: "high", reason: "It waits." },
     });
-    const invoked = fakes.lambda.invoked.length;
-    expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
-    expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
+    const unsorted = await post(account, { ...ask, summary: "Renew it" });
     await runSorts();
+    expect((await sorted(account)).asks).toContainEqual({
+      id: unsorted,
+      sort: null,
+    });
+
+    const invoked = fakes.lambda.invoked.length;
+    fakes.model.reply({ json: { hashtags: ["shop", "family"] } });
+    const response = await saveRules(account, {
+      text: "#shop first, then #family.",
+    });
+    expect(response.status).toBe(200);
+    const handedOn = fakes.lambda.invoked.slice(invoked);
+    expect(handedOn).toHaveLength(2);
+    expect(handedOn).toEqual(
+      expect.arrayContaining([
+        sortOf(account, sortedAsk),
+        sortOf(account, unsorted),
+      ]),
+    );
+    fakes.model.reply(
+      { json: { hashtags: ["shop"], level: "low", reason: "Routine." } },
+      { json: { hashtags: ["shop"], level: "low", reason: "Routine." } },
+    );
+    await runSorts();
+  });
+
+  it("keeps each ask's old hashtags, in their colours, until it is sorted again", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    await saveRules(account, { text: rulesText });
+    fakes.model.reply({
+      json: { hashtags: ["work", "shop"], level: "high", reason: "It waits." },
+    });
+    const id = await post(account);
+    await runSorts();
+
+    fakes.model.reply({ json: { hashtags: ["shop", "family"] } });
+    await saveRules(account, { text: "#shop first, then #family." });
+    // A hashtag still in the rules keeps its colour, and one that left
+    // them keeps its colour on the asks that still carry it.
+    expect(await sorted(account)).toEqual({
+      hashtags: [
+        { name: "shop", colour: 1 },
+        { name: "family", colour: 2 },
+      ],
+      formerHashtags: [{ name: "work", colour: 0 }],
+      asks: [{ id, sort: { hashtags: ["work", "shop"], level: "high" } }],
+    });
+
+    fakes.model.reply({
+      json: { hashtags: ["family"], level: "low", reason: "It can wait." },
+    });
+    expect(await runSorts()).toBe(1);
+    expect(await sorted(account)).toEqual({
+      hashtags: [
+        { name: "shop", colour: 1 },
+        { name: "family", colour: 2 },
+      ],
+      formerHashtags: [],
+      asks: [{ id, sort: { hashtags: ["family"], level: "low" } }],
+    });
+  });
+
+  it("takes every hashtag off the asks when the box is emptied, asking no model", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    await saveRules(account, { text: rulesText });
+    fakes.model.reply({
+      json: { hashtags: ["work"], level: "high", reason: "It waits." },
+    });
+    const id = await post(account);
+    await runSorts();
+
+    await saveRules(account, { text: "" });
+    const calls = fakes.model.calls.length;
+    expect(await runSorts()).toBe(1);
+    expect(fakes.model.calls).toHaveLength(calls);
+    expect(await sorted(account)).toEqual({
+      hashtags: [],
+      formerHashtags: [],
+      asks: [{ id, sort: { hashtags: [], level: "normal" } }],
+    });
+  });
+
+  it("saves the rules when Lambda cannot take the asks, and each keeps its old sort", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    await saveRules(account, { text: rulesText });
+    fakes.model.reply({
+      json: { hashtags: ["work"], level: "high", reason: "It waits." },
+    });
+    const id = await post(account);
+    await runSorts();
+
+    const capture = captureLogs();
+    fakes.lambda.failing = true;
+    let response: Response;
+    try {
+      fakes.model.reply({ json: { hashtags: ["shop"] } });
+      response = await saveRules(account, { text: "#shop only." });
+    } finally {
+      fakes.lambda.failing = false;
+      capture.restore();
+    }
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      text: "#shop only.",
+      hashtags: [{ name: "shop", colour: 1 }],
+      readFailed: false,
+    });
+    expect((await sorted(account)).asks).toEqual([
+      { id, sort: { hashtags: ["work"], level: "high" } },
+    ]);
+    expect(
+      capture.lines.some(
+        (line) =>
+          line.method === "warn" &&
+          lineText(line).includes("sort-request-failed"),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not ask again for an ask sorted with older rules while its new sort may still be running", async () => {
+    const account = newAccount();
+    const id = await sortedEarlier(
+      account,
+      new Date(Date.now() - 2 * sortRetryAfterMs),
+    );
+    const invoked = fakes.lambda.invoked.length;
+    fakes.model.reply({ json: { hashtags: ["shop"] } });
+    await saveRules(account, { text: "#shop only." });
+    expect((await sorted(account)).asks).toEqual([
+      { id, sort: { hashtags: ["work"], level: "normal" } },
+    ]);
+    expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
+    fakes.model.reply({
+      json: { hashtags: ["shop"], level: "low", reason: "Routine." },
+    });
+    await runSorts();
+  });
+
+  it("asks again for an ask still sorted with older rules a minute after they were saved", async () => {
+    const account = newAccount();
+    const id = await sortedEarlier(
+      account,
+      new Date(Date.now() - 3 * sortRetryAfterMs),
+    );
+    // Rules saved two minutes ago, whose sort of the ask failed then.
+    await store.saveRules(
+      ownerOf(account),
+      { text: "#shop only.", hashtags: ["shop"] },
+      new Date(Date.now() - 2 * sortRetryAfterMs),
+    );
+    const invoked = fakes.lambda.invoked.length;
+    expect((await sorted(account)).asks).toEqual([
+      { id, sort: { hashtags: ["work"], level: "normal" } },
+    ]);
+    expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
+    fakes.model.reply({
+      json: { hashtags: ["shop"], level: "low", reason: "Routine." },
+    });
+    await runSorts();
+    expect((await sorted(account)).asks).toEqual([
+      { id, sort: { hashtags: ["shop"], level: "low" } },
+    ]);
   });
 });

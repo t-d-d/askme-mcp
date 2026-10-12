@@ -53,6 +53,7 @@ const list: AsksAnswer = {
   version: 4,
   everAsked: true,
   hashtags,
+  formerHashtags: [],
   asks: [
     ask("a", "Merge the fix for checkout rounding?", 30 * minute, {
       hashtags: ["shop", "work"],
@@ -88,6 +89,10 @@ const tab = (page: Page, name: string) =>
   page
     .getByRole("navigation", { name: "Hashtags" })
     .getByRole("button", { name, exact: true });
+
+// Whether a control has the keyboard's focus.
+const focused = (control: Locator) =>
+  control.evaluate((element) => element === document.activeElement);
 
 const summaries = async (page: Page) => [
   ...(await page.getByRole("article").allInnerTexts()),
@@ -223,6 +228,55 @@ describe("the tabs", () => {
     expect(await tab(page, "Everything").getAttribute("aria-pressed")).toBe(
       "true",
     );
+  });
+
+  it("move focus to Everything when the focused tab's hashtag leaves the rules", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#family").focus();
+    answer = {
+      ...list,
+      version: list.version + 1,
+      hashtags: hashtags.filter(({ name }) => name !== "family"),
+    };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "#family").waitFor({ state: "detached" });
+    expect(await focused(tab(page, "Everything"))).toBe(true);
+  });
+
+  it("move focus to Everything when the selected tab's hashtag leaves the rules", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#family").click();
+    await page.getByRole("listitem").first().waitFor({ state: "detached" });
+    answer = {
+      ...list,
+      version: list.version + 1,
+      hashtags: hashtags.filter(({ name }) => name !== "family"),
+    };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "#family").waitFor({ state: "detached" });
+    expect(await focused(tab(page, "Everything"))).toBe(true);
+  });
+
+  it("keep focus on a tab whose hashtag stays when another leaves the rules", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#work").focus();
+    answer = {
+      ...list,
+      version: list.version + 1,
+      hashtags: hashtags.filter(({ name }) => name !== "family"),
+    };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "#family").waitFor({ state: "detached" });
+    expect(await focused(tab(page, "#work"))).toBe(true);
   });
 
   it("stay on Everything when a hashtag that left the rules comes back", async () => {
@@ -412,5 +466,47 @@ describe("the colour of an ask's buttons", () => {
         .getByText("#work", { exact: true })
         .evaluate((element) => getComputedStyle(element).backgroundColor),
     ).toBe(await computedColour(page, palette.blue.tint));
+  });
+});
+
+describe("an ask whose hashtag has left the rules", () => {
+  // The rules no longer name work. Two asks still carry it, until they are
+  // sorted again with the new rules.
+  const changed: AsksAnswer = {
+    ...list,
+    hashtags: hashtags.filter(({ name }) => name !== "work"),
+    formerHashtags: [{ name: "work", colour: 0 }],
+    asks: [
+      ask("b", "Which date format should the export use?", 20 * minute, {
+        hashtags: ["work"],
+        level: "high",
+      }),
+      ask("x", "Rename the export's columns?", 10 * minute, {
+        hashtags: ["work"],
+        level: "normal",
+      }),
+    ],
+  };
+
+  it("keeps the hashtag in its own colour, with no tab, until it is sorted again", async () => {
+    view = await open(changed);
+    const { page } = view;
+    const card = page.getByRole("article");
+    await card.waitFor();
+    expect(await tabs(page).allInnerTexts()).toEqual([
+      "Everything",
+      "#shop",
+      "#family",
+    ]);
+    expect(
+      await card
+        .getByText("#work", { exact: true })
+        .evaluate((element) => getComputedStyle(element).backgroundColor),
+    ).toBe(await computedColour(page, palette.blue.tint));
+    const blue = await computedColour(page, palette.blue.strong);
+    expect(await buttonColour(card)).toBe(blue);
+    const row = page.getByRole("listitem");
+    expect(await row.innerText()).toContain("#work");
+    expect(await buttonColour(row)).toBe(blue);
   });
 });

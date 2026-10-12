@@ -51,6 +51,7 @@ const listOf = (...asks: PageAsk[]): AsksAnswer => ({
   version: 3,
   everAsked: true,
   hashtags: [{ name: "shop", colour: 1 }],
+  formerHashtags: [],
   asks,
 });
 

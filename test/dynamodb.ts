@@ -20,11 +20,7 @@ import {
   DynamoDBClient,
   ListTablesCommand,
 } from "@aws-sdk/client-dynamodb";
-import {
-  DynamoDBDocumentClient,
-  PutCommand,
-  QueryCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { TestProject } from "vitest/node";
 import { z } from "zod";
 import { readYaml } from "./repo";
@@ -181,22 +177,6 @@ export async function storedItems(
       }),
     );
     return Items ?? [];
-  } finally {
-    db.destroy();
-  }
-}
-
-// Writes one item straight to the table, as an older version of the store
-// wrote it, so a test can check the service still reads what is already
-// stored.
-export async function storeItem(
-  endpoint: string,
-  table: string,
-  item: Record<string, unknown>,
-): Promise<void> {
-  const db = DynamoDBDocumentClient.from(localClient(endpoint));
-  try {
-    await db.send(new PutCommand({ TableName: table, Item: item }));
   } finally {
     db.destroy();
   }

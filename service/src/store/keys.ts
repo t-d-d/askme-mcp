@@ -67,8 +67,8 @@ export const keys = {
     pk: account,
     sk: `${rulesSaveCountPrefix}${window}`,
   }),
-  // The rate counter for asking again for unsorted asks, for one window,
-  // named by the minute it starts (ADR 18).
+  // The rate counter for asking again for asks not yet sorted with the
+  // rules in force, for one window, named by the minute it starts (ADR 18).
   sortRetryCount: (account: AccountId, window: string): Key => ({
     pk: account,
     sk: `${sortRetryCountPrefix}${window}`,

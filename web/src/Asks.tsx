@@ -26,6 +26,10 @@ import { useOpening } from "./useOpening";
 // ask, finds the page on Everything. A hashtag's tab with nothing waiting is
 // all clear, under the tabs.
 //
+// After the rules change, an ask keeps its old hashtags until it is sorted
+// again. A hashtag the rules no longer name has no tab, but keeps its
+// colour on the asks that still carry it.
+//
 // An ask the person has opened shows as opened, and one they have dismissed
 // leaves the list, before the next poll says so.
 export function Asks({ card }: { card: string | null }) {
@@ -46,6 +50,9 @@ export function Asks({ card }: { card: string | null }) {
     [data, dismissed, opened],
   );
   const hashtags = data?.hashtags ?? [];
+  // Every hashtag an ask may carry, the former ones included, for colour.
+  const coloured =
+    data === undefined ? [] : [...hashtags, ...data.formerHashtags];
   const allClear = data !== undefined && asks.length === 0 && data.everAsked;
   const tab =
     !allClear && hashtags.some(({ name }) => name === chosen)
@@ -63,7 +70,7 @@ export function Asks({ card }: { card: string | null }) {
           ask={open}
           tab={tab}
           now={receivedAt}
-          colours={hashtagColours(hashtags)}
+          colours={hashtagColours(coloured)}
           actions={actions}
         />
         {notes}
@@ -86,7 +93,7 @@ export function Asks({ card }: { card: string | null }) {
         <main>
           <AskList
             asks={shown}
-            hashtags={hashtags}
+            hashtags={coloured}
             tab={tab}
             now={receivedAt}
             actions={actions}

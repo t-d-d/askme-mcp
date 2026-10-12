@@ -17,7 +17,8 @@ const leaving = "Leave without saving your rules?";
 // The rules: one box in plain English, and below it the hashtags askme read
 // from them. Saving waits while askme reads them. If it cannot, the text is
 // saved all the same, the old hashtags stay, and the page offers to try
-// again.
+// again. Either way, saving re-sorts every open ask, and a last note says
+// so.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const { loaded, save } = useRules();
   const { data, failed } = loaded;
@@ -155,6 +156,7 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
                 ))}
               </ul>
             ))}
+          <p className={styles.footnote}>Saving re-sorts every open ask.</p>
         </section>
       </main>
     </div>

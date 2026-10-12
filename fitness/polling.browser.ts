@@ -61,6 +61,7 @@ describe("fitness: new ask appears (polling.md)", () => {
     version: 1,
     everAsked: true,
     hashtags: [],
+    formerHashtags: [],
     asks: [first],
   });
   beforeAll(async () => {
@@ -80,6 +81,7 @@ describe("fitness: new ask appears (polling.md)", () => {
       version: 2,
       everAsked: true,
       hashtags: [],
+      formerHashtags: [],
       asks: [first, second],
     });
     await view.page.clock.fastForward(pollMs);
@@ -108,6 +110,7 @@ describe("fitness: quiet when hidden (polling.md)", () => {
     version: 1,
     everAsked: true,
     hashtags: [],
+    formerHashtags: [],
     asks: [first],
   });
   beforeAll(async () => {
@@ -152,6 +155,7 @@ describe("a poll after another screen", () => {
     version: 1,
     everAsked: true,
     hashtags: [],
+    formerHashtags: [],
     asks: [first],
   });
   beforeAll(async () => {
