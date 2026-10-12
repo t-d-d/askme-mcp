@@ -3,7 +3,9 @@
 // Two files whose whole names differ only in case cannot both be checked out
 // there at all. Either way the gate fails on a Mac, though it passes on Linux
 // in CI. A Mac also reads two spellings of an accented letter as one: é as
-// one code point, or as e followed by a combining accent.
+// one code point, or as e followed by a combining accent. Nobody has tried
+// each letter on a Mac, so the check follows Unicode's rules, which Apple's
+// disks may not match in every letter.
 import { extname } from "node:path";
 
 // A file's name as an import writes it, without its extension, and the name
@@ -28,12 +30,28 @@ const visible = (name: string): string =>
     (letter) => `\\u{${(letter.codePointAt(0) ?? 0).toString(16)}}`,
   );
 
+// A Mac's disk compares names by case folding. Folding joins ς and σ, ſ and
+// s, and ß and ss, which toLowerCase keeps apart. JavaScript has no case
+// folding. Lower case, then upper, then lower again joins the same letters
+// as Unicode's folding, with one exception. It turns the Turkish dotless
+// ı (\u0131) into i, and Unicode's folding keeps the two apart. This
+// matched Python's str.casefold(), which reads Unicode's own table, on every
+// character Unicode 15.1 assigns. Unicode's caseless match normalizes a name
+// before and after folding it.
+const fold = (name: string): string =>
+  name
+    .normalize("NFD")
+    .split("\u0131")
+    .map((part) => part.toLowerCase().toUpperCase().toLowerCase())
+    .join("\u0131")
+    .normalize("NFD");
+
 // The names among these paths that a Mac would read as one, each group
 // listed by its spellings.
 export function clashes(paths: readonly string[]): string[][] {
   const spellings = new Map<string, Set<string>>();
   for (const name of paths.flatMap(names)) {
-    const key = name.normalize("NFD").toLowerCase();
+    const key = fold(name);
     spellings.set(key, (spellings.get(key) ?? new Set()).add(name));
   }
   return [...spellings.values()]

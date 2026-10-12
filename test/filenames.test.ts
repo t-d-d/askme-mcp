@@ -15,6 +15,22 @@ describe("the file-name check", () => {
     ]);
   });
 
+  it("finds two names that differ only in letters Unicode's case folding joins", () => {
+    for (const pair of [
+      ["docs/οδος.md", "docs/οδοσ.md"],
+      ["docs/ſtate.md", "docs/state.md"],
+      ["docs/ϐeta.md", "docs/βeta.md"],
+      ["docs/Straße.md", "docs/Strasse.md"],
+      ["docs/Straße.md", "docs/STRAẞE.md"],
+    ]) {
+      expect(clashes(pair), pair.join(" and ")).toHaveLength(1);
+    }
+  });
+
+  it("keeps the dotless ı apart from i, as Unicode's case folding does outside Turkish", () => {
+    expect(clashes(["docs/k\u0131ta.md", "docs/kita.md"])).toEqual([]);
+  });
+
   it("finds a declaration file beside a file whose name differs only in case", () => {
     expect(clashes(["web/src/Vite-env.ts", "web/src/vite-env.d.ts"])).toEqual([
       ["web/src/Vite-env", "web/src/vite-env"],
