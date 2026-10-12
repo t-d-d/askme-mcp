@@ -3,7 +3,12 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
-import { pagePaths, rulesLimit } from "../shared/page-api";
+import {
+  askChangePaths,
+  pagePaths,
+  rulesLimit,
+  timeZoneLimit,
+} from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
 import { fakes, testModelKey } from "../test/fakes";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
@@ -102,6 +107,7 @@ describe("the list of open asks", () => {
       version: 0,
       everAsked: false,
       hashtags: [],
+      formerHashtags: [],
       asks: [],
     });
   });
@@ -132,11 +138,41 @@ describe("the list of open asks", () => {
       id,
       summary: ask.summary,
       spokenDetail: ask.spoken_detail,
+      actionLink: ask.action_link,
+      opened: false,
       sort: null,
     });
     const postedAt = Date.parse(posted);
     expect(postedAt).toBeGreaterThanOrEqual(before - 1000);
     expect(postedAt).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("holds both of an ask's links, and leaves out one the agent did not send", async () => {
+    const account = newAccount();
+    const both = await post(account, {
+      ...ask,
+      session_link: "https://claude.ai/code/session_1",
+    });
+    const neither = await post(account, {
+      summary: "Which date format should the export use?",
+      area: ask.area,
+      spoken_detail: ask.spoken_detail,
+    });
+    const response = await get(
+      pagePaths.asks,
+      await issuer.sessionToken({ claims: { sub: account } }),
+    );
+    const { asks } = z
+      .object({ asks: z.array(z.looseObject({ id: z.string() })) })
+      .parse(await response.json());
+    expect(asks.find((listed) => listed.id === both)).toMatchObject({
+      actionLink: ask.action_link,
+      sessionLink: "https://claude.ai/code/session_1",
+    });
+    const bare = asks.find((listed) => listed.id === neither);
+    expect(bare).toBeDefined();
+    expect(bare).not.toHaveProperty("actionLink");
+    expect(bare).not.toHaveProperty("sessionLink");
   });
 
   it("drops an ask once its agent resolves it", async () => {
@@ -172,10 +208,158 @@ describe("the list of open asks", () => {
       version: 0,
       everAsked: false,
       hashtags: [],
+      formerHashtags: [],
       asks: [],
     });
   });
 });
+
+// A change from the page to one ask, as the signed-in person.
+async function change(
+  account: string,
+  path: string,
+  body: unknown,
+): Promise<Response> {
+  return invoke(
+    handler,
+    new Request(`${origin}${path}`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${await issuer.sessionToken({ claims: { sub: account } })}`,
+        "content-type": "application/json",
+      },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    }),
+  );
+}
+
+// Each ask's id and whether it was opened, as the page reads them.
+async function openedOf(account: string) {
+  const response = await get(
+    pagePaths.asks,
+    await issuer.sessionToken({ claims: { sub: account } }),
+  );
+  return z
+    .object({
+      version: z.number(),
+      asks: z.array(z.object({ id: z.string(), opened: z.boolean() })),
+    })
+    .parse(await response.json());
+}
+
+describe("opening an ask from the page", () => {
+  it("marks the ask as opened, keeps it in the list, and raises the version", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    const response = await change(account, askChangePaths.opened, { id });
+    expect(response.status).toBe(204);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await openedOf(account)).toEqual({
+      version: 2,
+      asks: [{ id, opened: true }],
+    });
+  });
+
+  it("succeeds again for an ask already opened, and changes nothing", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    await change(account, askChangePaths.opened, { id });
+    const response = await change(account, askChangePaths.opened, { id });
+    expect(response.status).toBe(204);
+    expect((await openedOf(account)).version).toBe(2);
+  });
+
+  it("succeeds for an ask its agent has resolved, and leaves it closed", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    await call(account, "resolve", { id });
+    const response = await change(account, askChangePaths.opened, { id });
+    expect(response.status).toBe(204);
+    expect(await openedOf(account)).toEqual({ version: 2, asks: [] });
+  });
+});
+
+describe("dismissing an ask from the page", () => {
+  it("drops the ask from the list, and raises the version", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    const response = await change(account, askChangePaths.dismissed, { id });
+    expect(response.status).toBe(204);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await openedOf(account)).toEqual({ version: 2, asks: [] });
+  });
+
+  it("succeeds for an ask its agent resolved first, and changes nothing", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    await call(account, "resolve", { id });
+    const response = await change(account, askChangePaths.dismissed, { id });
+    expect(response.status).toBe(204);
+    expect((await openedOf(account)).version).toBe(2);
+  });
+
+  it("lets the agent resolve the ask afterwards, which succeeds", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    await change(account, askChangePaths.dismissed, { id });
+    expect(await call(account, "resolve", { id })).toEqual({
+      id,
+      status: "resolved",
+    });
+  });
+});
+
+describe.each(Object.entries(askChangePaths))(
+  "a change to an ask, %s,",
+  (_, path) => {
+    it("refuses an id the account has no ask for as not_found, and changes nothing", async () => {
+      const account = newAccount();
+      await post(account);
+      const response = await change(account, path, {
+        id: "AAAAAAAAAAAAAAAAAAAAAAAA",
+      });
+      expect(response.status).toBe(404);
+      const refusal = refusalSchema.parse(await response.json());
+      expect(refusal.code).toBe("not_found");
+      expect(refusal.class).toBe("do not retry");
+      expect((await openedOf(account)).version).toBe(1);
+    });
+
+    it("refuses another account's ask exactly as an id that does not exist, and leaves it alone", async () => {
+      const [owner, other] = [newAccount(), newAccount()];
+      const id = await post(owner);
+      const borrowed = await change(other, path, { id });
+      const unknown = await change(other, path, {
+        id: "AAAAAAAAAAAAAAAAAAAAAAAA",
+      });
+      expect(borrowed.status).toBe(404);
+      expect(await borrowed.json()).toEqual(await unknown.json());
+      expect(await openedOf(owner)).toEqual({
+        version: 1,
+        asks: [{ id, opened: false }],
+      });
+    });
+
+    it.each([
+      ["no body", ""],
+      ["text that is not JSON", "opened"],
+      ["no id", {}],
+      ["an id that is not text", { id: 12 }],
+      ["an id longer than any askme gives", { id: "A".repeat(65) }],
+      ["an id with characters askme never uses", { id: "a/b" }],
+      ["a field besides the id", { id: "AAAA", account: "user_other" }],
+    ])("refuses %s as invalid_input", async (_, body) => {
+      const account = newAccount();
+      await post(account);
+      const response = await change(account, path, body);
+      expect(response.status).toBe(400);
+      const refusal = refusalSchema.parse(await response.json());
+      expect(refusal.code).toBe("invalid_input");
+      expect(refusal.class).toBe("do not retry");
+      expect((await openedOf(account)).version).toBe(1);
+    });
+  },
+);
 
 describe("a poll for the list", () => {
   it.each(["abc", "-1", "1.5", ""])(
@@ -261,6 +445,13 @@ const saveRules = async (account: string, body: unknown) =>
 
 const rulesText = "#work is my day job.\n\n#shop is my online shop.";
 
+// Weekdays, 8am to 6pm.
+const officeHours = {
+  days: ["mon", "tue", "wed", "thu", "fri"],
+  from: "08:00",
+  to: "18:00",
+};
+
 describe("the rules", () => {
   it("are empty for a new account, with no hashtags", async () => {
     const response = await get(pagePaths.rules, await session(newAccount()));
@@ -276,7 +467,7 @@ describe("the rules", () => {
   it("are saved, with the hashtags the model read from them, each with its colour", async () => {
     const account = newAccount();
     const calls = fakes.model.calls.length;
-    fakes.model.reply({ json: { hashtags: ["shop", "work"] } });
+    fakes.model.reply({ json: { hashtags: ["shop", "work"], hours: [] } });
     const response = await saveRules(account, { text: rulesText });
     expect(response.status).toBe(200);
     const saved = {
@@ -298,9 +489,91 @@ describe("the rules", () => {
     expect(fakes.parameters.asked).toContain("/askme/openrouter/api-key");
   });
 
+  it("are saved with the time zone sent, and each hashtag's hours, which the list carries too", async () => {
+    const account = newAccount();
+    fakes.model.reply({
+      json: {
+        hashtags: ["work", "shop"],
+        hours: [{ hashtag: "work", ...officeHours }],
+      },
+    });
+    const response = await saveRules(account, {
+      text: rulesText,
+      timeZone: "Europe/London",
+    });
+    expect(response.status).toBe(200);
+    const saved = {
+      text: rulesText,
+      hashtags: [
+        { name: "work", colour: 0, hours: [officeHours] },
+        { name: "shop", colour: 1 },
+      ],
+      readFailed: false,
+      timeZone: "Europe/London",
+    };
+    expect(await response.json()).toEqual(saved);
+    expect(
+      await (await get(pagePaths.rules, await session(account))).json(),
+    ).toEqual(saved);
+    expect(
+      await (await get(pagePaths.asks, await session(account))).json(),
+    ).toMatchObject({ hashtags: saved.hashtags, timeZone: "Europe/London" });
+  });
+
+  // The page applies the hours, in a zone its own browser knows, so the
+  // service keeps a name it does not know itself.
+  it("keep a time zone as it was sent, even one the service does not know", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
+    const response = await saveRules(account, {
+      text: "#work",
+      timeZone: "America/Not_Yet_Named",
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      timeZone: "America/Not_Yet_Named",
+    });
+  });
+
+  it("keep the time zone saved before when a save sends none", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
+    await saveRules(account, { text: "#work", timeZone: "Asia/Tokyo" });
+    fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
+    const response = await saveRules(account, { text: "#work first." });
+    expect(await response.json()).toMatchObject({ timeZone: "Asia/Tokyo" });
+  });
+
+  it("keep the old hours when the model cannot read the rules, in the time zone sent", async () => {
+    const account = newAccount();
+    fakes.model.reply({
+      json: {
+        hashtags: ["work"],
+        hours: [{ hashtag: "work", ...officeHours }],
+      },
+    });
+    await saveRules(account, {
+      text: "#work first.",
+      timeZone: "Europe/London",
+    });
+    const capture = captureLogs();
+    fakes.model.reply({ status: 502 });
+    const response = await saveRules(account, {
+      text: rulesText,
+      timeZone: "America/New_York",
+    });
+    capture.restore();
+    expect(await response.json()).toEqual({
+      text: rulesText,
+      hashtags: [{ name: "work", colour: 0, hours: [officeHours] }],
+      readFailed: true,
+      timeZone: "America/New_York",
+    });
+  });
+
   it("keep the text and the old hashtags when the model cannot read them, and say so", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work"] } });
+    fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
     await saveRules(account, { text: "#work first." });
     const capture = captureLogs();
     fakes.model.reply({ status: 502 });
@@ -323,7 +596,7 @@ describe("the rules", () => {
 
   it("keep the old hashtags when the model names one the rules do not write", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["home"] } });
+    fakes.model.reply({ json: { hashtags: ["home"], hours: [] } });
     const response = await saveRules(account, { text: rulesText });
     expect(await response.json()).toEqual({
       text: rulesText,
@@ -334,7 +607,7 @@ describe("the rules", () => {
 
   it("with the box empty, have no hashtags, and ask the model nothing", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work"] } });
+    fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
     await saveRules(account, { text: "#work" });
     const calls = fakes.model.calls.length;
     const response = await saveRules(account, { text: "" });
@@ -348,9 +621,9 @@ describe("the rules", () => {
 
   it("keep each hashtag's colour when the rules change", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
-    fakes.model.reply({ json: { hashtags: ["shop", "family"] } });
+    fakes.model.reply({ json: { hashtags: ["shop", "family"], hours: [] } });
     const response = await saveRules(account, {
       text: "#shop first, then #family.",
     });
@@ -366,6 +639,14 @@ describe("the rules", () => {
     ["rules over the limit", { text: "x".repeat(rulesLimit + 1) }],
     ["a body that is not JSON", "#work is my day job."],
     ["a body with another field", { text: "#work", hours: "9 to 5" }],
+    [
+      "a time zone that is not a zone's name",
+      { text: "#work", timeZone: "not a zone" },
+    ],
+    [
+      "a time zone's name over the limit",
+      { text: "#work", timeZone: `Europe/${"x".repeat(timeZoneLimit)}` },
+    ],
     ["no body", undefined],
   ])("refuse %s as invalid_input, and store nothing", async (_, body) => {
     const account = newAccount();
@@ -375,6 +656,7 @@ describe("the rules", () => {
     expect(refusal.code).toBe("invalid_input");
     expect(refusal.class).toBe("do not retry");
     expect(refusal.message).toContain(String(rulesLimit));
+    expect(refusal.message).toContain('"timeZone"');
     expect(
       await storedItems(
         inject("databaseEndpoint"),
@@ -404,9 +686,11 @@ describe("the rules", () => {
 // The list with each ask's sort, as the page reads it.
 async function sorted(account: string) {
   const response = await get(pagePaths.asks, await session(account));
+  const hashtags = z.array(z.object({ name: z.string(), colour: z.number() }));
   return z
     .object({
-      hashtags: z.array(z.object({ name: z.string(), colour: z.number() })),
+      hashtags,
+      formerHashtags: hashtags,
       asks: z.array(
         z.object({
           id: z.string(),
@@ -464,7 +748,7 @@ const sortOf = (account: string, askId: string) => ({
 describe("sorting", () => {
   it("never holds up posting: the ask is listed as not sorted yet, then sorted", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
     await runSorts();
     const calls = fakes.model.calls.length;
@@ -477,6 +761,7 @@ describe("sorting", () => {
         { name: "work", colour: 0 },
         { name: "shop", colour: 1 },
       ],
+      formerHashtags: [],
       asks: [{ id, sort: null }],
     });
 
@@ -493,6 +778,34 @@ describe("sorting", () => {
     ]);
   });
 
+  it("lists the reason with the sort, for the open card", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
+    await saveRules(account, { text: rulesText });
+    await runSorts();
+    const id = await post(account);
+    fakes.model.reply({
+      json: {
+        hashtags: ["work"],
+        level: "high",
+        reason: "The electrician waits.",
+      },
+    });
+    await runSorts();
+    const response = await get(pagePaths.asks, await session(account));
+    const { asks } = z
+      .object({
+        asks: z.array(
+          z.object({
+            id: z.string(),
+            sort: z.object({ reason: z.string() }).nullable(),
+          }),
+        ),
+      })
+      .parse(await response.json());
+    expect(asks).toEqual([{ id, sort: { reason: "The electrician waits." } }]);
+  });
+
   it("lists every ask with no hashtag while the box is empty, asking no model", async () => {
     const account = newAccount();
     const id = await post(account);
@@ -501,6 +814,7 @@ describe("sorting", () => {
     expect(fakes.model.calls).toHaveLength(calls);
     expect(await sorted(account)).toEqual({
       hashtags: [],
+      formerHashtags: [],
       asks: [{ id, sort: { hashtags: [], level: "normal" } }],
     });
   });
@@ -532,8 +846,12 @@ describe("sorting", () => {
 
   it("leaves the ask unsorted when the model fails, and a poll asks again after a minute", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
-    await saveRules(account, { text: rulesText });
+    // Rules saved before the ask was posted, so the save did not hand it on.
+    await store.saveRules(
+      ownerOf(account),
+      { text: rulesText, hashtags: ["work", "shop"] },
+      new Date(Date.now() - 3 * sortRetryAfterMs),
+    );
     // An ask posted two minutes ago, whose sort failed.
     const old = await postEarlier(
       account,
@@ -597,5 +915,213 @@ describe("sorting", () => {
     expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
     expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
     await runSorts();
+  });
+});
+
+// An ask posted at a time in the past, sorted then into #work with the
+// rules saved then. Gives its id.
+async function sortedEarlier(account: string, at: Date): Promise<string> {
+  const owner = ownerOf(account);
+  const { version } = await store.saveRules(
+    owner,
+    { text: "#work first.", hashtags: ["work"] },
+    at,
+  );
+  const id = await postEarlier(
+    account,
+    { summary: "Old", area: "Work", spokenDetail: "Old." },
+    at,
+  );
+  await store.recordSort(
+    owner,
+    id,
+    {
+      hashtags: ["work"],
+      level: "normal",
+      reason: "Routine.",
+      rulesVersion: version,
+    },
+    at,
+  );
+  return id;
+}
+
+describe("saving the rules again", () => {
+  it("hands every open ask to the sort function, sorted or not", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
+    await saveRules(account, { text: rulesText });
+    const sortedAsk = await post(account);
+    // The model has no reply for the second ask, so it stays unsorted.
+    fakes.model.reply({
+      json: { hashtags: ["work"], level: "high", reason: "It waits." },
+    });
+    const unsorted = await post(account, { ...ask, summary: "Renew it" });
+    await runSorts();
+    expect((await sorted(account)).asks).toContainEqual({
+      id: unsorted,
+      sort: null,
+    });
+
+    const invoked = fakes.lambda.invoked.length;
+    fakes.model.reply({ json: { hashtags: ["shop", "family"], hours: [] } });
+    const response = await saveRules(account, {
+      text: "#shop first, then #family.",
+    });
+    expect(response.status).toBe(200);
+    const handedOn = fakes.lambda.invoked.slice(invoked);
+    expect(handedOn).toHaveLength(2);
+    expect(handedOn).toEqual(
+      expect.arrayContaining([
+        sortOf(account, sortedAsk),
+        sortOf(account, unsorted),
+      ]),
+    );
+    fakes.model.reply(
+      { json: { hashtags: ["shop"], level: "low", reason: "Routine." } },
+      { json: { hashtags: ["shop"], level: "low", reason: "Routine." } },
+    );
+    await runSorts();
+  });
+
+  it("keeps each ask's old hashtags, in their colours, until it is sorted again", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
+    await saveRules(account, { text: rulesText });
+    fakes.model.reply({
+      json: { hashtags: ["work", "shop"], level: "high", reason: "It waits." },
+    });
+    const id = await post(account);
+    await runSorts();
+
+    fakes.model.reply({ json: { hashtags: ["shop", "family"], hours: [] } });
+    await saveRules(account, { text: "#shop first, then #family." });
+    // A hashtag still in the rules keeps its colour, and one that left
+    // them keeps its colour on the asks that still carry it.
+    expect(await sorted(account)).toEqual({
+      hashtags: [
+        { name: "shop", colour: 1 },
+        { name: "family", colour: 2 },
+      ],
+      formerHashtags: [{ name: "work", colour: 0 }],
+      asks: [{ id, sort: { hashtags: ["work", "shop"], level: "high" } }],
+    });
+
+    fakes.model.reply({
+      json: { hashtags: ["family"], level: "low", reason: "It can wait." },
+    });
+    expect(await runSorts()).toBe(1);
+    expect(await sorted(account)).toEqual({
+      hashtags: [
+        { name: "shop", colour: 1 },
+        { name: "family", colour: 2 },
+      ],
+      formerHashtags: [],
+      asks: [{ id, sort: { hashtags: ["family"], level: "low" } }],
+    });
+  });
+
+  it("takes every hashtag off the asks when the box is emptied, asking no model", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
+    await saveRules(account, { text: rulesText });
+    fakes.model.reply({
+      json: { hashtags: ["work"], level: "high", reason: "It waits." },
+    });
+    const id = await post(account);
+    await runSorts();
+
+    await saveRules(account, { text: "" });
+    const calls = fakes.model.calls.length;
+    expect(await runSorts()).toBe(1);
+    expect(fakes.model.calls).toHaveLength(calls);
+    expect(await sorted(account)).toEqual({
+      hashtags: [],
+      formerHashtags: [],
+      asks: [{ id, sort: { hashtags: [], level: "normal" } }],
+    });
+  });
+
+  it("saves the rules when Lambda cannot take the asks, and each keeps its old sort", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
+    await saveRules(account, { text: rulesText });
+    fakes.model.reply({
+      json: { hashtags: ["work"], level: "high", reason: "It waits." },
+    });
+    const id = await post(account);
+    await runSorts();
+
+    const capture = captureLogs();
+    fakes.lambda.failing = true;
+    let response: Response;
+    try {
+      fakes.model.reply({ json: { hashtags: ["shop"], hours: [] } });
+      response = await saveRules(account, { text: "#shop only." });
+    } finally {
+      fakes.lambda.failing = false;
+      capture.restore();
+    }
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      text: "#shop only.",
+      hashtags: [{ name: "shop", colour: 1 }],
+      readFailed: false,
+    });
+    expect((await sorted(account)).asks).toEqual([
+      { id, sort: { hashtags: ["work"], level: "high" } },
+    ]);
+    expect(
+      capture.lines.some(
+        (line) =>
+          line.method === "warn" &&
+          lineText(line).includes("sort-request-failed"),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not ask again for an ask sorted with older rules while its new sort may still be running", async () => {
+    const account = newAccount();
+    const id = await sortedEarlier(
+      account,
+      new Date(Date.now() - 2 * sortRetryAfterMs),
+    );
+    const invoked = fakes.lambda.invoked.length;
+    fakes.model.reply({ json: { hashtags: ["shop"], hours: [] } });
+    await saveRules(account, { text: "#shop only." });
+    expect((await sorted(account)).asks).toEqual([
+      { id, sort: { hashtags: ["work"], level: "normal" } },
+    ]);
+    expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
+    fakes.model.reply({
+      json: { hashtags: ["shop"], level: "low", reason: "Routine." },
+    });
+    await runSorts();
+  });
+
+  it("asks again for an ask still sorted with older rules a minute after they were saved", async () => {
+    const account = newAccount();
+    const id = await sortedEarlier(
+      account,
+      new Date(Date.now() - 3 * sortRetryAfterMs),
+    );
+    // Rules saved two minutes ago, whose sort of the ask failed then.
+    await store.saveRules(
+      ownerOf(account),
+      { text: "#shop only.", hashtags: ["shop"] },
+      new Date(Date.now() - 2 * sortRetryAfterMs),
+    );
+    const invoked = fakes.lambda.invoked.length;
+    expect((await sorted(account)).asks).toEqual([
+      { id, sort: { hashtags: ["work"], level: "normal" } },
+    ]);
+    expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
+    fakes.model.reply({
+      json: { hashtags: ["shop"], level: "low", reason: "Routine." },
+    });
+    await runSorts();
+    expect((await sorted(account)).asks).toEqual([
+      { id, sort: { hashtags: ["shop"], level: "low" } },
+    ]);
   });
 });

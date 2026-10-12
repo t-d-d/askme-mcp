@@ -79,10 +79,15 @@ const unchangedSchema = z.strictObject({
   unchanged: z.literal(true),
 });
 
+const hashtagsSchema = z.array(
+  z.object({ name: z.string(), colour: z.number() }),
+);
+
 const listSchema = z.strictObject({
   version: z.number(),
   everAsked: z.boolean(),
-  hashtags: z.array(z.object({ name: z.string(), colour: z.number() })),
+  hashtags: hashtagsSchema,
+  formerHashtags: hashtagsSchema,
   asks: z.array(z.looseObject({ id: z.string(), summary: z.string() })),
 });
 

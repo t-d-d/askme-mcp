@@ -83,6 +83,7 @@
   --space-18: 18px;
   --space-20: 20px;
   --space-22: 22px;
+  --space-24: 24px;
   --space-26: 26px;
   --space-30: 30px;
   --space-32: 32px;
@@ -93,6 +94,12 @@
   --space-outside-card: var(--space-16);
   --space-inside-card: var(--space-22);
   --gap-buttons: var(--space-8);
+
+  /* An opened ask, which sinks below the unopened ones at its level */
+  --opacity-opened: 0.55;
+
+  /* Movement: a swiped card going back to its place */
+  --duration-move: 150ms;
 
   /* Width */
   --content-width: 1080px;

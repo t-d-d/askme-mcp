@@ -10,6 +10,7 @@ import {
   rulesSaveLimit,
   sortRetryLimit,
 } from "./src/rate";
+import type { HashtagWindow } from "./src/rules";
 import { keys } from "./src/store/keys";
 import {
   askLifetimeDays,
@@ -221,6 +222,167 @@ describe("resolving an ask", () => {
     ).toHaveLength(4);
     expect(await itemsOf(owner, id)).toHaveLength(1);
     expect(await versionOf(owner)).toBe(2);
+  });
+});
+
+describe("opening an ask", () => {
+  it("marks an open ask as opened, and keeps it open", async () => {
+    const owner = account();
+    const posted = new Date("2026-10-11T09:30:00.000Z");
+    const opened = new Date("2026-10-11T09:40:00.000Z");
+    const { id } = await postNew(owner, ask, posted);
+    expect(await store.markOpened(owner, id, opened)).toBe("opened");
+    expect(await store.openAsks(owner, opened)).toEqual({
+      version: 2,
+      everAsked: true,
+      asks: [
+        {
+          id,
+          ...ask,
+          postedAt: posted.toISOString(),
+          storedAt: posted.toISOString(),
+          openedAt: opened.toISOString(),
+        },
+      ],
+    });
+    expect(await itemsOf(owner, id)).toEqual([
+      expect.objectContaining({ ...keys.openAsk(owner, id) }),
+    ]);
+  });
+
+  it("answers unchanged for an ask already opened, and keeps when it was first opened", async () => {
+    const owner = account();
+    const first = new Date("2026-10-11T09:40:00.000Z");
+    const { id } = await postNew(owner, ask, new Date("2026-10-11T09:30Z"));
+    await store.markOpened(owner, id, first);
+    const before = await itemsOf(owner, id);
+    expect(
+      await store.markOpened(owner, id, new Date("2026-10-11T09:50Z")),
+    ).toBe("unchanged");
+    expect(await itemsOf(owner, id)).toEqual(before);
+    expect(await versionOf(owner)).toBe(2);
+  });
+
+  it("answers unchanged for an ask that has closed, and leaves it closed", async () => {
+    const owner = account();
+    const { id } = await postNew(owner, ask, new Date());
+    await store.resolveAsk(owner, id, new Date());
+    const before = await itemsOf(owner, id);
+    expect(await store.markOpened(owner, id, new Date())).toBe("unchanged");
+    expect(await itemsOf(owner, id)).toEqual(before);
+    expect(await versionOf(owner)).toBe(2);
+  });
+
+  it("answers not-found for an id the account has no ask for, and changes nothing", async () => {
+    const owner = account();
+    await postNew(owner, ask, new Date());
+    expect(
+      await store.markOpened(owner, "AAAAAAAAAAAAAAAAAAAAAAAA", new Date()),
+    ).toBe("not-found");
+    expect(await versionOf(owner)).toBe(1);
+  });
+
+  it("answers not-found for another account's ask, and leaves it unopened", async () => {
+    const [owner, other] = [account(), account()];
+    const { id } = await postNew(owner, ask, new Date());
+    expect(await store.markOpened(other, id, new Date())).toBe("not-found");
+    const [listed] = (await store.openAsks(owner, new Date())).asks;
+    expect(listed).not.toHaveProperty("openedAt");
+  });
+
+  it("marks an ask opened once when several arrive together", async () => {
+    const owner = account();
+    const { id } = await postNew(owner, ask, new Date());
+    const answers = await Promise.all(
+      [1, 2, 3, 4, 5].map(() => store.markOpened(owner, id, new Date())),
+    );
+    expect(answers.filter((answer) => answer === "opened")).toHaveLength(1);
+    expect(answers.filter((answer) => answer === "unchanged")).toHaveLength(4);
+    expect(await versionOf(owner)).toBe(2);
+  });
+
+  it("starts the ask that replaces an opened one unopened", async () => {
+    const owner = account();
+    const { id: old } = await postNew(owner, ask, new Date());
+    await store.markOpened(owner, old, new Date());
+    const { id } = await postNew(
+      owner,
+      { ...ask, summary: "Revised", replaces: old },
+      new Date(),
+    );
+    const { asks } = await store.openAsks(owner, new Date());
+    expect(asks.map((listed) => listed.id)).toEqual([id]);
+    expect(asks[0]).not.toHaveProperty("openedAt");
+  });
+});
+
+describe("dismissing an ask", () => {
+  it("closes an open ask as dismissed, and the list no longer holds it", async () => {
+    const owner = account();
+    const posted = new Date("2026-10-11T09:30:00.000Z");
+    const closed = new Date("2026-10-11T10:00:00.000Z");
+    const { id } = await postNew(owner, ask, posted);
+    expect(await store.dismissAsk(owner, id, closed)).toBe("dismissed");
+    expect(await store.openAsks(owner, closed)).toEqual({
+      version: 2,
+      everAsked: true,
+      asks: [],
+    });
+    expect(await itemsOf(owner, id)).toEqual([
+      {
+        ...keys.closedAsk(owner, id),
+        id,
+        ...ask,
+        postedAt: posted.toISOString(),
+        storedAt: posted.toISOString(),
+        expiresAt: (posted.getTime() + askLifetimeDays * day) / 1000,
+        endedAs: "dismissed",
+        closedAt: closed.toISOString(),
+      },
+    ]);
+  });
+
+  it("keeps when an opened ask was opened once it is dismissed", async () => {
+    const owner = account();
+    const opened = new Date("2026-10-11T09:40:00.000Z");
+    const { id } = await postNew(owner, ask, new Date("2026-10-11T09:30Z"));
+    await store.markOpened(owner, id, opened);
+    await store.dismissAsk(owner, id, new Date("2026-10-11T10:00Z"));
+    expect(await itemsOf(owner, id)).toEqual([
+      expect.objectContaining({
+        ...keys.closedAsk(owner, id),
+        openedAt: opened.toISOString(),
+        endedAs: "dismissed",
+      }),
+    ]);
+  });
+
+  it("answers unchanged for an ask its agent resolved first, and leaves it resolved", async () => {
+    const owner = account();
+    const { id } = await postNew(owner, ask, new Date());
+    await store.resolveAsk(owner, id, new Date());
+    const before = await itemsOf(owner, id);
+    expect(await store.dismissAsk(owner, id, new Date())).toBe("unchanged");
+    expect(await itemsOf(owner, id)).toEqual(before);
+    expect(await versionOf(owner)).toBe(2);
+  });
+
+  it("answers not-found for an id the account has no ask for, and changes nothing", async () => {
+    const owner = account();
+    await postNew(owner, ask, new Date());
+    expect(
+      await store.dismissAsk(owner, "AAAAAAAAAAAAAAAAAAAAAAAA", new Date()),
+    ).toBe("not-found");
+    expect(await versionOf(owner)).toBe(1);
+  });
+
+  it("lets the agent resolve a dismissed ask, which succeeds as already closed", async () => {
+    const owner = account();
+    const { id } = await postNew(owner, ask, new Date());
+    await store.dismissAsk(owner, id, new Date());
+    expect(await store.resolveAsk(owner, id, new Date())).toBe(
+      "already-closed",
+    );
   });
 });
 
@@ -560,6 +722,12 @@ describe("the asks since a version", () => {
 
 describe("the rules", () => {
   const now = new Date("2026-10-11T09:30:00.000Z");
+  const workHours: HashtagWindow = {
+    hashtag: "work",
+    days: ["mon", "tue", "wed", "thu", "fri"],
+    from: "08:00",
+    to: "18:00",
+  };
 
   it("are empty, with no hashtags, for an account that never saved any", async () => {
     expect(await store.rules(account())).toEqual({
@@ -571,7 +739,7 @@ describe("the rules", () => {
     });
   });
 
-  it("keep the text and the hashtags read from it, and raise the version", async () => {
+  it("keep the text, the hashtags read from it and when they were saved, and raise the version", async () => {
     const owner = account();
     const saved = await store.saveRules(
       owner,
@@ -584,9 +752,86 @@ describe("the rules", () => {
       seen: ["work", "shop"],
       version: 1,
       readFailed: false,
+      savedAt: now.toISOString(),
     });
     expect(await store.rules(owner)).toEqual(saved);
     expect(await versionOf(owner)).toBe(1);
+  });
+
+  it("keep each hashtag's hours, read with it, and the time zone they use", async () => {
+    const owner = account();
+    const saved = await store.saveRules(
+      owner,
+      {
+        text: "#work on weekdays, 8am to 6pm. #shop at any time.",
+        timeZone: "Europe/London",
+        hashtags: ["work", "shop"],
+        hours: [workHours],
+      },
+      now,
+    );
+    expect(saved).toMatchObject({
+      hashtags: ["work", "shop"],
+      hours: [workHours],
+      timeZone: "Europe/London",
+    });
+    expect(await store.rules(owner)).toEqual(saved);
+  });
+
+  it("keep the old hours, and take the new time zone, when the rules could not be read", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      {
+        text: "#work on weekdays, 8am to 6pm.",
+        timeZone: "Europe/London",
+        hashtags: ["work"],
+        hours: [workHours],
+      },
+      now,
+    );
+    const saved = await store.saveRules(
+      owner,
+      { text: "#work on weekdays, 9 to 5.", timeZone: "America/New_York" },
+      now,
+    );
+    expect(saved).toMatchObject({
+      hashtags: ["work"],
+      hours: [workHours],
+      timeZone: "America/New_York",
+      readFailed: true,
+    });
+  });
+
+  it("drop the old hours when the new rules give none", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      { text: "#work on weekdays.", hashtags: ["work"], hours: [workHours] },
+      now,
+    );
+    const saved = await store.saveRules(
+      owner,
+      { text: "#work at any time.", hashtags: ["work"] },
+      now,
+    );
+    expect(saved.hours).toBeUndefined();
+    expect((await store.rules(owner)).hours).toBeUndefined();
+  });
+
+  it("keep the time zone saved before when a save gives none", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      { text: "#work", timeZone: "Asia/Tokyo", hashtags: ["work"] },
+      now,
+    );
+    const saved = await store.saveRules(
+      owner,
+      { text: "#work first.", hashtags: ["work"] },
+      now,
+    );
+    expect(saved.timeZone).toBe("Asia/Tokyo");
   });
 
   it("keep the new text and the old hashtags when the rules could not be read", async () => {
@@ -607,6 +852,7 @@ describe("the rules", () => {
       seen: ["work"],
       version: 2,
       readFailed: true,
+      savedAt: now.toISOString(),
     });
     expect(await versionOf(owner)).toBe(2);
   });

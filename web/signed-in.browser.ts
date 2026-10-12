@@ -34,6 +34,7 @@ const ask = (id: string, summary: string, waited: number) => ({
   summary,
   spokenDetail: `The spoken detail of ${summary}`,
   postedAt: ago(waited),
+  opened: false,
   sort: null,
 });
 
@@ -42,6 +43,7 @@ const five: AsksAnswer = {
   version: 5,
   everAsked: true,
   hashtags: [],
+  formerHashtags: [],
   asks: [
     ask("d", "Renew the shop's domain for a year, or let it lapse?", 0),
     ask("a", "Merge the fix for checkout rounding? Tests pass.", 31 * minute),
@@ -55,6 +57,7 @@ const empty = (everAsked: boolean): AsksAnswer => ({
   version: everAsked ? 9 : 0,
   everAsked,
   hashtags: [],
+  formerHashtags: [],
   asks: [],
 });
 
@@ -340,12 +343,14 @@ describe("another account signing in on the same page", () => {
     version: 3,
     everAsked: true,
     hashtags: [],
+    formerHashtags: [],
     asks: [ask("a", "Merge the fix for checkout rounding? Tests pass.", 5)],
   };
   const second: AsksAnswer = {
     version: 3,
     everAsked: true,
     hashtags: [],
+    formerHashtags: [],
     asks: [ask("b", "Swap Saturday's school run with the Okafors?", 5)],
   };
 
@@ -460,7 +465,10 @@ describe("sorted asks", () => {
     summary: string,
     waited: number,
     sort: { hashtags: string[]; level: "high" | "normal" | "low" } | null,
-  ) => ({ ...ask(id, summary, waited), sort });
+  ) => ({
+    ...ask(id, summary, waited),
+    sort: sort === null ? null : { ...sort, reason: "Sorted by the rules." },
+  });
 
   const sorted: AsksAnswer = {
     version: 7,
@@ -470,6 +478,7 @@ describe("sorted asks", () => {
       { name: "shop", colour: 1 },
       { name: "family", colour: 2 },
     ],
+    formerHashtags: [],
     asks: [
       sortedAsk("a", "Swap Saturday's school run?", 40 * minute, {
         hashtags: ["family"],

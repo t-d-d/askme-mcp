@@ -5,7 +5,7 @@ import { askTool } from "../service/src/ask";
 import { handler } from "../service/src/handler";
 import { events } from "../service/src/log";
 import { handler as sorter } from "../service/src/sorter";
-import { pagePaths } from "../shared/page-api";
+import { askChangePaths, pagePaths } from "../shared/page-api";
 import { fakes } from "../test/fakes";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
@@ -177,7 +177,7 @@ describe("fitness: no content reaches the output (logging.md)", () => {
         }),
       );
     // Rules the model reads, then rules it cannot.
-    fakes.model.reply({ json: { hashtags: ["work"] } });
+    fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
     expect((await save(`#work is ${marker}`)).status).toBe(200);
     fakes.model.reply({ status: 502 });
     expect((await save(`#work and #home are ${marker}`)).status).toBe(200);
@@ -189,6 +189,45 @@ describe("fitness: no content reaches the output (logging.md)", () => {
     await fakes.lambda.drain((payload) =>
       sorter(payload, { awsRequestId: "sort-1" }),
     );
+  });
+
+  it("runs the paths that open and dismiss an ask from the page", async () => {
+    const sub = `user_${randomUUID().slice(0, 8)}`;
+    const agent = await connect(handler, {
+      token: await token({ claims: { sub } }),
+    });
+    const { id } = z
+      .object({ id: z.string() })
+      .parse(
+        (await agent.callTool({ name: "ask", arguments: ask }))
+          .structuredContent,
+      );
+    await agent.close();
+    const session = await issuer.sessionToken({ claims: { sub } });
+    tokens.push(session);
+    const change = (path: string, body: string) =>
+      invoke(
+        handler,
+        new Request(`${origin}${path}`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${session}`,
+            "content-type": "application/json",
+          },
+          body,
+        }),
+      );
+    const { opened, dismissed } = askChangePaths;
+    expect((await change(opened, JSON.stringify({ id }))).status).toBe(204);
+    expect((await change(dismissed, JSON.stringify({ id }))).status).toBe(204);
+    // An id that is the marker, one that holds it, and a body that is it.
+    expect((await change(opened, JSON.stringify({ id: marker }))).status).toBe(
+      404,
+    );
+    expect(
+      (await change(dismissed, JSON.stringify({ id: `a/${marker}` }))).status,
+    ).toBe(400);
+    expect((await change(dismissed, marker)).status).toBe(400);
   });
 
   it("wrote lines on those paths", () => {
@@ -207,6 +246,9 @@ describe("fitness: no content reaches the output (logging.md)", () => {
       "rules-read-failed",
       "ask-sorted",
       "sort-failed",
+      "ask-opened",
+      "ask-dismissed",
+      "ask-not-found",
     ]) {
       expect(
         [...written].some((line) => line.includes(`"event":"${event}"`)),

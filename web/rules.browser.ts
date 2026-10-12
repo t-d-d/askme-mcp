@@ -24,16 +24,39 @@ const text =
 const saved: RulesAnswer = {
   text,
   hashtags: [
-    { name: "work", colour: 0 },
+    {
+      name: "work",
+      colour: 0,
+      hours: [
+        {
+          days: ["mon", "tue", "wed", "thu", "fri"],
+          from: "08:00",
+          to: "18:00",
+        },
+      ],
+    },
     { name: "shop", colour: 1 },
   ],
   readFailed: false,
+  timeZone: "Europe/London",
 };
+
+// What the screen shows for each hashtag askme read: its pill, then its
+// hours.
+const rows = (page: OpenPage["page"]) =>
+  page
+    .getByRole("region", { name: "askme read this from your rules" })
+    .getByRole("listitem")
+    .allInnerTexts();
+
+const browserZone = (page: OpenPage["page"]) =>
+  page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
 
 const list: AsksAnswer = {
   version: 1,
   everAsked: true,
   hashtags: [],
+  formerHashtags: [],
   asks: [],
 };
 
@@ -42,9 +65,11 @@ const list: AsksAnswer = {
 async function openRules(
   rules: RulesAnswer | Answering,
   viewport = phone,
+  timeZone = "Europe/London",
 ): Promise<OpenPage> {
   const view = await openPage(`${inject("pageUrl")}#rules`, viewport, {
     session,
+    timeZone,
     api: { [pagePaths.rules]: rules, [pagePaths.asks]: list },
   });
   await view.page
@@ -84,9 +109,9 @@ describe("the rules screen", () => {
     const read = page.getByRole("region", {
       name: "askme read this from your rules",
     });
-    expect(await read.getByRole("listitem").allInnerTexts()).toEqual([
-      "#work",
-      "#shop",
+    expect(await rows(page)).toEqual([
+      "#work\nWeekdays, 8am to 6pm",
+      "#shop\nAny time",
     ]);
     const background = (name: string) =>
       read
@@ -98,6 +123,58 @@ describe("the rules screen", () => {
     expect(await background("#shop")).toBe(
       await computedColour(page, palette.orange.tint),
     );
+  });
+
+  it("shows each hashtag's hours, one line for each window, and names the time zone they use", async () => {
+    view = await openRules({
+      ...saved,
+      hashtags: [
+        {
+          name: "family",
+          colour: 2,
+          hours: [
+            {
+              days: ["mon", "tue", "wed", "thu", "fri"],
+              from: "18:00",
+              to: "24:00",
+            },
+            { days: ["sat", "sun"], from: "00:00", to: "24:00" },
+          ],
+        },
+      ],
+      timeZone: "Asia/Tokyo",
+    });
+    const { page } = view;
+    expect(await rows(page)).toEqual([
+      "#family\nWeekdays, 6pm to midnight\nWeekends, all day",
+    ]);
+  });
+
+  it("names the time zone the hours use, taken from this browser", async () => {
+    view = await openRules(saved);
+    await view.page
+      .getByText("Hours use Europe/London, taken from this browser.")
+      .waitFor();
+  });
+
+  it("says when another browser's time zone gave the hours, and the one saving here uses", async () => {
+    view = await openRules(saved, phone, "America/New_York");
+    await view.page
+      .getByText(
+        "Hours use Europe/London, taken from the browser that saved them. Saving here uses America/New_York.",
+      )
+      .waitFor();
+  });
+
+  it("names this browser's time zone before any rules are saved with one", async () => {
+    view = await openRules(
+      { text: "", hashtags: [], readFailed: false },
+      phone,
+      "Asia/Tokyo",
+    );
+    await view.page
+      .getByText("Hours use Asia/Tokyo, taken from this browser.")
+      .waitFor();
   });
 
   it("keeps Save rules neutral until the text changes, then ink", async () => {
@@ -135,8 +212,12 @@ describe("the rules screen", () => {
     await page.getByRole("button", { name: "Save rules" }).click();
     await page.getByText("Reading your rules.").waitFor();
     await page.getByText("#family", { exact: true }).waitFor();
+    // With the time zone of this browser, which the hours use.
     expect(bodies).toEqual([
-      JSON.stringify({ text: `${text}\n\n#family is home.` }),
+      JSON.stringify({
+        text: `${text}\n\n#family is home.`,
+        timeZone: await browserZone(page),
+      }),
     ]);
     expect(
       await page.getByRole("button", { name: "Save rules" }).isDisabled(),
@@ -160,15 +241,15 @@ describe("the rules screen", () => {
       .getByText("askme couldn't read your rules just now. Your text is saved.")
       .waitFor();
     expect(await page.getByRole("textbox").inputValue()).toBe(changed);
-    expect(
-      await page
-        .getByRole("region", { name: "askme read this from your rules" })
-        .getByRole("listitem")
-        .allInnerTexts(),
-    ).toEqual(["#work", "#shop"]);
+    expect(await rows(page)).toEqual([
+      "#work\nWeekdays, 8am to 6pm",
+      "#shop\nAny time",
+    ]);
     await page.getByRole("button", { name: "Try again" }).click();
     await expect.poll(() => bodies.length).toBe(2);
-    expect(bodies[1]).toBe(JSON.stringify({ text: changed }));
+    expect(bodies[1]).toBe(
+      JSON.stringify({ text: changed, timeZone: await browserZone(page) }),
+    );
   });
 
   it("says to slow down when the rules are saved too often", async () => {
@@ -189,6 +270,36 @@ describe("the rules screen", () => {
     await page
       .getByText("Slow down a little. Try again in a few seconds.")
       .waitFor();
+  });
+
+  it("says that saving re-sorts every open ask", async () => {
+    view = await openRules(saved);
+    const read = view.page.getByRole("region", {
+      name: "askme read this from your rules",
+    });
+    await read.getByRole("listitem").first().waitFor();
+    expect(await read.innerText()).toContain("Saving re-sorts every open ask.");
+  });
+
+  it("says that saving re-sorts every open ask while the rules load", async () => {
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      api: {
+        [pagePaths.rules]: new Answering(async () => {
+          await sleep(5000);
+          return saved;
+        }),
+        [pagePaths.asks]: list,
+      },
+    });
+    const { page } = view;
+    await page
+      .getByRole("heading", { name: "Your rules", exact: true })
+      .waitFor();
+    expect(
+      await page.getByText("Saving re-sorts every open ask.").isVisible(),
+    ).toBe(true);
+    expect(await page.getByText("Hours use").count()).toBe(0);
   });
 
   it("says there are no hashtags when the box is empty", async () => {

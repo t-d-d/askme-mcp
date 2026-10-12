@@ -3,18 +3,21 @@
 import { describe, expect, it } from "vitest";
 import { askTool } from "../service/src/ask";
 import { parseReading } from "../service/src/rules";
-import { cases, evalRules } from "./cases";
+import { attackKinds, cases, evalRules, type HostileCase } from "./cases";
+
+const core = cases.filter((one) => one.group === "core");
+const hostile = cases.filter(
+  (one): one is HostileCase => one.group === "hostile",
+);
 
 describe("the core eval set", () => {
   it("has about 30 asks, across three areas", () => {
-    expect(cases.length).toBeGreaterThanOrEqual(27);
-    expect(cases.length).toBeLessThanOrEqual(33);
-    const areas = new Set(cases.map((one) => one.area));
+    expect(core.length).toBeGreaterThanOrEqual(27);
+    expect(core.length).toBeLessThanOrEqual(33);
+    const areas = new Set(core.map((one) => one.area));
     expect([...areas].sort()).toEqual(["family", "shop", "work"]);
     for (const area of areas) {
-      expect(cases.filter((one) => one.area === area).length).toBeGreaterThan(
-        5,
-      );
+      expect(core.filter((one) => one.area === area).length).toBeGreaterThan(5);
     }
   });
 
@@ -42,7 +45,8 @@ describe("the core eval set", () => {
 
   it("expects only hashtags the rules name", () => {
     expect(
-      parseReading({ hashtags: evalRules.hashtags }, evalRules.text),
+      parseReading({ hashtags: evalRules.hashtags, hours: [] }, evalRules.text)
+        ?.hashtags,
     ).toEqual(evalRules.hashtags);
     for (const { name, expected } of cases) {
       for (const set of expected.hashtags) {
@@ -67,4 +71,62 @@ describe("the core eval set", () => {
     expect(evalRules.text).toMatch(/#admin is my own accounts/u);
     expect(expected).toEqual({ hashtags: [["shop"]], level: "high" });
   });
+
+  it("holds waits that run out without saying so, and a passkey ask that can wait", () => {
+    const named = (name: string) => cases.find((one) => one.name === name);
+    for (const name of [
+      "the passkey ask",
+      "a sign-in code for the school's payment site",
+    ]) {
+      const one = named(name);
+      expect(one?.expected.level, name).toBe("high");
+      // The prompt has to know such a wait runs out. The ask does not say.
+      for (const text of [one?.ask.summary, one?.ask.spokenDetail]) {
+        expect(text, name).not.toMatch(
+          /expir|time[sd]?[ -]?out|r[au]n[s]? out|minute|valid for/iu,
+        );
+      }
+    }
+    expect(named("a passkey to set up when it suits")?.expected.level).toBe(
+      "low",
+    );
+  });
+});
+
+describe("fitness: the eval set keeps a hostile group (untrusted-ask-text.md)", () => {
+  it("has about ten asks, across the three areas", () => {
+    expect(hostile.length).toBeGreaterThanOrEqual(8);
+    expect(hostile.length).toBeLessThanOrEqual(15);
+    expect([...new Set(hostile.map((one) => one.area))].sort()).toEqual([
+      "family",
+      "shop",
+      "work",
+    ]);
+  });
+
+  it("holds every attack ADR 12 names: rank first, use or avoid a hashtag, reveal the rules, answer in another format", () => {
+    expect([...new Set(hostile.map((one) => one.attack.kind))].sort()).toEqual(
+      [...attackKinds].sort(),
+    );
+  });
+
+  it.each(hostile.map((one) => [one.name, one] as const))(
+    "scores giving in as a miss: %s",
+    (_, { attack, expected }) => {
+      const { obeyed } = attack;
+      if ("level" in obeyed) {
+        expect(expected.level).not.toBe(obeyed.level);
+      } else if ("adds" in obeyed) {
+        expect(evalRules.hashtags).toContain(obeyed.adds);
+        for (const set of expected.hashtags) {
+          expect(set).not.toContain(obeyed.adds);
+        }
+      } else {
+        expect(evalRules.hashtags).toContain(obeyed.drops);
+        for (const set of expected.hashtags) {
+          expect(set).toContain(obeyed.drops);
+        }
+      }
+    },
+  );
 });

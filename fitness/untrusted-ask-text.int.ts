@@ -35,7 +35,7 @@ const ask = {
 };
 
 async function saveRules(sub: string) {
-  fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+  fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
   const response = await invoke(
     handler,
     new Request(`${origin}${pagePaths.rules}`, {

@@ -33,6 +33,7 @@ import {
   sortRetryLimit,
   windowOf,
 } from "../rate";
+import { hashtagWindow, type HashtagWindow } from "../rules";
 import { levels, type Sort } from "../sort";
 import { fingerprint } from "./fingerprint";
 import { keys, type Key } from "./keys";
@@ -109,25 +110,34 @@ const storedAskSchema = z.object({
   expiresAt: z.number().int(),
   // Absent until the ask is sorted.
   sort: sortSchema.optional(),
+  // When the person first followed one of the ask's links. Absent until
+  // then. The ask stays open (PRD, "The ask").
+  openedAt: z.iso.datetime().optional(),
 });
 
 export type StoredAsk = Omit<z.output<typeof storedAskSchema>, "expiresAt">;
 
 type OpenItem = z.output<typeof storedAskSchema>;
 
-// How an ask ended (PRD, "The ask"). An agent resolved it, or a later ask
-// replaced it.
-export type Ending = "resolved" | "replaced";
+// How an ask ended (PRD, "The ask"). An agent resolved it, the person
+// dismissed it, or a later ask replaced it.
+export type Ending = "resolved" | "dismissed" | "replaced";
 
 // A closed ask is the same ask, plus how and when it ended.
 const closedAskSchema = storedAskSchema.extend({
-  endedAs: z.enum(["resolved", "replaced"] satisfies Ending[]),
+  endedAs: z.enum(["resolved", "dismissed", "replaced"] satisfies Ending[]),
   closedAt: z.iso.datetime(),
 });
 
 // What resolving an ask found: an open ask, which it closed, one that was
 // already closed, or no ask under that id in the account.
 export type Resolution = "resolved" | "already-closed" | "not-found";
+
+// What a change the person made to an ask came to: the ask changed; it was
+// already opened, or had closed, so nothing changed; or the account has no
+// ask under that id.
+export type Opening = "opened" | "unchanged" | "not-found";
+export type Dismissal = "dismissed" | "unchanged" | "not-found";
 
 // What posting an ask came to: a new ask, with whether it took over from an
 // open ask it named; a repeat of an ask posted in the last ten minutes, with
@@ -147,14 +157,23 @@ const dedupeSchema = z.object({
 // The account's rules: the text the person wrote, the hashtags read from
 // it in the order the rules give them, and every hashtag the account has
 // had, in the order each first appeared, which keeps each one's colour
-// (docs/design.md). The version goes up on every save. When the last save
-// could not be read, the hashtags are the ones read before it.
+// (docs/design.md). The version goes up on every save, and savedAt says
+// when the last save was. When the last save could not be read, the
+// hashtags are the ones read before it.
+//
+// The hours are the windows read with the hashtags, absent when the rules
+// give no hashtag any, and the time zone is the one the browser that saved
+// the rules was in, which the hours use, absent until a save sends one.
 const rulesSchema = z.object({
   text: z.string(),
   hashtags: z.array(z.string()),
   seen: z.array(z.string()),
   version: z.number().int().nonnegative(),
   readFailed: z.boolean(),
+  // Absent until the rules are first saved.
+  savedAt: z.iso.datetime().optional(),
+  hours: z.array(hashtagWindow).min(1).optional(),
+  timeZone: z.string().optional(),
 });
 
 export type AccountRules = z.output<typeof rulesSchema>;
@@ -169,11 +188,21 @@ const noRules: AccountRules = {
   readFailed: false,
 };
 
-// Rules as a save hands them in: the text, and the hashtags read from it,
-// or none when the rules could not be read.
+// The hours as the rules item holds them: absent when there are none.
+const windowsOf = (hours: HashtagWindow[] | undefined) =>
+  hours === undefined || hours.length === 0 ? {} : { hours };
+
+// Rules as a save hands them in: the text, the time zone of the browser
+// that saved them, and the hashtags read from it with their hours. Without
+// a time zone, the one saved before stays. Without hashtags, the rules
+// could not be read, and the hashtags and hours read before stay.
 export interface NewRules {
   text: string;
+  timeZone?: string | undefined;
   hashtags?: string[];
+  // Read with the hashtags. With hashtags and no hours, every hashtag shows
+  // at any time.
+  hours?: HashtagWindow[];
 }
 
 // An open ask, with the account's rules, for the sorter.
@@ -214,6 +243,11 @@ export interface Store {
   postAsk(account: AccountId, ask: NewAsk, now: Date): Promise<Posting>;
   // Closes an open ask as resolved.
   resolveAsk(account: AccountId, askId: string, now: Date): Promise<Resolution>;
+  // Marks an open ask as opened, the first time the person follows one of
+  // its links. It stays open.
+  markOpened(account: AccountId, askId: string, now: Date): Promise<Opening>;
+  // Closes an open ask as dismissed by the person.
+  dismissAsk(account: AccountId, askId: string, now: Date): Promise<Dismissal>;
   openAsks(account: AccountId, now: Date): Promise<AccountAsks>;
   // The open asks, unless the version is still the one the page last saw.
   asksSince(
@@ -228,9 +262,9 @@ export interface Store {
   countAsk(account: AccountId, now: Date): Promise<Counted>;
   // The account's rules.
   rules(account: AccountId): Promise<AccountRules>;
-  // Saves the rules text, and the hashtags read from it when there are
-  // some. With none, the old hashtags stay, and the rules are marked as not
-  // read.
+  // Saves the rules text and the time zone, and the hashtags read from it
+  // with their hours when there are some. With none, the old hashtags and
+  // hours stay, and the rules are marked as not read.
   saveRules(
     account: AccountId,
     rules: NewRules,
@@ -485,6 +519,36 @@ export function createStore(config: {
     };
   }
 
+  // Closes an open ask, saying how it ended, and answers whether it closed
+  // it, found it already closed, or found no ask under that id.
+  async function closeAs(
+    account: AccountId,
+    askId: string,
+    endedAs: Ending,
+    now: Date,
+  ): Promise<"closed" | "already-closed" | "not-found"> {
+    const open = await stored(
+      keys.openAsk(account, askId),
+      storedAskSchema,
+      now,
+    );
+    if (open !== undefined) {
+      try {
+        await write(account, closing(account, open, endedAs, now));
+        return "closed";
+      } catch (error) {
+        // Another call closed it after it was read.
+        if (!conditionFailed(error)) throw error;
+      }
+    }
+    const closed = await stored(
+      keys.closedAsk(account, askId),
+      closedAskSchema,
+      now,
+    );
+    return closed === undefined ? "not-found" : "already-closed";
+  }
+
   async function storedAsks(account: AccountId, now: Date) {
     const { pk, prefix } = keys.openAsks(account);
     const found: StoredAsk[] = [];
@@ -625,26 +689,51 @@ export function createStore(config: {
     },
 
     async resolveAsk(account, askId, now) {
-      const open = await stored(
-        keys.openAsk(account, askId),
-        storedAskSchema,
-        now,
-      );
-      if (open !== undefined) {
+      const closed = await closeAs(account, askId, "resolved", now);
+      return closed === "closed" ? "resolved" : closed;
+    },
+
+    // Only the first opening is written, and only onto an ask still open,
+    // so a repeat leaves the version alone.
+    async markOpened(account, askId, now) {
+      const key = keys.openAsk(account, askId);
+      const open = await stored(key, storedAskSchema, now);
+      if (open !== undefined && open.openedAt === undefined) {
         try {
-          await write(account, closing(account, open, "resolved", now));
-          return "resolved";
+          await write(account, [
+            {
+              Update: {
+                TableName,
+                Key: key,
+                UpdateExpression: "SET openedAt = :now",
+                ConditionExpression:
+                  "attribute_exists(sk) AND attribute_not_exists(openedAt)",
+                ExpressionAttributeValues: { ":now": now.toISOString() },
+              },
+            },
+          ]);
+          return "opened";
         } catch (error) {
-          // Another call closed it after it was read.
+          // Another call opened or closed it after it was read.
           if (!conditionFailed(error)) throw error;
         }
       }
+      if (open !== undefined) return "unchanged";
       const closed = await stored(
         keys.closedAsk(account, askId),
         closedAskSchema,
         now,
       );
-      return closed === undefined ? "not-found" : "already-closed";
+      return closed === undefined ? "not-found" : "unchanged";
+    },
+
+    async dismissAsk(account, askId, now) {
+      const closed = await closeAs(account, askId, "dismissed", now);
+      return closed === "closed"
+        ? "dismissed"
+        : closed === "already-closed"
+          ? "unchanged"
+          : "not-found";
     },
 
     async openAsks(account, now) {
@@ -683,7 +772,7 @@ export function createStore(config: {
 
     // Each save starts from the rules as they are, and is written only if
     // no other save landed in between, so no hashtag drops out of seen.
-    async saveRules(account, { text, hashtags }, now) {
+    async saveRules(account, { text, timeZone, hashtags, hours }, now) {
       for (let tries = 0; ; tries += 1) {
         const current = await readRules(account);
         const read = hashtags ?? current.hashtags;
@@ -696,17 +785,16 @@ export function createStore(config: {
           ],
           version: current.version + 1,
           readFailed: hashtags === undefined,
+          savedAt: now.toISOString(),
+          ...windowsOf(hashtags === undefined ? current.hours : hours),
+          timeZone: timeZone ?? current.timeZone,
         };
         try {
           await write(account, [
             {
               Put: {
                 TableName,
-                Item: {
-                  ...keys.rules(account),
-                  ...next,
-                  savedAt: now.toISOString(),
-                },
+                Item: { ...keys.rules(account), ...next },
                 ConditionExpression:
                   current.version === 0
                     ? "attribute_not_exists(sk)"

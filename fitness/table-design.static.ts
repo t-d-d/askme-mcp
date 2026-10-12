@@ -1,3 +1,4 @@
+import ts from "typescript";
 import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { AccountId } from "../service/src/identity";
@@ -50,6 +51,9 @@ const tables = () =>
   Object.values(definition().resources.Resources)
     .filter((resource) => resource.Type === "AWS::DynamoDB::Table")
     .map((resource) => tableSchema.parse(resource));
+
+// The key module, the one place a key is written.
+const keysPath = "service/src/store/keys.ts";
 
 // A file of service code that is neither the key module nor the store.
 const servicePath = "service/src/ask.ts";
@@ -123,10 +127,7 @@ describe("fitness: one key builder (table-design.md)", () => {
 
   it("lets the key module write keys", async () => {
     expect(
-      await reported(
-        'export const k = { sk: "META" };\n',
-        "service/src/store/keys.ts",
-      ),
+      await reported('export const k = { sk: "META" };\n', keysPath),
     ).not.toContain("askme/no-hand-built-key");
   });
 
@@ -157,6 +158,64 @@ describe("fitness: one key builder (table-design.md)", () => {
         "service/src/store/store.ts",
       ),
     ).toBe(false);
+  });
+});
+
+// The sort keys and prefixes a key module builds: every string in it, whole
+// or as the start of a template, apart from the paths it imports. The module
+// builds keys and nothing else, so each of its strings is part of one. It
+// is read as TypeScript, so its comments are left out.
+const builtKeys = (text: string): string[] => {
+  const found = new Set<string>();
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
+    if (ts.isStringLiteralLike(node)) found.add(node.text);
+    if (ts.isTemplateExpression(node)) found.add(node.head.text);
+    ts.forEachChild(node, visit);
+  };
+  visit(ts.createSourceFile(keysPath, text, ts.ScriptTarget.Latest, true));
+  return [...found].filter((value) => value !== "");
+};
+
+// The "Sort keys" rule in table-design.md, its lines joined.
+const sortKeysRule = (): string => {
+  const text = readRepoFile("docs/constraints/table-design.md").replaceAll(
+    "\n  ",
+    " ",
+  );
+  const rule = /^- Sort keys: (.+)$/mu.exec(text)?.[1];
+  expect(rule, 'the "Sort keys" rule in table-design.md').toBeDefined();
+  return rule ?? "";
+};
+
+// Whether a rule names a key: a prefix with what follows it in angle
+// brackets, as OPEN#<id>, and a whole key as a word of its own, as META.
+const names = (rule: string, key: string): boolean => {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const end = key.endsWith("#") ? "<" : "(?![\\w#<])";
+  return new RegExp(`(?<![\\w#])${escaped}${end}`, "u").test(rule);
+};
+
+// The keys a key module builds that the "Sort keys" rule does not name.
+const unnamed = (text: string): string[] => {
+  const rule = sortKeysRule();
+  return builtKeys(text).filter((key) => !names(rule, key));
+};
+
+describe("fitness: the sort keys rule names every key the key module builds (table-design.md)", () => {
+  it("names every sort key and prefix the key module builds", () => {
+    expect(unnamed(readRepoFile(keysPath))).toEqual([]);
+  });
+
+  it.each([
+    ['const otherPrefix = "OTHER#";\n', "OTHER#"],
+    ["export const other = (id: string) => `OTHER#${id}`;\n", "OTHER#"],
+    ['export const other = { sk: "OTHER" };\n', "OTHER"],
+    ['export const other = { sk: "settings" };\n', "settings"],
+    ['export const other = { sk: "RULE" };\n', "RULE"],
+    ['export const other = { sk: "OPEN" };\n', "OPEN"],
+  ])("finds a key the rule does not name: %s", (code, key) => {
+    expect(unnamed(`${readRepoFile(keysPath)}${code}`)).toEqual([key]);
   });
 });
 

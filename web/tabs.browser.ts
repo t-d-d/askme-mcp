@@ -36,7 +36,8 @@ const ask = (
   summary,
   spokenDetail: `The spoken detail of ${summary}`,
   postedAt: ago(waited),
-  sort,
+  opened: false,
+  sort: sort === null ? null : { ...sort, reason: "Sorted by the rules." },
 });
 
 // The rules name shop before work, so shop's tab comes first, though work
@@ -52,6 +53,7 @@ const list: AsksAnswer = {
   version: 4,
   everAsked: true,
   hashtags,
+  formerHashtags: [],
   asks: [
     ask("a", "Merge the fix for checkout rounding?", 30 * minute, {
       hashtags: ["shop", "work"],
@@ -464,5 +466,47 @@ describe("the colour of an ask's buttons", () => {
         .getByText("#work", { exact: true })
         .evaluate((element) => getComputedStyle(element).backgroundColor),
     ).toBe(await computedColour(page, palette.blue.tint));
+  });
+});
+
+describe("an ask whose hashtag has left the rules", () => {
+  // The rules no longer name work. Two asks still carry it, until they are
+  // sorted again with the new rules.
+  const changed: AsksAnswer = {
+    ...list,
+    hashtags: hashtags.filter(({ name }) => name !== "work"),
+    formerHashtags: [{ name: "work", colour: 0 }],
+    asks: [
+      ask("b", "Which date format should the export use?", 20 * minute, {
+        hashtags: ["work"],
+        level: "high",
+      }),
+      ask("x", "Rename the export's columns?", 10 * minute, {
+        hashtags: ["work"],
+        level: "normal",
+      }),
+    ],
+  };
+
+  it("keeps the hashtag in its own colour, with no tab, until it is sorted again", async () => {
+    view = await open(changed);
+    const { page } = view;
+    const card = page.getByRole("article");
+    await card.waitFor();
+    expect(await tabs(page).allInnerTexts()).toEqual([
+      "Everything",
+      "#shop",
+      "#family",
+    ]);
+    expect(
+      await card
+        .getByText("#work", { exact: true })
+        .evaluate((element) => getComputedStyle(element).backgroundColor),
+    ).toBe(await computedColour(page, palette.blue.tint));
+    const blue = await computedColour(page, palette.blue.strong);
+    expect(await buttonColour(card)).toBe(blue);
+    const row = page.getByRole("listitem");
+    expect(await row.innerText()).toContain("#work");
+    expect(await buttonColour(row)).toBe(blue);
   });
 });

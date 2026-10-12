@@ -14,6 +14,8 @@ export const routes = {
   "GET /api/connection": "page",
   "GET /api/rules": "page",
   "PUT /api/rules": "page",
+  "POST /api/asks/opened": "page",
+  "POST /api/asks/dismissed": "page",
 } as const satisfies Record<string, "agent" | "page" | "public">;
 
 export type Route = keyof typeof routes;
