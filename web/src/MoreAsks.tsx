@@ -44,7 +44,7 @@ export function MoreAsks({
               tab={tab}
               now={now}
               colours={colours}
-              actions={actions}
+              dismiss={actions.dismiss}
             />
           ))}
         </ol>
@@ -62,16 +62,15 @@ function Row({
   tab,
   now,
   colours,
-  actions,
+  dismiss,
 }: {
   ask: PageAsk;
   tab: Tab;
   now: number;
   colours: ReadonlyMap<string, HashtagColour>;
-  actions: AskActions;
+  dismiss: AskActions["dismiss"];
 }) {
   const { id, summary, postedAt, sort, opened } = ask;
-  const { dismiss } = actions;
   const { main } = destinations(ask);
   const shown = sort === null ? undefined : shownUnder(sort, tab);
   const swipe = useSwipe(
