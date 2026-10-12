@@ -213,7 +213,9 @@ Shown when the account has never had an ask. A white card says "Your agents can 
 - "Save rules" is ink when the text has changed and `--neutral-tint` when it has not. Under it, one short note gives the state: "Saved.", "Reading your rules." or what went wrong.
 - Below, what askme read from the rules: each hashtag's pill with its hours, or "Any time". This list changes only when a save finishes.
 - A last note names the time zone and says that saving re-sorts every open ask.
-- "All asks" goes back. Leaving with unsaved text asks first.
+- At the foot, under a hairline: "Signed in as" and the person's email address in `--text-3`, and "Sign out" at the right in ink, underlined, like "Show them". With no email address, "Sign out" stands alone. The screen is taller than a phone, so the foot is reached by scrolling.
+- "Sign out" ends the session and shows the signed-out page.
+- "All asks" goes back. Leaving with unsaved text asks first, and so does "Sign out".
 
 ### Connect your agents
 
