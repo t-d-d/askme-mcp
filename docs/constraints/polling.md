@@ -3,7 +3,8 @@ Relevance: How the page learns of changes, or any new long-lived connection or a
 Decision: The page polls for changes; the service holds no live connections and runs no always-on compute.
 
 Why: One person per account and a handful of asks at a time make a
-few seconds' delay invisible, and the service must cost nothing idle.
+few seconds' delay invisible, and the service must cost nothing idle
+but the requests Lambda makes to poll the sort queue.
 
 ## Rules
 

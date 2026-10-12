@@ -18,15 +18,16 @@ for everyone.
   the window is one UTC day.
 - The cap is a constant in the rate module. Tuning it needs no new
   decision.
-- Over the cap, a sort sends nothing, leaves the ask's sort as it
-  was, marks the ask stopped ([sort-queue.md](sort-queue.md)) and
+- Over the cap, a sort sends nothing, leaves the ask as it was, and
   logs at info. A model failure on an earlier try is still logged at
   warn.
-- The first call the cap refuses in a day records on META when the
-  cap resets, through the write function.
+- The first sort the cap refuses in a day records on META when the
+  cap resets, through the write function. A refused save writes
+  nothing.
 - Over the cap, a rules save whose rules need reading is refused
   with cap_reached before anything is saved. Empty rules make no
-  call, so their save is not refused.
+  call, so their save is not refused. A save of unchanged text is
+  refused while the cap is spent ([sort-queue.md](sort-queue.md)).
 - The cap never refuses an agent.
 - The eval is outside the cap. It runs from the repo, on its own key.
 

@@ -24,7 +24,7 @@ costs setup time the build does not have.
 - Move the page to Next.js or another server-rendered framework: the
   page is behind sign-in and gains nothing from it.
 - Add a second hosting or database provider.
-- Add a container, a provisioned table or anything with a fixed
-  monthly cost.
+- Add a container, a provisioned table or anything else with a fixed
+  monthly cost. The sort queue's idle requests are the one exception.
 
 History: [ADR 5](../adr/0005-hosting.md), [ADR 22](../adr/0022-sort-queue.md)

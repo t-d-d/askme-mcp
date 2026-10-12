@@ -43,7 +43,7 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 - On save, the service lists the hashtags and any time windows it read from the rules, and shows them back.
 - Saving re-sorts every open ask, while the account's daily cap on model calls lasts. Each card keeps its old hashtags until its new sort is stored. An ask the cap leaves out keeps its old sort, or none, until the rules are saved again after the cap resets at the start of the next UTC day.
 - Once the cap is spent, saving the rules is refused until it resets, and nothing is saved. Saving an empty box still works and re-sorts every open ask, since it needs no model call.
-- Saving works on unchanged rules too. It reads nothing, and sorts again only the asks whose sorting stopped.
+- Saving works on unchanged rules too. It reads nothing, and sorts again only the asks still on older rules.
 - Time windows use the user's time zone, taken from the browser on save.
 - A new account starts with example rules in the box. With the box empty there are no hashtags, and every ask appears in Everything.
 - Only the signed-in user can read or change the rules.
@@ -75,7 +75,7 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 ### Back end
 
 - Serverless, with no always-on compute. The page polls for new asks.
-- An ask is never rejected or lost because sorting failed, or because the account reached its cap on model calls. It keeps its old sort, or shows as unsorted if it has none. Asks reach sorting through a queue, which tries a failed sort three times, a few minutes apart, whether or not the page is open. After that, and past the cap, the ask waits for the rules to be saved again. The page's poll only reads.
+- An ask is never rejected or lost because sorting failed, or because the account reached its cap on model calls. It keeps its old sort, or shows as unsorted if it has none. Asks reach sorting through a queue, which tries a failed sort three times, a few minutes apart, whether or not the page is open. After that, and past the cap, the ask waits for the rules to be saved again. The page's poll starts no sorting.
 - One model call per ask does the sorting and returns a validated structure, with a second try if the first fails. One smaller call runs when rules are saved, unless the box is empty.
 - Time windows are applied in code when the page loads, not by the model.
 - When an ask is replaced, both versions stay in the store. A retried ask is matched by its content and is not stored twice.
@@ -90,7 +90,7 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 - The large card's main button opens its action link, or the session link when there is no action link. With neither, there is no main button. A card with both has a second control for the session. Tapping a row in the list, or the large card's summary, opens the detail, which has the same buttons. Each link shows the name of the site it leads to. The main button says what the link is when askme recognises it, such as a pull request, and otherwise names the site. Following a link marks the card as opened and does not clear it.
 - A Listen button reads the spoken detail aloud, using the browser's built-in speech. A disclosure shows the same text and the reason.
 - Swiping dismisses a card, with a brief undo.
-- One line under the tabs says how sorting stands: how many asks are still being sorted, how many could not be sorted, or that the daily limit is reached and when it resets, in the person's own time zone. With nothing to say, the line is not there.
+- One line under the tabs says how sorting stands: that the daily limit is reached and when it resets, in the person's own time zone, or how many asks are still being sorted, or how many could not be sorted. With nothing to say, the line is not there.
 - New asks appear without a manual refresh. When nothing is waiting, the page says "All clear" and that the agents are getting on with it. A new account sees how to connect an agent instead.
 - A "simulate an agent" control posts sample asks across three areas, different on each press, so sorting can be seen without connecting an agent.
 

@@ -25,8 +25,7 @@ that lags behind the table.
 - Posting, closing and replacing are each one transaction.
 - Every change to asks or rules raises the version on META.
 - META holds the version and, once the model-call cap is reached,
-  the time it resets. An open ask may hold a mark that its sorting
-  stopped ([sort-queue.md](sort-queue.md)).
+  the time it resets ([sort-queue.md](sort-queue.md)).
 - An idle poll reads META and nothing else. Its only write is its
   rate counter.
 - Expiry is checked on read.
