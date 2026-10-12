@@ -27,9 +27,7 @@ export function AskList({
   return (
     <div className={styles.list}>
       <TopCard ask={first} tab={tab} now={now} colours={colours} />
-      {rest.length > 0 && (
-        <MoreAsks asks={rest} tab={tab} now={now} colours={colours} />
-      )}
+      <MoreAsks asks={rest} tab={tab} now={now} colours={colours} />
     </div>
   );
 }

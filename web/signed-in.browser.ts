@@ -204,15 +204,46 @@ describe("the top card's spoken detail", () => {
 });
 
 describe("a single open ask", () => {
-  it("is the top card, with no rows and no count below it", async () => {
-    const view = await open({ ...five, asks: five.asks.slice(0, 1) });
-    try {
-      await view.page.getByRole("article").waitFor();
-      expect(await view.page.getByRole("listitem").count()).toBe(0);
-      expect(await view.page.getByText(/more waiting/u).count()).toBe(0);
-    } finally {
-      await view.close();
-    }
+  const one = { ...five, asks: five.asks.slice(0, 1) };
+
+  it.each([
+    ["a phone", phone],
+    ["a desktop", desktop],
+  ])(
+    "on %s is the top card, with nothing else waiting and no rows",
+    async (_, viewport) => {
+      const view = await open(one, viewport);
+      try {
+        const { page } = view;
+        await page.getByRole("article").waitFor();
+        expect(
+          await page
+            .getByRole("heading", { name: "Nothing else waiting" })
+            .isVisible(),
+        ).toBe(true);
+        expect(await page.getByRole("listitem").count()).toBe(0);
+        expect(await page.getByText(/more waiting/u).count()).toBe(0);
+      } finally {
+        await view.close();
+      }
+    },
+  );
+
+  // The list keeps its column beside the card, so the card does not
+  // stretch across the page.
+  it("is as wide at desktop width as a top card with more waiting", async () => {
+    const width = async (asks: AsksAnswer) => {
+      const view = await open(asks, desktop);
+      try {
+        const box = await view.page.getByRole("article").boundingBox();
+        return box?.width;
+      } finally {
+        await view.close();
+      }
+    };
+    const beside = await width(five);
+    expect(beside).toBeDefined();
+    expect(await width(one)).toBeCloseTo(beside ?? 0, 0);
   });
 });
 

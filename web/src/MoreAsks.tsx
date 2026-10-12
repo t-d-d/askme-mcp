@@ -5,9 +5,11 @@ import { askColour, tagColour, type HashtagColour } from "./palette";
 import { shownUnder, type Tab } from "./tab";
 import { age } from "./waiting";
 
-// Every ask after the first, as compact rows under a count. Each row shows
-// the hashtag it is shown under, in that hashtag's colour: its first on
-// Everything, and the tab's on a hashtag's tab.
+// Every ask after the first, as compact rows under a count. With none, the
+// count says nothing else is waiting, and keeps the list's place beside the
+// top card at desktop width. Each row shows the hashtag it is shown under,
+// in that hashtag's colour: its first on Everything, and the tab's on a
+// hashtag's tab.
 export function MoreAsks({
   asks,
   tab,
@@ -23,32 +25,36 @@ export function MoreAsks({
   return (
     <section className={styles.more} aria-labelledby={heading}>
       <h2 className={styles.count} id={heading}>
-        {asks.length} more waiting
+        {asks.length === 0
+          ? "Nothing else waiting"
+          : `${asks.length} more waiting`}
       </h2>
-      <ol className={styles.rows}>
-        {asks.map(({ id, summary, postedAt, sort }) => {
-          const shown = sort === null ? undefined : shownUnder(sort, tab);
-          return (
-            <li
-              className={styles.row}
-              key={id}
-              style={tagColour(askColour(sort, tab, colours))}
-            >
-              <span className={styles.summary}>{summary}</span>
-              <span className={styles.meta}>
-                {sort === null ? (
-                  <span className={styles.pill}>Not sorted yet</span>
-                ) : (
-                  shown !== undefined && (
-                    <span className={styles.pill}>#{shown}</span>
-                  )
-                )}
-                <span>{age(postedAt, now)}</span>
-              </span>
-            </li>
-          );
-        })}
-      </ol>
+      {asks.length > 0 && (
+        <ol className={styles.rows}>
+          {asks.map(({ id, summary, postedAt, sort }) => {
+            const shown = sort === null ? undefined : shownUnder(sort, tab);
+            return (
+              <li
+                className={styles.row}
+                key={id}
+                style={tagColour(askColour(sort, tab, colours))}
+              >
+                <span className={styles.summary}>{summary}</span>
+                <span className={styles.meta}>
+                  {sort === null ? (
+                    <span className={styles.pill}>Not sorted yet</span>
+                  ) : (
+                    shown !== undefined && (
+                      <span className={styles.pill}>#{shown}</span>
+                    )
+                  )}
+                  <span>{age(postedAt, now)}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </section>
   );
 }
