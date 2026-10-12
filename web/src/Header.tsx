@@ -1,14 +1,11 @@
 import styles from "./Header.module.css";
 
-// The wordmark, the Demo tag, and at the right the way to the rules. At
-// desktop width the rules and Connect agents are two text links.
+// The wordmark, and at the right the way to the rules. At desktop width the
+// rules and Connect agents are two text links.
 export function Header() {
   return (
     <header className={styles.header}>
-      <div className={styles.brand}>
-        <span className={styles.wordmark}>askme</span>
-        <span className={styles.demo}>Demo</span>
-      </div>
+      <span className={styles.wordmark}>askme</span>
       <nav className={styles.nav} aria-label="Settings">
         <a className={styles.icon} href="#rules" aria-label="Rules">
           <svg
