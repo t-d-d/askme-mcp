@@ -130,6 +130,34 @@ async function showsSamplesBeforeNextPoll({ page }: OpenPage): Promise<void> {
   expect(await card.count()).toBe(1);
 }
 
+// Presses "Send sample asks" at 15:00 UTC on 12 October, into the daily
+// cap, and gives the note that says so once it shows. The cap resets at
+// the next midnight UTC.
+async function pressIntoCap(hash = ""): Promise<OpenPage> {
+  const opened = await openNewAccount(refusal("cap_reached"), {
+    hash,
+    clock: new Date("2026-10-12T15:00:00Z"),
+    timeZone: "Europe/London",
+  });
+  await samplesButton(opened.page).click();
+  await capNote(opened.page).waitFor();
+  return opened;
+}
+
+const capNote = (page: OpenPage["page"]) =>
+  page
+    .getByRole("status")
+    .filter({ hasText: "You've reached today's limit. It resets at 01:00." });
+
+// Moves the clock to a second before the cap resets, where the note still
+// shows, then two seconds on, past the reset, where it has gone.
+async function dropsCapNoteAtReset({ page }: OpenPage): Promise<void> {
+  await page.clock.pauseAt(new Date("2026-10-12T23:59:59Z"));
+  expect(await capNote(page).count()).toBe(1);
+  await page.clock.runFor(2000);
+  await expect.poll(() => capNote(page).count()).toBe(0);
+}
+
 // The page, or a part of it.
 const samplesButton = (within: Pick<OpenPage["page"], "getByRole">) =>
   within.getByRole("button", { name: "Send sample asks" });
@@ -260,6 +288,11 @@ describe("a new account", () => {
     },
   );
 
+  it("drops the cap note once the cap resets, with no reload", async () => {
+    view = await pressIntoCap();
+    await dropsCapNoteAtReset(view);
+  });
+
   // A limit reached part way keeps the asks posted before it, so the list
   // is asked for again even when the press is refused.
   it("shows the samples posted before a limit stopped the press, without waiting for the next poll", async () => {
@@ -340,5 +373,23 @@ describe("Connect your agents, for someone with no agent yet", () => {
         .getByRole("heading", { name: "Connect your agents" })
         .isVisible(),
     ).toBe(true);
+  });
+
+  // Connect your agents does not poll the list, so nothing else redraws it.
+  it("drops the cap note once the cap resets, with no reload", async () => {
+    view = await pressIntoCap("#connect");
+    await dropsCapNoteAtReset(view);
+  });
+
+  // A computer or phone that sleeps can hold the browser's timers back, so
+  // the clock can pass the reset with no timer due. The note still goes
+  // within a minute.
+  it("drops the cap note within a minute of waking after the reset", async () => {
+    view = await pressIntoCap("#connect");
+    const { page } = view;
+    await page.clock.setSystemTime(new Date("2026-10-13T07:00:00Z"));
+    expect(await capNote(page).count()).toBe(1);
+    await page.clock.runFor(60_000);
+    await expect.poll(() => capNote(page).count()).toBe(0);
   });
 });
