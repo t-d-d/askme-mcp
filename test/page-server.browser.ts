@@ -17,12 +17,12 @@ describe("the browser tier's page", () => {
       (file) => extname(file) === ".js",
     );
     expect(scripts).not.toEqual([]);
-    const carrying = [];
-    for (const file of scripts) {
-      if ((await readFile(file, "utf8")).includes(developmentOnly)) {
-        carrying.push(file);
-      }
-    }
-    expect(carrying).not.toEqual([]);
+    const texts = await Promise.all(
+      scripts.map((file) => readFile(file, "utf8")),
+    );
+    expect(
+      texts.some((text) => text.includes(developmentOnly)),
+      `No built script carries "${developmentOnly}", so React's production code was built.`,
+    ).toBe(true);
   });
 });
