@@ -104,6 +104,7 @@ One family: Bricolage Grotesque, the variable font, served from the site itself.
 | Tabs, links, body | 16px | 1.45 | 400, or 600 for a control | 0 |
 | Notes, the held and lapsed lines | 15px | 1.4 | 400, or 600 for a label | 0 |
 | Pills, ages, site names | 13px to 14px | 1.3 | 400, or 600 in a pill | 0 |
+| A long site name on the top card's main button | 11px | 1.3 | 400 | 0 |
 
 Lines of running text stay under 80 characters. At desktop width the spoken text has a maximum width of 34rem.
 
@@ -191,6 +192,8 @@ askme knows only the link's address, so the label comes from its shape.
 | The session link | Reply in the session |
 
 The second line is always the site's name, such as github.com. The list of recognised shapes can grow. It never uses words the agent supplied.
+
+On the top card, a site's name of more than 15 characters, such as dash.cloudflare.com, is set at 11px. It then stays whole on one line beside the Listen and session buttons on a 360px phone. The name is never cut short with an ellipsis. Its end matters most, since github.com.example.net is not github.com. A name too long for one line even at 11px, such as console.aws.amazon.com, wraps onto a second line.
 
 A recognised shape's label names what the link opens, with no verb. The button only ever opens a page, so a word such as "See" adds nothing, and the shorter label stays on one line beside the Listen and session buttons.
 

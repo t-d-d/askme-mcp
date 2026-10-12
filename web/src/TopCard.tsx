@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import type { PageAsk } from "../../shared/page-api";
 import type { AskActions } from "./actions";
 import { SessionIcon, SpeakerIcon } from "./Icon";
-import { destinations } from "./links";
+import { destinations, longSite } from "./links";
 import { OutLink } from "./OutLink";
 import { askColour, tagColour, type HashtagColour } from "./palette";
 import { Pills } from "./Pills";
@@ -73,7 +73,12 @@ export function TopCard({
               onFollowed={followed}
             >
               <span className={styles.label}>{main.label}</span>
-              <span className={styles.site}>{main.site}</span>
+              <span
+                className={styles.site}
+                data-long={longSite(main.site) ? "" : undefined}
+              >
+                {main.site}
+              </span>
             </OutLink>
           )}
           {speak !== undefined && (
