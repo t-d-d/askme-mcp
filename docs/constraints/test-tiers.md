@@ -26,8 +26,8 @@ most of it can only be read signed in.
 - One runner for the repo. Playwright is used as a library.
 - The live tier checks the deployed site. It makes no write of its
   own to askme's store, and sends the page's API reads only. The
-  service may write a rate counter to answer them, and may ask again
-  for an ask to be sorted. No other write may follow from them.
+  service may write a rate counter to answer them. No other write may
+  follow from them.
 - The live tier may sign in as the one test account and no other,
   through Clerk's own screens, using Clerk's test mode and no stored
   secret. The account's address carries +clerk_test and is one
@@ -74,4 +74,4 @@ checked by hand after a deploy, and how narrow a third-party
 conformance key is when it is made. No test can see either. A new
 write that the service makes to answer a read of the page's API also
 binds the live tier, and needs a decision before it lands.
-History: [ADR 9](../adr/0009-test-pyramid.md), [ADR 15](../adr/0015-conformance-tier.md), [ADR 16](../adr/0016-live-sign-in.md), [ADR 20](../adr/0020-live-tier-reads.md)
+History: [ADR 9](../adr/0009-test-pyramid.md), [ADR 15](../adr/0015-conformance-tier.md), [ADR 16](../adr/0016-live-sign-in.md), [ADR 20](../adr/0020-live-tier-reads.md), [ADR 22](../adr/0022-sort-queue.md)

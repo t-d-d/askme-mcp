@@ -24,6 +24,9 @@ that lags behind the table.
 - Every read is strongly consistent.
 - Posting, closing and replacing are each one transaction.
 - Every change to asks or rules raises the version on META.
+- META holds the version, whether the account has ever had an ask
+  and, once a sort is refused at the model-call cap, the time the cap
+  resets ([sort-queue.md](sort-queue.md)).
 - An idle poll reads META and nothing else. Its only write is its
   rate counter.
 - Expiry is checked on read.
@@ -46,4 +49,4 @@ that lags behind the table.
 Judgment: A need to read across accounts is a new ADR, not an
 index.
 
-History: [ADR 13](../adr/0013-table-design.md), [ADR 18](../adr/0018-rate-counter.md), [ADR 21](../adr/0021-model-call-cap.md)
+History: [ADR 13](../adr/0013-table-design.md), [ADR 18](../adr/0018-rate-counter.md), [ADR 21](../adr/0021-model-call-cap.md), [ADR 22](../adr/0022-sort-queue.md)

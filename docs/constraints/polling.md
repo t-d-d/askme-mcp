@@ -3,7 +3,8 @@ Relevance: How the page learns of changes, or any new long-lived connection or a
 Decision: The page polls for changes; the service holds no live connections and runs no always-on compute.
 
 Why: One person per account and a handful of asks at a time make a
-few seconds' delay invisible, and the service must cost nothing idle.
+few seconds' delay invisible, and the service must cost nothing idle
+but the requests Lambda makes to poll the sort queue.
 
 ## Rules
 
@@ -12,6 +13,9 @@ few seconds' delay invisible, and the service must cost nothing idle.
 - Every exchange is a short request and response, MCP calls included.
 - The service never initiates contact with a page or an agent.
 - The poll endpoint has its own rate limit.
+- A poll never starts a sort ([sort-queue.md](sort-queue.md)).
+- Lambda's polling of the sort queue is AWS's, billed as requests. It
+  is not compute askme runs.
 
 ## Do not
 
@@ -20,4 +24,4 @@ few seconds' delay invisible, and the service must cost nothing idle.
 - Add a hosted real-time service: another vendor for the same gain.
 - Poll while the page is hidden.
 
-History: [ADR 1](../adr/0001-polling.md)
+History: [ADR 1](../adr/0001-polling.md), [ADR 22](../adr/0022-sort-queue.md)

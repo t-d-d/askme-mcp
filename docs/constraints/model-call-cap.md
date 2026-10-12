@@ -21,9 +21,14 @@ for everyone.
 - Over the cap, a sort sends nothing, leaves the ask as it was, and
   logs at info. A model failure on an earlier try is still logged at
   warn.
+- The first call the cap refuses in a day, a sort's or a save's,
+  records on META when the cap resets, through the write function. A
+  refused save still saves none of the rules.
 - Over the cap, a rules save whose rules need reading is refused
   with cap_reached before anything is saved. Empty rules make no
-  call, so their save is not refused.
+  call, so their save is not refused. A save of unchanged text that
+  is not empty is refused while the cap is spent
+  ([sort-queue.md](sort-queue.md)).
 - The cap never refuses an agent.
 - The eval is outside the cap. It runs from the repo, on its own key.
 
@@ -46,4 +51,4 @@ Judgment: A model call made for no account is a new decision. The
 cap's value is the owner's call, set against the key's limit across
 every account.
 
-History: [ADR 21](../adr/0021-model-call-cap.md)
+History: [ADR 21](../adr/0021-model-call-cap.md), [ADR 22](../adr/0022-sort-queue.md)
