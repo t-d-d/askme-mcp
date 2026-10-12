@@ -22,8 +22,9 @@
   scroll-margin-bottom: calc(2 * var(--focus-width) + var(--space-note));
 }
 
-/* The tabs, and the held line under them. */
-.bar {
+/* The tabs, and the held and lapsed lines under them. */
+.bar,
+.lines {
   display: flex;
   flex-direction: column;
 }
@@ -48,12 +49,17 @@
     margin-left: 0;
   }
 
-  /* At desktop width the held line sits beside the tabs, at the right. */
-  .bar {
+  /* At desktop width the held and lapsed lines sit beside the tabs, at the
+     right, side by side. */
+  .bar,
+  .lines {
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
     gap: var(--space-4) var(--space-24);
+  }
+
+  .bar {
+    justify-content: space-between;
   }
 }
