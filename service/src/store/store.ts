@@ -110,25 +110,34 @@ const storedAskSchema = z.object({
   expiresAt: z.number().int(),
   // Absent until the ask is sorted.
   sort: sortSchema.optional(),
+  // When the person first followed one of the ask's links. Absent until
+  // then. The ask stays open (PRD, "The ask").
+  openedAt: z.iso.datetime().optional(),
 });
 
 export type StoredAsk = Omit<z.output<typeof storedAskSchema>, "expiresAt">;
 
 type OpenItem = z.output<typeof storedAskSchema>;
 
-// How an ask ended (PRD, "The ask"). An agent resolved it, or a later ask
-// replaced it.
-export type Ending = "resolved" | "replaced";
+// How an ask ended (PRD, "The ask"). An agent resolved it, the person
+// dismissed it, or a later ask replaced it.
+export type Ending = "resolved" | "dismissed" | "replaced";
 
 // A closed ask is the same ask, plus how and when it ended.
 const closedAskSchema = storedAskSchema.extend({
-  endedAs: z.enum(["resolved", "replaced"] satisfies Ending[]),
+  endedAs: z.enum(["resolved", "dismissed", "replaced"] satisfies Ending[]),
   closedAt: z.iso.datetime(),
 });
 
 // What resolving an ask found: an open ask, which it closed, one that was
 // already closed, or no ask under that id in the account.
 export type Resolution = "resolved" | "already-closed" | "not-found";
+
+// What a change the person made to an ask came to: the ask changed; it was
+// already opened, or had closed, so nothing changed; or the account has no
+// ask under that id.
+export type Opening = "opened" | "unchanged" | "not-found";
+export type Dismissal = "dismissed" | "unchanged" | "not-found";
 
 // What posting an ask came to: a new ask, with whether it took over from an
 // open ask it named; a repeat of an ask posted in the last ten minutes, with
@@ -215,6 +224,11 @@ export interface Store {
   postAsk(account: AccountId, ask: NewAsk, now: Date): Promise<Posting>;
   // Closes an open ask as resolved.
   resolveAsk(account: AccountId, askId: string, now: Date): Promise<Resolution>;
+  // Marks an open ask as opened, the first time the person follows one of
+  // its links. It stays open.
+  markOpened(account: AccountId, askId: string, now: Date): Promise<Opening>;
+  // Closes an open ask as dismissed by the person.
+  dismissAsk(account: AccountId, askId: string, now: Date): Promise<Dismissal>;
   openAsks(account: AccountId, now: Date): Promise<AccountAsks>;
   // The open asks, unless the version is still the one the page last saw.
   asksSince(
@@ -486,6 +500,36 @@ export function createStore(config: {
     };
   }
 
+  // Closes an open ask, saying how it ended, and answers whether it closed
+  // it, found it already closed, or found no ask under that id.
+  async function closeAs(
+    account: AccountId,
+    askId: string,
+    endedAs: Ending,
+    now: Date,
+  ): Promise<"closed" | "already-closed" | "not-found"> {
+    const open = await stored(
+      keys.openAsk(account, askId),
+      storedAskSchema,
+      now,
+    );
+    if (open !== undefined) {
+      try {
+        await write(account, closing(account, open, endedAs, now));
+        return "closed";
+      } catch (error) {
+        // Another call closed it after it was read.
+        if (!conditionFailed(error)) throw error;
+      }
+    }
+    const closed = await stored(
+      keys.closedAsk(account, askId),
+      closedAskSchema,
+      now,
+    );
+    return closed === undefined ? "not-found" : "already-closed";
+  }
+
   async function storedAsks(account: AccountId, now: Date) {
     const { pk, prefix } = keys.openAsks(account);
     const found: StoredAsk[] = [];
@@ -626,26 +670,51 @@ export function createStore(config: {
     },
 
     async resolveAsk(account, askId, now) {
-      const open = await stored(
-        keys.openAsk(account, askId),
-        storedAskSchema,
-        now,
-      );
-      if (open !== undefined) {
+      const closed = await closeAs(account, askId, "resolved", now);
+      return closed === "closed" ? "resolved" : closed;
+    },
+
+    // Only the first opening is written, and only onto an ask still open,
+    // so a repeat leaves the version alone.
+    async markOpened(account, askId, now) {
+      const key = keys.openAsk(account, askId);
+      const open = await stored(key, storedAskSchema, now);
+      if (open !== undefined && open.openedAt === undefined) {
         try {
-          await write(account, closing(account, open, "resolved", now));
-          return "resolved";
+          await write(account, [
+            {
+              Update: {
+                TableName,
+                Key: key,
+                UpdateExpression: "SET openedAt = :now",
+                ConditionExpression:
+                  "attribute_exists(sk) AND attribute_not_exists(openedAt)",
+                ExpressionAttributeValues: { ":now": now.toISOString() },
+              },
+            },
+          ]);
+          return "opened";
         } catch (error) {
-          // Another call closed it after it was read.
+          // Another call opened or closed it after it was read.
           if (!conditionFailed(error)) throw error;
         }
       }
+      if (open !== undefined) return "unchanged";
       const closed = await stored(
         keys.closedAsk(account, askId),
         closedAskSchema,
         now,
       );
-      return closed === undefined ? "not-found" : "already-closed";
+      return closed === undefined ? "not-found" : "unchanged";
+    },
+
+    async dismissAsk(account, askId, now) {
+      const closed = await closeAs(account, askId, "dismissed", now);
+      return closed === "closed"
+        ? "dismissed"
+        : closed === "already-closed"
+          ? "unchanged"
+          : "not-found";
     },
 
     async openAsks(account, now) {

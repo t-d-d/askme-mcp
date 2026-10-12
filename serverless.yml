@@ -82,6 +82,8 @@ functions:
       - httpApi: "GET /api/connection"
       - httpApi: "GET /api/rules"
       - httpApi: "PUT /api/rules"
+      - httpApi: "POST /api/asks/opened"
+      - httpApi: "POST /api/asks/dismissed"
 
   # Sorts one ask after the service has stored it and answered, so posting
   # never waits on the model. The mcp function invokes it asynchronously,
@@ -562,6 +564,30 @@ resources:
         QueryString: |
           filter message.event = "ask-not-found"
           | stats count(*) as calls, count_distinct(message.accountId) as accounts by bin(1d)
+
+    # How often the person goes where the work is, and how often they clear
+    # an ask themselves rather than its agent resolving it.
+    AskOpenedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/ask-opened
+        LogGroupNames:
+          - !Ref McpLogGroup
+          - !Ref SortLogGroup
+        QueryString: |
+          filter message.event = "ask-opened"
+          | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
+
+    AskDismissedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/ask-dismissed
+        LogGroupNames:
+          - !Ref McpLogGroup
+          - !Ref SortLogGroup
+        QueryString: |
+          filter message.event = "ask-dismissed"
+          | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
 
     # How often an ask repeats one posted in the last ten minutes, to tune
     # the window (ADR 3).

@@ -86,6 +86,8 @@ const storeAnswering = (posting: Posting, counted: Counted): Store => {
     postAsk: () => Promise.resolve(posting),
     countAsk: () => Promise.resolve(counted),
     resolveAsk: unused,
+    markOpened: unused,
+    dismissAsk: unused,
     openAsks: unused,
     asksSince: unused,
     countPoll: unused,

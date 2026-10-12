@@ -34,6 +34,7 @@ const ask = (id: string, summary: string, waited: number) => ({
   summary,
   spokenDetail: `The spoken detail of ${summary}`,
   postedAt: ago(waited),
+  opened: false,
   sort: null,
 });
 
@@ -429,7 +430,10 @@ describe("sorted asks", () => {
     summary: string,
     waited: number,
     sort: { hashtags: string[]; level: "high" | "normal" | "low" } | null,
-  ) => ({ ...ask(id, summary, waited), sort });
+  ) => ({
+    ...ask(id, summary, waited),
+    sort: sort === null ? null : { ...sort, reason: "Sorted by the rules." },
+  });
 
   const sorted: AsksAnswer = {
     version: 7,

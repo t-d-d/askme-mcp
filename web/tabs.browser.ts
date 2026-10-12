@@ -36,7 +36,8 @@ const ask = (
   summary,
   spokenDetail: `The spoken detail of ${summary}`,
   postedAt: ago(waited),
-  sort,
+  opened: false,
+  sort: sort === null ? null : { ...sort, reason: "Sorted by the rules." },
 });
 
 // The rules name shop before work, so shop's tab comes first, though work
