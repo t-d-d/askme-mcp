@@ -21,10 +21,12 @@ import { createStore, type Store } from "./store/store";
 export const sortAttempts = 2;
 
 // How long one try may take. The function's timeout leaves room for both.
-const sortTimeoutMs = 20_000;
+// The eval sends this too.
+export const sortTimeoutMs = 20_000;
 
-// Room for the reply: a few hashtags, a level and one line.
-const sortMaxTokens = 300;
+// Room for the reply: a few hashtags, a level and one line. The eval sends
+// this too.
+export const sortMaxTokens = 300;
 
 // The sort an ask gets while the rules are empty: no hashtags, so it is
 // simply listed (PRD, "Rules"), and no model call to make one.
