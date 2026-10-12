@@ -127,19 +127,24 @@ describe("the sorting line", () => {
     ).toBe(true);
   });
 
-  it("sits below the held line when both show", async () => {
+  it("sits below the held and lapsed lines when they show", async () => {
+    const lapsedAsk = {
+      ...ask("c", "shop", later),
+      lapsesAt: earlier.toISOString(),
+    };
     view = await open(
-      listOf([ask("a", "work", later), ask("b", "shop", later)]),
+      listOf([ask("a", "work", later), ask("b", "shop", later), lapsedAsk]),
     );
     const { page } = view;
-    const held = page.getByText("1 held until its hours");
-    const sorting = page.getByText("Sorting 2 asks with your rules");
+    const sorting = page.getByText("Sorting 3 asks with your rules");
     await sorting.waitFor();
-    const heldBox = await held.boundingBox();
     const sortingBox = await sorting.boundingBox();
-    expect(sortingBox?.y).toBeGreaterThan(
-      (heldBox?.y ?? Infinity) + (heldBox?.height ?? 0),
-    );
+    for (const above of ["1 held until its hours", "1 has lapsed"]) {
+      const box = await page.getByText(above).boundingBox();
+      expect(sortingBox?.y, above).toBeGreaterThan(
+        (box?.y ?? Infinity) + (box?.height ?? 0),
+      );
+    }
   });
 
   it("looks like the held line, in the size and colour of a note", async () => {
