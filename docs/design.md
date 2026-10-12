@@ -287,6 +287,7 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 - When the list goes all clear while a tab has focus, the tabs go and focus moves to the "All clear." headline, so a screen reader says what happened. The headline is not a control, so it draws no outline, and Tab never stops on it.
 - When a card closes, the list is back where it was, and focus goes to the row or top card that opened the card. If that ask has left the list or moved in it, focus goes to the ask that came after it, or with none left, to the last ask in the list. If the ask that takes focus is not wholly on the screen, the page scrolls only as far as it takes to show it and its outline, clear of the note.
 - A button is a `button`, and a link is an `a` with an address. An icon-only control has a spoken label.
+- A link that opens a new tab says so to a screen reader. Its spoken name ends with "(opens in a new tab)", and the screen does not show these words. These links are the card's buttons to the work and to the agent's session, and "Add askme to Cursor".
 - Nothing you can tap is smaller than 44px by 44px.
 
 ## Later

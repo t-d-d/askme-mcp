@@ -209,6 +209,20 @@ describe("the top card's buttons", () => {
     expect((await main.innerText()).split("\n")).toEqual([label, site]);
   });
 
+  it("say in each link's name that it opens a new tab, and show nothing new", async () => {
+    const { page } = await open(listOf(both));
+    const card = page.getByRole("article");
+    for (const name of [
+      "See pull request github.com (opens in a new tab)",
+      "Reply in the session on claude.ai (opens in a new tab)",
+    ]) {
+      expect(await card.getByRole("link", { name, exact: true }).count()).toBe(
+        1,
+      );
+    }
+    expect(await page.locator("body").innerText()).not.toContain("new tab");
+  });
+
   it("open the link where the page stays open, and tell the new page nothing", async () => {
     const { page } = await open(listOf(both));
     const links = await page
@@ -420,6 +434,19 @@ describe("the open card", () => {
       "Reply in the session",
       "claude.ai",
     ]);
+  });
+
+  it("says in each link's name at its foot that it opens a new tab, and shows nothing new", async () => {
+    const { page } = await openCard([both]);
+    for (const name of [
+      "See pull request github.com (opens in a new tab)",
+      "Reply in the session claude.ai (opens in a new tab)",
+    ]) {
+      expect(await page.getByRole("link", { name, exact: true }).count()).toBe(
+        1,
+      );
+    }
+    expect(await page.locator("body").innerText()).not.toContain("new tab");
   });
 
   it("marks the ask as opened when a link at its foot is followed", async () => {
