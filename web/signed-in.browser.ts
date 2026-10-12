@@ -197,6 +197,17 @@ describe.each([
     }
   });
 
+  // The demo notice is on the signed-out page and on Connect your agents.
+  // A tag beside the wordmark looked like a hashtag or a tab
+  // (docs/design.md, "Header").
+  it("puts no Demo tag beside the wordmark", async () => {
+    const header = view.page.getByRole("banner");
+    expect(await header.getByText("askme", { exact: true }).isVisible()).toBe(
+      true,
+    );
+    expect(await header.getByText("Demo").count()).toBe(0);
+  });
+
   it("scrolls only up and down", async () => {
     expect(await scrollsSideways(view.page, viewport.width)).toBe(false);
   });
