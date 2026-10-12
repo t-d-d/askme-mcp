@@ -449,6 +449,29 @@ describe("Listen", () => {
 
 describe("dismissing", () => {
   const undoMs = 5000;
+  const failed = "That didn't go through. The ask is back.";
+  const unavailable = new Status(503, {
+    code: "service_unavailable",
+    class: "retry",
+    message: "askme could not finish this request. Try again in a moment.",
+  });
+  // The API failing the dismissal of one ask, and taking the others.
+  const failingFor = (id: string) =>
+    new Answering((_url, _authorization, { body }) =>
+      askChange.parse(JSON.parse(body ?? "")).id === id
+        ? unavailable
+        : new Status(204),
+    );
+
+  // Dismisses the top card, then the next one while the first waits, so the
+  // first is sent at once and fails while the second waits.
+  async function failWhileAnotherWaits(opened: OpenPage) {
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await swipe(opened, page.getByRole("article"));
+    await expect.poll(() => page.getByRole("status").innerText()).toBe(failed);
+  }
 
   it("by swiping the top card hides it, shows a note with Undo, and sends the dismissal once the note goes", async () => {
     const opened = await open(listOf(both, neither), { clock: true });
@@ -606,20 +629,102 @@ describe("dismissing", () => {
   it("brings the card back with a note when the dismissal fails", async () => {
     const opened = await open(listOf(both, neither), {
       clock: true,
-      change: new Status(503, {
-        code: "service_unavailable",
-        class: "retry",
-        message: "askme could not finish this request. Try again in a moment.",
-      }),
+      change: unavailable,
     });
     const { page } = opened;
     await swipe(opened, page.getByRole("article"));
     await page.clock.runFor(undoMs + 500);
     const note = page.getByRole("status");
-    await expect
-      .poll(() => note.innerText())
-      .toBe("That didn't go through. The ask is back.");
+    await expect.poll(() => note.innerText()).toBe(failed);
     expect(await page.getByRole("article").innerText()).toContain(both.summary);
+  });
+
+  it("still lets a waiting dismissal be undone when an earlier one fails, once the note that says so goes", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither), {
+      clock: true,
+      change: failingFor("both"),
+    });
+    const { page } = opened;
+    await failWhileAnotherWaits(opened);
+    expect(await page.getByRole("article").innerText()).toContain(both.summary);
+    expect(await rowTexts(opened)).toEqual([neither.summary]);
+    await page.clock.runFor(undoMs + 500);
+    await expect
+      .poll(() => page.getByRole("status").innerText())
+      .toMatch(/^Dismissed\.\s+Undo$/u);
+    await page.getByRole("button", { name: "Undo" }).click();
+    expect(await rowTexts(opened)).toEqual([
+      sessionOnly.summary,
+      neither.summary,
+    ]);
+    await page.clock.runFor(undoMs * 2);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual(["both"]);
+  });
+
+  it("holds a waiting dismissal while the note that an earlier one failed shows, then gives its Undo its full time", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither), {
+      clock: true,
+      change: failingFor("both"),
+    });
+    const { page } = opened;
+    await failWhileAnotherWaits(opened);
+    await page.clock.runFor(undoMs + 500);
+    await expect
+      .poll(() => page.getByRole("status").innerText())
+      .toMatch(/^Dismissed\.\s+Undo$/u);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual(["both"]);
+    await page.clock.runFor(undoMs - 1000);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual(["both"]);
+    await page.clock.runFor(1000);
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both", "session"]);
+    expect(await page.getByRole("status").count()).toBe(0);
+  });
+
+  it("sends a held dismissal at once when another ask is dismissed over the note that one failed, and the new one keeps its own time", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither), {
+      clock: true,
+      change: failingFor("both"),
+    });
+    const { page } = opened;
+    await failWhileAnotherWaits(opened);
+    await page.clock.runFor(1000);
+    await swipe(opened, page.getByRole("listitem").first(), -0.6);
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both", "session"]);
+    await page.clock.runFor(undoMs - 500);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual([
+      "both",
+      "session",
+    ]);
+    await page.clock.runFor(1000);
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both", "session", "neither"]);
+    await page.clock.runFor(undoMs * 2);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual([
+      "both",
+      "session",
+      "neither",
+    ]);
+  });
+
+  it("sends a held dismissal at once when the page is closed over the note that an earlier one failed", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither), {
+      clock: true,
+      change: failingFor("both"),
+    });
+    const { page } = opened;
+    await failWhileAnotherWaits(opened);
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent("pagehide")),
+    );
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both", "session"]);
   });
 
   it("lets the ask go when the API no longer has it", async () => {

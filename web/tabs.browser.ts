@@ -94,6 +94,13 @@ const tab = (page: Page, name: string) =>
 const focused = (control: Locator) =>
   control.evaluate((element) => element === document.activeElement);
 
+// The style of the outline around an element, as drawn now.
+const outline = (element: Locator) =>
+  element.evaluate((each) => getComputedStyle(each).outlineStyle);
+
+const allClear = (page: Page) =>
+  page.getByRole("heading", { name: "All clear." });
+
 const summaries = async (page: Page) => [
   ...(await page.getByRole("article").allInnerTexts()),
   ...(await page.getByRole("listitem").allInnerTexts()),
@@ -330,6 +337,80 @@ describe("the tabs", () => {
     expect(await tab(page, "Everything").getAttribute("aria-pressed")).toBe(
       "true",
     );
+  });
+
+  it("move focus to All clear when the list goes all clear while a tab has focus", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    // Reached from the keyboard, so the focus outline shows.
+    await tab(page, "#shop").focus();
+    await page.keyboard.press("Tab");
+    expect(await focused(tab(page, "#work"))).toBe(true);
+    expect(await outline(tab(page, "#work"))).toBe("solid");
+    answer = { ...list, version: list.version + 1, asks: [] };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "#work").waitFor({ state: "detached" });
+    expect(await focused(allClear(page))).toBe(true);
+    // The heading is not a control, so it draws no outline.
+    expect(await outline(allClear(page))).toBe("none");
+  });
+
+  it("move focus to All clear when the focused tab already said all clear", async () => {
+    let answer: AsksAnswer = {
+      ...list,
+      asks: list.asks.filter(({ id }) => id !== "c"),
+    };
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#family").click();
+    await allClear(page).waitFor();
+    answer = { ...list, version: list.version + 1, asks: [] };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "#family").waitFor({ state: "detached" });
+    expect(await focused(allClear(page))).toBe(true);
+  });
+
+  it("leave focus where it is when the list goes all clear while no tab has focus", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    const rules = page
+      .getByRole("navigation", { name: "Settings" })
+      .getByRole("link", { name: "Rules" });
+    await rules.focus();
+    answer = { ...list, version: list.version + 1, asks: [] };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "Everything").waitFor({ state: "detached" });
+    expect(await focused(rules)).toBe(true);
+  });
+
+  it("leave focus where it is when the list goes all clear after a card opened while a tab had focus", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    // The tabs go as the card opens, with a tab still focused.
+    await tab(page, "#work").focus();
+    await page.evaluate(() => {
+      window.location.hash = "#ask/b";
+    });
+    await tab(page, "#work").waitFor({ state: "detached" });
+    await page.evaluate(() => {
+      window.location.hash = "";
+    });
+    await tab(page, "#work").waitFor();
+    const rules = page
+      .getByRole("navigation", { name: "Settings" })
+      .getByRole("link", { name: "Rules" });
+    await rules.focus();
+    answer = { ...list, version: list.version + 1, asks: [] };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "Everything").waitFor({ state: "detached" });
+    expect(await focused(rules)).toBe(true);
   });
 });
 

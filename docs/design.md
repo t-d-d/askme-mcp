@@ -186,7 +186,7 @@ A white screen. "All asks" at the top left goes back, and "Dismiss" is at the to
 5. The reason, under a hairline, in `--text-3`.
 6. At the foot, the main button, and under it an outlined "Reply in the session" button when the ask has both links.
 
-Swiping a row or the top card dismisses it. A note with "Undo" shows for a few seconds, and the dismissal is sent when it goes. If it fails, the card comes back with a note.
+Swiping a row or the top card dismisses it. A note with "Undo" shows for a few seconds, and the dismissal is sent when it goes. If it fails, the card comes back with a note. If another dismissal is waiting at the time, its clock stops while the failure note shows. Its note with "Undo" then comes back for the full few seconds.
 
 ### All clear
 
@@ -252,6 +252,7 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 
 - Text is at least 4.5 to 1 against what it sits on.
 - Everything works from a keyboard, and focus is always visible: a 2px ink outline, 2px away from the control.
+- When the list goes all clear while a tab has focus, the tabs go and focus moves to the "All clear." headline, so a screen reader says what happened. The headline is not a control, so it draws no outline, and Tab never stops on it.
 - A button is a `button`, and a link is an `a` with an address. An icon-only control has a spoken label.
 - Nothing you can tap is smaller than 44px by 44px.
 
