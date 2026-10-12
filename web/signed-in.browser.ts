@@ -102,6 +102,26 @@ const lineWidths = (page: OpenPage["page"], text: string) =>
     };
   }, text);
 
+// Side padding inside a card, which All clear keeps on a phone.
+const sidePadding = 22;
+
+// Where the All clear headline's words start and end, across its lines.
+// A headline with no lines gets edges that fail any check.
+const headlineEdges = (page: OpenPage["page"]) =>
+  page
+    .getByRole("heading", { name: "All clear." })
+    .evaluate(async (headline) => {
+      await document.fonts.ready;
+      const range = document.createRange();
+      range.selectNodeContents(headline);
+      const lines = [...range.getClientRects()];
+      if (lines.length === 0) return { left: -Infinity, right: Infinity };
+      return {
+        left: Math.min(...lines.map(({ left }) => left)),
+        right: Math.max(...lines.map(({ right }) => right)),
+      };
+    });
+
 describe.each([
   ["a phone", phone],
   ["a desktop", desktop],
@@ -339,6 +359,40 @@ describe("nothing waiting", () => {
         for (const line of lines) {
           expect(line).toBeGreaterThanOrEqual(whole / 3);
         }
+      } finally {
+        await view.close();
+      }
+    },
+  );
+
+  // "clear." is the headline's widest line. Where it does not fit at 146px
+  // inside the side padding, the headline shrinks with the screen.
+  it("keeps the headline inside the side padding at 320px wide", async () => {
+    const width = 320;
+    const view = await open(empty(true), { width, height: 568 });
+    try {
+      const { page } = view;
+      await page.getByRole("heading", { name: "All clear." }).waitFor();
+      expect(await scrollsSideways(page, width)).toBe(false);
+      const { left, right } = await headlineEdges(page);
+      expect(left).toBeGreaterThanOrEqual(sidePadding);
+      expect(width - right).toBeGreaterThanOrEqual(sidePadding);
+    } finally {
+      await view.close();
+    }
+  });
+
+  it.each([360, 390, desktop.width])(
+    "sets the headline at 146px at %ipx wide",
+    async (width) => {
+      const view = await open(empty(true), { width, height: 844 });
+      try {
+        const { page } = view;
+        const headline = page.getByRole("heading", { name: "All clear." });
+        await headline.waitFor();
+        expect(
+          await headline.evaluate((h1) => getComputedStyle(h1).fontSize),
+        ).toBe("146px");
       } finally {
         await view.close();
       }
