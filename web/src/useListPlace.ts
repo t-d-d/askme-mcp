@@ -7,14 +7,19 @@
 //
 // A card opened straight from its address did not open over the list, so
 // the list comes back at the top, and focus is left where it falls.
-import { useEffect, useLayoutEffect, useRef } from "react";
+//
+// However the card opened, when nothing is left waiting on the tab, focus
+// goes to the All clear headline, so a screen reader says what happened.
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { cardHref } from "./screen";
 
-// Takes the ask whose card is open, if one is, and the ids of the list's
-// asks, top card first. Gives the ref for the list's screen.
+// Takes the ask whose card is open, if one is, the ids of the list's asks,
+// top card first, and the All clear headline while it shows. Gives the ref
+// for the list's screen.
 export function useListPlace(
   card: string | undefined,
   order: readonly string[],
+  headline: RefObject<HTMLElement | null>,
 ) {
   const list = useRef<HTMLDivElement>(null);
   // The card drawn last time, if one was.
@@ -60,6 +65,10 @@ export function useListPlace(
     const left = place.current;
     window.scrollTo(0, left ?? 0);
     place.current = listing.current ? window.scrollY : null;
+    if (order.length === 0) {
+      headline.current?.focus({ preventScroll: true });
+      return;
+    }
     if (left === null) return;
     // Each ask's card is opened by one link in the list, so the link is
     // found by where it leads.
