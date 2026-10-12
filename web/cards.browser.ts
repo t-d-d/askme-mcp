@@ -575,6 +575,23 @@ describe("dismissing", () => {
       .toEqual(["both"]);
   });
 
+  it("leaves no note with Undo for a dismissal sent as the page left, when the page comes back", async () => {
+    const opened = await open(listOf(both, neither), { clock: true });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await page.evaluate(() => {
+      const kept = { persisted: true };
+      window.dispatchEvent(new PageTransitionEvent("pagehide", kept));
+      window.dispatchEvent(new PageTransitionEvent("pageshow", kept));
+    });
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both"]);
+    await expect.poll(() => page.getByRole("status").count()).toBe(0);
+    expect(await page.getByText(both.summary).count()).toBe(0);
+  });
+
   it("leaves room for the note on an open card, so it covers none of the card's buttons", async () => {
     const opened = await open(listOf(both, sessionOnly, neither), {
       clock: true,

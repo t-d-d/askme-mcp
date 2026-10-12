@@ -81,13 +81,15 @@ export function useDismissing(): Dismissing {
     }
   }, []);
 
-  // Sends the waiting dismissal now, if there is one.
+  // Sends the waiting dismissal now, if there is one, and its note goes, so
+  // a page kept by the browser comes back with no Undo for it.
   const sendWaiting = useCallback(
     (keepalive = false) => {
       const pending = waiting.current;
       if (pending === null) return;
       window.clearTimeout(pending.timer);
       waiting.current = null;
+      setNote((shown) => (shown === "dismissed" ? null : shown));
       void send(pending.id, keepalive);
     },
     [send],
@@ -101,13 +103,11 @@ export function useDismissing(): Dismissing {
       setDismissed((ids) => new Set(ids).add(id));
       setNote("dismissed");
       const due = () => {
-        waiting.current = null;
-        setNote(null);
-        void send(id);
+        sendWaiting();
       };
       waiting.current = { id, due, timer: window.setTimeout(due, undoMs) };
     },
-    [send, sendWaiting],
+    [sendWaiting],
   );
 
   const undo = useCallback(() => {
