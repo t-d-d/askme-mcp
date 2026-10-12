@@ -62,7 +62,7 @@ All four run in the gate and block a merge. They land with the issue that builds
 
 **Harder, and accepted**
 
-- Above the cap, "Saving re-sorts every open ask" does not hold. The asks left over keep their old sort until the next UTC day. While issue #56 is open, they wait after that until something else changes on the account.
+- Above the cap, saving does not re-sort every open ask. The PRD's "Rules" section now says so. The asks left over keep their old sort until the next UTC day. While issue #56 is open, they wait after that until something else changes on the account.
 - An account with more open asks than the calls left in its day cannot re-sort all of them that day. The read of the rules, each sort's second try and the day's new asks draw on the same cap, so this can start well below 2,000 open asks.
 - A person who reaches the cap cannot save rules that need reading until the next UTC day.
 - Every model call adds a write to the table, and a refused one still costs a write unit.

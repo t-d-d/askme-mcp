@@ -31,7 +31,7 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 
 ### Accounts and connection
 
-- Sign-up and sign-in go through a hosted identity service. Sign-up is open to anyone, with a daily cap on asks per account to limit abuse.
+- Sign-up and sign-in go through a hosted identity service. Sign-up is open to anyone. To limit abuse, each account has a daily cap on asks and a daily cap on model calls. See [ADR 21](docs/adr/0021-model-call-cap.md).
 - Agents connect by OAuth through the same service. There are no keys to copy.
 - Every ask and rule belongs to one account, and each account is one person.
 - The page has a "Connect your agents" section: the server address, steps for Claude, and a one-click button for Cursor.
@@ -41,7 +41,8 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 
 - One text box holds the rules in plain English.
 - On save, the service lists the hashtags and any time windows it read from the rules, and shows them back.
-- Saving re-sorts every open ask. Cards keep their old hashtags until that finishes.
+- Saving re-sorts every open ask, while the account's daily cap on model calls lasts. Cards keep their old hashtags until that finishes. Cards the cap leaves out keep them until it resets.
+- Once the cap is spent, saving the rules is refused until it resets. Saving an empty box still works, since it needs no model call.
 - Time windows use the user's time zone, taken from the browser on save.
 - A new account starts with example rules in the box. With the box empty there are no hashtags, and every ask appears in Everything.
 - Only the signed-in user can read or change the rules.
@@ -73,7 +74,7 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 ### Back end
 
 - Serverless, with no always-on compute. The page polls for new asks.
-- An ask is never rejected or lost because sorting failed. It shows as unsorted and is retried.
+- An ask is never rejected or lost because sorting failed, or because the account reached its cap on model calls. It shows as unsorted and is retried.
 - One model call per ask does the sorting and returns a validated structure. One smaller call runs when rules are saved.
 - Time windows are applied in code when the page loads, not by the model.
 - When an ask is replaced, both versions stay in the store. A retried ask is matched by its content and is not stored twice.
