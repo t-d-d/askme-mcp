@@ -64,9 +64,11 @@ const list: AsksAnswer = {
 async function openRules(
   rules: RulesAnswer | Answering,
   viewport = phone,
+  timeZone = "Europe/London",
 ): Promise<OpenPage> {
   const view = await openPage(`${inject("pageUrl")}#rules`, viewport, {
     session,
+    timeZone,
     api: { [pagePaths.rules]: rules, [pagePaths.asks]: list },
   });
   await view.page
@@ -145,18 +147,32 @@ describe("the rules screen", () => {
     expect(await rows(page)).toEqual([
       "#family\nWeekdays, 6pm to midnight\nWeekends, all day",
     ]);
-    await page
-      .getByText("Hours use Asia/Tokyo, taken from this browser.")
+  });
+
+  it("names the time zone the hours use, taken from this browser", async () => {
+    view = await openRules(saved);
+    await view.page
+      .getByText("Hours use Europe/London, taken from this browser.")
+      .waitFor();
+  });
+
+  it("says when another browser's time zone gave the hours, and the one saving here uses", async () => {
+    view = await openRules(saved, phone, "America/New_York");
+    await view.page
+      .getByText(
+        "Hours use Europe/London, taken from the browser that saved them. Saving here uses America/New_York.",
+      )
       .waitFor();
   });
 
   it("names this browser's time zone before any rules are saved with one", async () => {
-    view = await openRules({ text: "", hashtags: [], readFailed: false });
-    const { page } = view;
-    await page
-      .getByText(
-        `Hours use ${await browserZone(page)}, taken from this browser.`,
-      )
+    view = await openRules(
+      { text: "", hashtags: [], readFailed: false },
+      phone,
+      "Asia/Tokyo",
+    );
+    await view.page
+      .getByText("Hours use Asia/Tokyo, taken from this browser.")
       .waitFor();
   });
 

@@ -156,16 +156,27 @@ describe("what the model read from the rules", () => {
     ).toBeUndefined();
   });
 
-  it("is discarded when it gives one hashtag more windows than askme keeps", () => {
-    const hours = Array.from({ length: windowLimit + 1 }, (_, n) => ({
-      hashtag: "work",
-      days: ["mon"],
-      from: `${String(n).padStart(2, "0")}:00`,
-      to: `${String(n).padStart(2, "0")}:30`,
-    }));
-    expect(parseReading({ hashtags: ["work"], hours }, text)).toBeUndefined();
+  it("keeps many windows for one hashtag, as split shifts on each weekday need", () => {
+    const shifts = weekdaysOnly.flatMap((day) => [
+      { hashtag: "work", days: [day], from: "09:00", to: "12:00" },
+      { hashtag: "work", days: [day], from: "13:00", to: "17:00" },
+    ]);
     expect(
-      parseReading({ hashtags: ["work"], hours: hours.slice(1) }, text)?.hours,
+      parseReading({ hashtags: ["work"], hours: shifts }, text)?.hours,
+    ).toHaveLength(shifts.length);
+  });
+
+  it("is discarded when it gives more windows in all than askme keeps", () => {
+    const hours = Array.from({ length: windowLimit + 1 }, (_, n) => ({
+      hashtag: n % 2 === 0 ? "work" : "family",
+      days: [weekdays[n % weekdays.length] ?? "mon"],
+      from: `${String(n % 24).padStart(2, "0")}:00`,
+      to: `${String(n % 24).padStart(2, "0")}:30`,
+    }));
+    const hashtags = ["work", "family"];
+    expect(parseReading({ hashtags, hours }, text)).toBeUndefined();
+    expect(
+      parseReading({ hashtags, hours: hours.slice(1) }, text)?.hours,
     ).toHaveLength(windowLimit);
   });
 });

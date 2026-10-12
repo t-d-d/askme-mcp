@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
-import { pagePaths, rulesLimit } from "../shared/page-api";
+import { pagePaths, rulesLimit, timeZoneLimit } from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
 import { fakes, testModelKey } from "../test/fakes";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
@@ -315,7 +315,7 @@ describe("the rules", () => {
     });
     const response = await saveRules(account, {
       text: rulesText,
-      timeZone: "europe/london",
+      timeZone: "Europe/London",
     });
     expect(response.status).toBe(200);
     const saved = {
@@ -334,6 +334,21 @@ describe("the rules", () => {
     expect(
       await (await get(pagePaths.asks, await session(account))).json(),
     ).toMatchObject({ hashtags: saved.hashtags, timeZone: "Europe/London" });
+  });
+
+  // The page applies the hours, in a zone its own browser knows, so the
+  // service keeps a name it does not know itself.
+  it("keep a time zone as it was sent, even one the service does not know", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
+    const response = await saveRules(account, {
+      text: "#work",
+      timeZone: "America/Not_Yet_Named",
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      timeZone: "America/Not_Yet_Named",
+    });
   });
 
   it("keep the time zone saved before when a save sends none", async () => {
@@ -441,8 +456,12 @@ describe("the rules", () => {
     ["a body that is not JSON", "#work is my day job."],
     ["a body with another field", { text: "#work", hours: "9 to 5" }],
     [
-      "a time zone that is not one",
-      { text: "#work", timeZone: "Mars/Olympus" },
+      "a time zone that is not a zone's name",
+      { text: "#work", timeZone: "not a zone" },
+    ],
+    [
+      "a time zone's name over the limit",
+      { text: "#work", timeZone: `Europe/${"x".repeat(timeZoneLimit)}` },
     ],
     ["no body", undefined],
   ])("refuse %s as invalid_input, and store nothing", async (_, body) => {

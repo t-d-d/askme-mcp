@@ -9,7 +9,7 @@ import {
   type HashtagWindow,
   type Reading,
 } from "../service/src/rules";
-import { hoursText, isOpen } from "../web/src/hours";
+import { hoursText, isOpen, minutesInDay } from "../web/src/hours";
 import { evalClient, setupLines } from "./model";
 import { readingCases, type ReadingCase } from "./reading";
 
@@ -21,8 +21,6 @@ interface Outcome {
   reading?: Reading;
   failure?: string;
 }
-
-const minutesInDay = 24 * 60;
 
 // Every minute of the week, each as 1 when the windows are open then and 0
 // when they are not, so two sets of windows that mean the same are equal.

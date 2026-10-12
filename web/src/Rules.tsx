@@ -163,15 +163,23 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
                 ))}
               </ul>
             ))}
-          {data !== undefined && (
-            <p className={styles.zone}>
-              Hours use {data.timeZone ?? browserTimeZone()}, taken from this
-              browser.
-            </p>
-          )}
+          {data !== undefined && <Zone saved={data.timeZone} />}
         </section>
       </main>
     </div>
+  );
+}
+
+// The last note: the time zone the hours use. A save takes this browser's,
+// so when another browser saved them, it says which one saving here uses.
+function Zone({ saved }: { saved: string | undefined }) {
+  const here = browserTimeZone();
+  return (
+    <p className={styles.zone}>
+      {saved === undefined || saved === here
+        ? `Hours use ${here}, taken from this browser.`
+        : `Hours use ${saved}, taken from the browser that saved them. Saving here uses ${here}.`}
+    </p>
   );
 }
 

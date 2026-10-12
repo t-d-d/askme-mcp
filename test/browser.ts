@@ -45,6 +45,9 @@ export interface PageOptions {
   // Give the page Playwright's clock, which runs as usual until a test
   // moves it on with page.clock. Given a time, the clock starts there.
   clock?: boolean | Date;
+  // The browser's time zone, such as Europe/London. Without one it is the
+  // machine's.
+  timeZone?: string;
 }
 
 // An answer that is a status, such as a failure, with a JSON body when one
@@ -120,7 +123,10 @@ export async function openPage(
       "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
     ],
   });
-  const context = await browser.newContext({ viewport });
+  const context = await browser.newContext({
+    viewport,
+    ...(options.timeZone === undefined ? {} : { timezoneId: options.timeZone }),
+  });
   const refused: string[] = [];
   await context.route("**/*", async (route) => {
     const target = new URL(route.request().url());

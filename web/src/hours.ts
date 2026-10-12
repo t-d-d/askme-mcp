@@ -18,7 +18,7 @@ export interface WallClock {
   minute: number;
 }
 
-const minutesInDay = 24 * 60;
+export const minutesInDay = 24 * 60;
 
 // One reader of the wall clock for each time zone, made when first needed.
 const readers = new Map<string, Intl.DateTimeFormat>();

@@ -61,17 +61,11 @@ export const hashtag = z.object({
 
 export type Hashtag = z.infer<typeof hashtag>;
 
-// A time zone's name as this runtime writes it, such as Europe/London for
-// europe/london, or undefined when it does not know the zone.
-export function timeZoneOf(name: string): string | undefined {
-  try {
-    return Intl.DateTimeFormat("en", { timeZone: name }).resolvedOptions()
-      .timeZone;
-  } catch {
-    // A RangeError: no zone has that name.
-    return undefined;
-  }
-}
+// The shape of a time zone's name in the IANA list, such as Europe/London,
+// UTC or Etc/GMT+5. The service checks only the shape: the page applies the
+// hours, in a zone its own browser knows, so a name the service's runtime
+// does not know is kept as it was sent.
+export const timeZoneShape = /^[A-Za-z][\w+-]*(?:\/[\w+-]+)*$/u;
 
 // The most characters a time zone's name may hold. The longest IANA name is
 // about 30.
@@ -138,12 +132,7 @@ export const rulesLimit = 2000;
 // time zone the one saved before stays.
 export const rulesInput = z.strictObject({
   text: z.string().max(rulesLimit),
-  timeZone: z
-    .string()
-    .max(timeZoneLimit)
-    .refine((name) => timeZoneOf(name) !== undefined)
-    .transform((name) => timeZoneOf(name) ?? name)
-    .optional(),
+  timeZone: z.string().max(timeZoneLimit).regex(timeZoneShape).optional(),
 });
 
 export type RulesInput = z.infer<typeof rulesInput>;

@@ -25,7 +25,14 @@ const pollPath = (since: number | undefined) =>
 
 const queryKey = [pagePaths.asks];
 
-export function useAsks(): Answer<AsksAnswer> {
+// The list, and when the page last polled for it, whether or not the poll
+// reached askme. Which asks are held is counted from then, so a held ask
+// is let go at its hours even while the page is not connected.
+export interface PolledAnswer extends Answer<AsksAnswer> {
+  polledAt: number;
+}
+
+export function useAsks(): PolledAnswer {
   const { getToken } = useAuth();
   const queries = useQueryClient();
   const query = useQuery({
@@ -55,6 +62,7 @@ export function useAsks(): Answer<AsksAnswer> {
   return {
     data: query.data,
     receivedAt: query.dataUpdatedAt,
+    polledAt: Math.max(query.dataUpdatedAt, query.errorUpdatedAt),
     failed: query.isError,
   };
 }

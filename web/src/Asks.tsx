@@ -22,17 +22,17 @@ import { useAsks } from "./useAsks";
 // all clear, under the tabs.
 //
 // An ask with a hashtag outside its hours is held back, on every tab, as of
-// when the list was last read. The held line under the tabs counts the
+// the last poll. The held line under the tabs counts the
 // tab's held asks and shows them, or hides them again. With every ask held
 // and hidden the list is all clear, and the line sits at its foot. Once
 // nothing is held, held asks are hidden again when they are next held.
 export function Asks() {
-  const { data, receivedAt, failed } = useAsks();
+  const { data, receivedAt, polledAt, failed } = useAsks();
   const [chosen, choose] = useState<Tab>(everything);
   const [showingHeld, showHeld] = useState(false);
   const hashtags = data?.hashtags ?? [];
   const asks = data?.asks ?? [];
-  const held = heldAsks(asks, hashtags, data?.timeZone, receivedAt);
+  const held = heldAsks(asks, hashtags, data?.timeZone, polledAt);
   if (showingHeld && held.size === 0) showHeld(false);
   const waiting = (list: readonly PageAsk[]) =>
     showingHeld ? list : list.filter(({ id }) => !held.has(id));

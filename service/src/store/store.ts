@@ -176,13 +176,9 @@ const noRules: AccountRules = {
   readFailed: false,
 };
 
-// The hours and the time zone as the rules item holds them: each absent
-// when there is none.
+// The hours as the rules item holds them: absent when there are none.
 const windowsOf = (hours: HashtagWindow[] | undefined) =>
   hours === undefined || hours.length === 0 ? {} : { hours };
-
-const zoneOf = (timeZone: string | undefined) =>
-  timeZone === undefined ? {} : { timeZone };
 
 // Rules as a save hands them in: the text, the time zone of the browser
 // that saved them, and the hashtags read from it with their hours. Without
@@ -718,7 +714,7 @@ export function createStore(config: {
           version: current.version + 1,
           readFailed: hashtags === undefined,
           ...windowsOf(hashtags === undefined ? current.hours : hours),
-          ...zoneOf(timeZone ?? current.timeZone),
+          timeZone: timeZone ?? current.timeZone,
         };
         try {
           await write(account, [

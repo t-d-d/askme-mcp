@@ -105,16 +105,12 @@ const hashtagsOf = ({ hashtags, seen, hours }: AccountRules) =>
     };
   });
 
-// The time zone the rules' hours use, when they were saved with one.
-const zoneOf = ({ timeZone }: AccountRules) =>
-  timeZone === undefined ? {} : { timeZone };
-
 const rulesView = (rules: AccountRules) =>
   rulesAnswer.parse({
     text: rules.text,
     hashtags: hashtagsOf(rules),
     readFailed: rules.readFailed,
-    ...zoneOf(rules),
+    timeZone: rules.timeZone,
   });
 
 // Asks the sort function again for asks still unsorted a while after they
@@ -190,7 +186,7 @@ async function poll(
       version,
       everAsked,
       hashtags: hashtagsOf(rules),
-      ...zoneOf(rules),
+      timeZone: rules.timeZone,
       asks: asks.map(({ id, summary, spokenDetail, postedAt, sort }) => ({
         id,
         summary,

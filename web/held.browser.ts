@@ -12,6 +12,7 @@ import {
   answerPoll,
   Answering,
   openPage,
+  Status,
   type OpenPage,
 } from "../test/browser";
 import { pollMs } from "./src/poll";
@@ -235,5 +236,30 @@ describe("holding asks back until their hours", () => {
       .waitFor();
     expect(await page.getByText(/held/u).count()).toBe(0);
     expect(await summaries(page)).toHaveLength(4);
+  });
+
+  it("lets an ask go when its hours open, though the page cannot reach askme", async () => {
+    const early = new Date("2026-10-13T06:59:00Z");
+    const list = listOf(asksAt(early));
+    let polls = 0;
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: early,
+      api: {
+        [pagePaths.asks]: new Answering(() => {
+          polls += 1;
+          return polls === 1 ? list : new Status(503);
+        }),
+      },
+    });
+    const { page } = view;
+    await page.getByText("2 held until their hours").waitFor();
+    await page.clock.fastForward(minute + pollMs);
+    await page.getByText("Not connected. Trying again.").waitFor();
+    await page
+      .getByRole("article")
+      .filter({ hasText: "Merge the fix for checkout rounding?" })
+      .waitFor();
+    expect(await page.getByText(/held/u).count()).toBe(0);
   });
 });

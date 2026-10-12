@@ -16,8 +16,10 @@ import { escaped, type Prompt } from "./sort";
 // The most hashtags askme keeps. The palette starts again after eight.
 export const hashtagLimit = 12;
 
-// The most windows of hours askme keeps for one hashtag.
-export const windowLimit = 7;
+// The most windows of hours askme keeps, across all the hashtags: two a
+// day for one hashtag, or two each for a dozen. The reply's token budget
+// below holds this many.
+export const windowLimit = 24;
 
 // A hashtag's name: letters and digits, with hyphens and underscores after
 // the first, at most 24 characters, in lower case and without its #.
@@ -118,12 +120,7 @@ export function parseReading(
   const fits = hours.every(
     ({ hashtag, from, to }) => names.includes(hashtag) && from !== to,
   );
-  const perHashtag = names.map(
-    (name) => hours.filter(({ hashtag }) => hashtag === name).length,
-  );
-  if (!fits || perHashtag.some((count) => count > windowLimit)) {
-    return undefined;
-  }
+  if (!fits || hours.length > windowLimit) return undefined;
   return {
     hashtags: placed.sort((a, b) => a.at - b.at).map(({ name }) => name),
     hours,
@@ -135,7 +132,8 @@ export function parseReading(
 // ten seconds.
 const readingTimeoutMs = 7000;
 
-// Room for a dozen hashtags, with two windows each.
+// Room for a dozen hashtags and every window askme keeps, at about 40
+// tokens a window.
 const readingMaxTokens = 1200;
 
 // The hashtags the rules name and their hours, read by the model, or why
