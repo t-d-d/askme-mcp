@@ -408,9 +408,10 @@ type AskChangeKind = "opened" | "dismissed";
 // Neither change has a rate limit, as the owner decided in issue #96. Only
 // an ask's first opening and its dismissal write, so these calls raise the
 // version at most twice for each ask, and the daily cap limits the asks.
-// Any other call reads at most two items and writes nothing. A counter would
-// add a write to every call, a refused one included, so a flood would cost
-// more with a limit than without one.
+// Any other call reads at most two items and changes nothing. One that
+// loses a race to another change of the same ask also sends a refused
+// transaction. A counter would add a write to every call, a refused one
+// included, so a flood would cost more with a limit than without one.
 async function changeAsk(
   kind: AskChangeKind,
   request: Request,
