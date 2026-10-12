@@ -59,7 +59,8 @@ import { inListOrder, lapsedAsks } from "./waiting";
 // One line under the tabs, below the held and lapsed lines, says how
 // sorting stands: how many asks are being sorted with the rules, or how
 // many couldn't be sorted. It counts every ask, on every tab, as of the last
-// poll, so an ask turns from sorting to stopped with no reload.
+// poll, so an ask turns from sorting to stopped with no reload. On All clear
+// it sits at the foot, under the held and lapsed lines when they show.
 //
 // An ask the person has opened shows as opened, and one they have dismissed
 // leaves the list, before the next poll says so.
@@ -151,16 +152,14 @@ export function Asks({ card }: { card: string | null }) {
     headline,
   );
   const anyHeld = heldHere > 0 || lapsedHere > 0;
-  // The held line, and the lapsed line under it. At the foot of All clear,
-  // the first of them keeps the screen's space above it.
-  const heldLines = (atFoot: boolean) => (
+  // The held line, and the lapsed line under it.
+  const heldLines = () => (
     <>
       {heldHere > 0 && (
         <Held
           by="hours"
           count={heldHere}
           showing={showingHeld}
-          atFoot={atFoot}
           onToggle={() => {
             showHeld(!showingHeld);
           }}
@@ -172,7 +171,6 @@ export function Asks({ card }: { card: string | null }) {
           by="lapse"
           count={lapsedHere}
           showing={showingLapsed}
-          atFoot={atFoot && heldHere === 0}
           onToggle={() => {
             showLapsed(!showingLapsed);
           }}
@@ -230,9 +228,7 @@ export function Asks({ card }: { card: string | null }) {
                 onBackWithFocus={tabsBackWithFocus}
                 ref={tabs}
               />
-              {anyHeld && (
-                <div className={styles.lines}>{heldLines(false)}</div>
-              )}
+              {anyHeld && <div className={styles.lines}>{heldLines()}</div>}
               {sorting !== null && <SortingLine words={sorting} />}
             </div>
           )}
@@ -254,7 +250,12 @@ export function Asks({ card }: { card: string | null }) {
           ) : data.everAsked ? (
             <>
               <AllClear noted={noted} ref={headline} />
-              {allClear && anyHeld && heldLines(true)}
+              {allClear && (anyHeld || sorting !== null) && (
+                <div className={styles.foot}>
+                  {heldLines()}
+                  {sorting !== null && <SortingLine words={sorting} />}
+                </div>
+              )}
             </>
           ) : (
             <NewAccount />

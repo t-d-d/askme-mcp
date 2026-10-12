@@ -1,6 +1,5 @@
 /* An icon, the count, and the control at the right, in the note size. */
-.held,
-.foot {
+.held {
   display: flex;
   align-items: center;
   gap: var(--space-8);
@@ -10,16 +9,8 @@
   line-height: var(--leading-note);
 }
 
-.held svg,
-.foot svg {
+.held svg {
   flex-shrink: 0;
-}
-
-/* On All clear, the line sits at the foot of the screen, because All clear
-   fills the space above it. Its margin is the screen's space at the foot,
-   so All clear sits the same with the line or without it. */
-.foot {
-  margin-top: var(--space-foot);
 }
 
 .toggle {
@@ -37,8 +28,7 @@
 }
 
 @media (min-width: 768px) {
-  .held,
-  .foot {
+  .held {
     padding-right: 0;
     padding-left: 0;
   }
