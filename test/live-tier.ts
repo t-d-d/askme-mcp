@@ -140,6 +140,53 @@ export function typedValues(text: string): string[] {
   return found;
 }
 
+// The roles a person presses on a page.
+const pressable = new Set(["button", "link"]);
+
+// The name of every button and link found by its role, as written in the
+// source, or "(no name)" when none is given. A role not written as a string
+// counts as a button or a link, so it cannot slip past.
+export function controlNames(text: string): string[] {
+  const source = parse(text);
+  const found: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === "getByRole"
+    ) {
+      const [role, options] = node.arguments;
+      if (
+        role !== undefined &&
+        (!ts.isStringLiteralLike(role) || pressable.has(role.text))
+      ) {
+        found.push(nameIn(options, source));
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
+
+function nameIn(
+  options: ts.Expression | undefined,
+  source: ts.SourceFile,
+): string {
+  if (options === undefined) return "(no name)";
+  if (!ts.isObjectLiteralExpression(options)) return options.getText(source);
+  const name = options.properties.find(
+    (property) =>
+      property.name !== undefined &&
+      ts.isIdentifier(property.name) &&
+      property.name.text === "name",
+  );
+  if (name === undefined) return "(no name)";
+  return ts.isPropertyAssignment(name)
+    ? name.initializer.getText(source)
+    : name.getText(source);
+}
+
 function parse(text: string): ts.SourceFile {
   return ts.createSourceFile(
     "source.ts",

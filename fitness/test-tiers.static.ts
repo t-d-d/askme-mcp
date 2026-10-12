@@ -5,6 +5,7 @@ import {
   addressesIn,
   builtFrom,
   constantFor,
+  controlNames,
   liveTierFiles,
   typedValues,
 } from "../test/live-tier";
@@ -386,5 +387,45 @@ describe("fitness: the live tier makes no other account (test-tiers.md)", () => 
     expect(
       typed.filter(({ value }) => value !== name && value !== code),
     ).toEqual([]);
+  });
+});
+
+// The buttons and links the live tier may find: Clerk's, to sign in and up,
+// and the page's own, to move between screens and to sign out. None of them
+// writes to askme's store (ADR 19).
+const readingControls = [
+  "Sign in",
+  "Sign up",
+  "Continue",
+  "Rules",
+  "Connect agents",
+  "All asks",
+  "Sign out",
+];
+
+describe("fitness: the live tier writes nothing of its own (test-tiers.md)", () => {
+  it("finds the name of every button and link a file finds by its role", () => {
+    expect(
+      controlNames(
+        [
+          'page.getByRole("button", { name: "Save" });',
+          'await page.getByRole("link", { name: "Rules", exact: true }).click();',
+          "page.getByRole('button', { name: other });",
+          'page.getByRole("heading", { name: "All clear." });',
+          'page.getByRole("article");',
+          'page.getByRole("button");',
+          'page.getByRole("textbox", { name: "verification code" });',
+        ].join("\n"),
+      ),
+    ).toEqual(['"Save"', '"Rules"', "other", "(no name)"]);
+  });
+
+  it("finds only buttons and links that sign in, sign out or move between screens", () => {
+    const found = liveTierFiles().flatMap((path) =>
+      controlNames(readRepoFile(path)).map((name) => ({ path, name })),
+    );
+    const reading = new Set(readingControls.map((control) => `"${control}"`));
+    expect(found.map(({ name }) => name)).toContain('"Sign out"');
+    expect(found.filter(({ name }) => !reading.has(name))).toEqual([]);
   });
 });
