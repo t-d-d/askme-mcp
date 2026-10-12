@@ -1,5 +1,6 @@
 // Rate limits, counted in fixed windows of whole minutes (ADR 18). A window
-// is named by the minute it starts, which the counter's key carries.
+// is named by the minute it starts, which the counter's key carries. The
+// page's changes to an ask have none, as the owner decided in issue #96.
 
 // The page's poll (ADR 1). The page polls every five seconds while it is
 // visible, so a page open on two devices sends about 24 polls a minute.
