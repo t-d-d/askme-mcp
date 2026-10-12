@@ -65,10 +65,12 @@ export function constantFor(text: string, value: string): string | undefined {
 }
 
 // Each line where a constant is used other than as it is: as one whole
-// argument to a call. Its declaration, and an import of it under its own
-// name, are the only other places it may appear. The source is read as
-// TypeScript, so brackets and commas inside strings and comments, and a
-// constant wrapped in parentheses, are seen for what they are.
+// argument to a call, unless the call is a String method that puts its
+// argument into the string it returns. Its declaration, and an import of
+// it under its own name, are the only other places it may appear. The
+// source is read as TypeScript, so brackets and commas inside strings and
+// comments, and a constant wrapped in parentheses, are seen for what they
+// are.
 export function builtFrom(text: string, name: string): string[] {
   const source = parse(text);
   const lines = text.split("\n");
@@ -99,9 +101,22 @@ function usedAsItIs(node: ts.Identifier): boolean {
   if (ts.isImportSpecifier(parent)) return parent.propertyName === undefined;
   return (
     (ts.isCallExpression(parent) || ts.isNewExpression(parent)) &&
+    !(
+      ts.isPropertyAccessExpression(parent.expression) &&
+      building.has(parent.expression.name.text)
+    ) &&
     (parent.arguments ?? []).some((argument) => argument === node)
   );
 }
+
+// The String methods that put an argument into the string they return.
+const building = new Set([
+  "concat",
+  "padEnd",
+  "padStart",
+  "replace",
+  "replaceAll",
+]);
 
 // The calls that type into a page.
 const typing = new Set(["fill", "type", "pressSequentially", "insertText"]);
