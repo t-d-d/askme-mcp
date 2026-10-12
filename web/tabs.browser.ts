@@ -387,6 +387,31 @@ describe("the tabs", () => {
     await tab(page, "Everything").waitFor({ state: "detached" });
     expect(await focused(rules)).toBe(true);
   });
+
+  it("leave focus where it is when the list goes all clear after a card opened while a tab had focus", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    // The tabs go as the card opens, with a tab still focused.
+    await tab(page, "#work").focus();
+    await page.evaluate(() => {
+      window.location.hash = "#ask/b";
+    });
+    await tab(page, "#work").waitFor({ state: "detached" });
+    await page.evaluate(() => {
+      window.location.hash = "";
+    });
+    await tab(page, "#work").waitFor();
+    const rules = page
+      .getByRole("navigation", { name: "Settings" })
+      .getByRole("link", { name: "Rules" });
+    await rules.focus();
+    answer = { ...list, version: list.version + 1, asks: [] };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "Everything").waitFor({ state: "detached" });
+    expect(await focused(rules)).toBe(true);
+  });
 });
 
 describe("how the tabs look", () => {
