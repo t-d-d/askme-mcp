@@ -140,21 +140,30 @@ export function typedValues(text: string): string[] {
   return found;
 }
 
-// The roles a person presses on a page.
-const pressable = new Set(["button", "link"]);
+// The roles a person presses, ticks or picks on a page.
+const pressable = new Set([
+  "button",
+  "checkbox",
+  "link",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "option",
+  "radio",
+  "switch",
+  "tab",
+]);
 
-// The name of every button and link found by its role, as written in the
-// source, or "(no name)" when none is given. A role not written as a string
-// counts as a button or a link, so it cannot slip past.
+// The name of every control a person presses found by its role, as written
+// in the source with a plain string in double quotes, or "(no name)" when
+// none is given. A role not written as a string counts as pressed, so it
+// cannot slip past, and so does getByRole called by any route: on a page or
+// a locator, by its bracketed name, or taken off one as a plain function.
 export function controlNames(text: string): string[] {
   const source = parse(text);
   const found: string[] = [];
   const visit = (node: ts.Node): void => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.name.text === "getByRole"
-    ) {
+    if (ts.isCallExpression(node) && calledName(node) === "getByRole") {
       const [role, options] = node.arguments;
       if (
         role !== undefined &&
@@ -169,6 +178,19 @@ export function controlNames(text: string): string[] {
   return found;
 }
 
+function calledName(call: ts.CallExpression): string | undefined {
+  const callee = call.expression;
+  if (ts.isIdentifier(callee)) return callee.text;
+  if (ts.isPropertyAccessExpression(callee)) return callee.name.text;
+  if (
+    ts.isElementAccessExpression(callee) &&
+    ts.isStringLiteralLike(callee.argumentExpression)
+  ) {
+    return callee.argumentExpression.text;
+  }
+  return undefined;
+}
+
 function nameIn(
   options: ts.Expression | undefined,
   source: ts.SourceFile,
@@ -178,13 +200,14 @@ function nameIn(
   const name = options.properties.find(
     (property) =>
       property.name !== undefined &&
-      ts.isIdentifier(property.name) &&
+      (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
       property.name.text === "name",
   );
   if (name === undefined) return "(no name)";
-  return ts.isPropertyAssignment(name)
-    ? name.initializer.getText(source)
-    : name.getText(source);
+  if (!ts.isPropertyAssignment(name)) return name.getText(source);
+  return ts.isStringLiteralLike(name.initializer)
+    ? JSON.stringify(name.initializer.text)
+    : name.initializer.getText(source);
 }
 
 function parse(text: string): ts.SourceFile {

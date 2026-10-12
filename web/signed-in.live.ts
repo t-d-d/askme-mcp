@@ -54,15 +54,15 @@ const signUpAnswer = z.object({
 describe("fitness: a person can sign in and out on the live page (test-tiers.md)", () => {
   let browser: Browser | undefined;
   let page: Page;
-  // Every call the page sends its own API during the run, as its method and
-  // path.
+  // Every call the page, or a worker it starts, sends its own API during the
+  // run, as its method and path.
   const apiCalls: string[] = [];
 
   beforeAll(async () => {
     browser = await chromium.launch();
     page = await browser.newPage({ viewport: phone });
     const { origin } = new URL(pageUrl());
-    page.on("request", (request) => {
+    page.context().on("request", (request) => {
       const url = new URL(request.url());
       if (url.origin === origin && url.pathname.startsWith("/api/")) {
         apiCalls.push(`${request.method()} ${url.pathname}`);
@@ -165,9 +165,9 @@ describe("fitness: a person can sign in and out on the live page (test-tiers.md)
     4 * stepMs,
   );
 
-  // The page polled while signed in, which is what shows the session token
-  // reaching the service and passing. It sent nothing but reads, so the run
-  // made no write of its own to askme's store (ADR 19).
+  // The page polled while signed in, and the first test saw the list that
+  // poll loaded. It sent nothing but reads, so the run made no write of its
+  // own to askme's store (ADR 19).
   it("sends the page's API nothing but reads", () => {
     const reads = Object.values(pagePaths).map((path) => `GET ${path}`);
     expect(apiCalls).toContain(`GET ${pagePaths.asks}`);

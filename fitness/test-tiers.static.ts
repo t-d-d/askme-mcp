@@ -390,7 +390,7 @@ describe("fitness: the live tier makes no other account (test-tiers.md)", () => 
   });
 });
 
-// The buttons and links the live tier may find: Clerk's, to sign in and up,
+// The controls the live tier may find: Clerk's buttons, to sign in and up,
 // and the page's own, to move between screens and to sign out. None of them
 // writes to askme's store (ADR 19).
 const readingControls = [
@@ -404,7 +404,7 @@ const readingControls = [
 ];
 
 describe("fitness: the live tier writes nothing of its own (test-tiers.md)", () => {
-  it("finds the name of every button and link a file finds by its role", () => {
+  it("finds the name of every control a file finds by its role", () => {
     expect(
       controlNames(
         [
@@ -415,12 +415,27 @@ describe("fitness: the live tier writes nothing of its own (test-tiers.md)", () 
           'page.getByRole("article");',
           'page.getByRole("button");',
           'page.getByRole("textbox", { name: "verification code" });',
+          'page.getByRole("switch", { name: "Quiet" });',
+          "page.getByRole('link', { name: 'Sign out' });",
+          'page.getByRole("button", { "name": "Undo" });',
+          'getByRole("button", { name: "Dismiss" });',
+          'page["getByRole"]("menuitem", { name: "Clear" });',
         ].join("\n"),
       ),
-    ).toEqual(['"Save"', '"Rules"', "other", "(no name)"]);
+    ).toEqual([
+      '"Save"',
+      '"Rules"',
+      "other",
+      "(no name)",
+      '"Quiet"',
+      '"Sign out"',
+      '"Undo"',
+      '"Dismiss"',
+      '"Clear"',
+    ]);
   });
 
-  it("finds only buttons and links that sign in, sign out or move between screens", () => {
+  it("finds only controls that sign in, sign out or move between screens", () => {
     const found = liveTierFiles().flatMap((path) =>
       controlNames(readRepoFile(path)).map((name) => ({ path, name })),
     );
