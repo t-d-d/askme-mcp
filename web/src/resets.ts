@@ -6,12 +6,16 @@ import { minutesInDay, wallClock } from "./hours";
 
 const dayLength = minutesInDay * 60 * 1000;
 
+// The next midnight UTC after a moment.
+export function resetsAt(at: number): number {
+  return (Math.floor(at / dayLength) + 1) * dayLength;
+}
+
 // The next midnight UTC after a moment, on the 24-hour clock in a time zone
 // or, without one, in this browser's. In a time zone this browser does not
 // know, it gives the time in UTC, which is midnight.
 export function resetTime(at: number, timeZone?: string): string {
-  const resetsAt = (Math.floor(at / dayLength) + 1) * dayLength;
-  const minute = wallClock(resetsAt, timeZone)?.minute ?? 0;
+  const minute = wallClock(resetsAt(at), timeZone)?.minute ?? 0;
   const hours = String(Math.floor(minute / 60)).padStart(2, "0");
   const minutes = String(minute % 60).padStart(2, "0");
   return `${hours}:${minutes}`;

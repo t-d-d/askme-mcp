@@ -246,6 +246,8 @@ Shown when nothing is waiting and the account has had at least one ask.
 
 Shown when the account has never had an ask. A white card says "Your agents can ask here.", explains in two sentences, and offers "Connect your agents" in ink and "Send sample asks" in `--neutral-tint`.
 
+When a press of "Send sample asks" does not go through, one short note under the button says why, in the words below. The daily cap's note goes once the cap resets at the next midnight UTC, with no reload.
+
 ### Rules
 
 - One text box, with a label above it that says what to write.
@@ -258,7 +260,7 @@ Shown when the account has never had an ask. A white card says "Your agents can 
 
 ### Connect your agents
 
-The server address in a read-only box with a Copy button, steps for Claude as a numbered list, a button for Cursor, and "Send sample asks" for someone with no agent yet. The demo notice is at the foot. The header has only "All asks", which goes back. There is no Rules link.
+The server address in a read-only box with a Copy button, steps for Claude as a numbered list, a button for Cursor, and "Send sample asks" for someone with no agent yet, with its note as on the new account card. The demo notice is at the foot. The header has only "All asks", which goes back. There is no Rules link.
 
 ### Signed out
 
