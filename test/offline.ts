@@ -42,21 +42,23 @@ function targetHost(args: unknown[]): string | undefined {
     : "localhost";
 }
 
-// lookup reads the hosts file before it asks a DNS server. The hosts file
-// names localhost, so that name stays on the machine, and lookup hands an
-// address back as it is. Any other name, even one under .localhost, would go
-// to a DNS server, so it is refused. lookupService asks a DNS server about
-// any address the hosts file does not name, such as 127.0.0.2, and the
-// resolve family and reverse always ask one, so every call to them is
-// refused. Each module binds its own copies of the Resolver methods, so the
-// modules and the prototypes are both guarded.
+// lookup hands an address back as it is. It looks a name up in the hosts
+// file, and asks a DNS server when the file has no line for that name and
+// family. A hosts file may name localhost for IPv4 only, so the guard
+// answers localhost itself: it passes on ::1 in its place for an IPv6
+// lookup, and 127.0.0.1 for any other. Any other name, even one under
+// .localhost, would go to a DNS server, so it is refused. lookupService
+// asks a DNS server about any address the hosts file does not name, such as
+// 127.0.0.2, and the resolve family and reverse always ask one, so every
+// call to them is refused. Each module binds its own copies of the Resolver
+// methods, so the modules and the prototypes are both guarded.
 for (const functions of [dns, dns.promises]) {
-  guardLookup(
-    functions,
-    "lookup",
-    (name) => net.isIP(name) !== 0 || name.toLowerCase() === "localhost",
-  );
-  guardLookup(functions, "lookupService", () => false);
+  guardLookup(functions, "lookup", (name, options) => {
+    if (net.isIP(name) !== 0) return name;
+    if (name.toLowerCase() !== "localhost") return undefined;
+    return asksForIPv6(options) ? "::1" : "127.0.0.1";
+  });
+  guardLookup(functions, "lookupService", () => undefined);
 }
 for (const functions of [
   dns,
@@ -66,17 +68,29 @@ for (const functions of [
 ]) {
   for (const key of Object.getOwnPropertyNames(functions)) {
     if (key === "reverse" || key.startsWith("resolve")) {
-      guardLookup(functions, key, () => false);
+      guardLookup(functions, key, () => undefined);
     }
   }
 }
 // A named import of node:dns reads these copies, not the module's own.
 syncBuiltinESMExports();
 
+// lookup takes the family as a number, or as an option given as a number or
+// a name.
+function asksForIPv6(options: unknown): boolean {
+  const family =
+    typeof options === "object" && options !== null && "family" in options
+      ? options.family
+      : options;
+  return family === 6 || family === "IPv6";
+}
+
+// passOn gives the name to look up in place of the one asked for, or
+// undefined to refuse the lookup.
 function guardLookup(
   functions: object,
   key: string,
-  allows: (name: string) => boolean,
+  passOn: (name: string, options: unknown) => string | undefined,
 ): void {
   const original: unknown = Reflect.get(functions, key);
   if (typeof original !== "function") {
@@ -86,11 +100,15 @@ function guardLookup(
     functions,
     key,
     function guardedLookup(this: unknown, ...args: unknown[]): unknown {
-      const [name] = args;
-      if (typeof name === "string" && !allows(name)) {
-        throw new Error(
-          `The gate is offline: refused a DNS lookup of ${name}.`,
-        );
+      const [name, options] = args;
+      if (typeof name === "string") {
+        const passed = passOn(name, options);
+        if (passed === undefined) {
+          throw new Error(
+            `The gate is offline: refused a DNS lookup of ${name}.`,
+          );
+        }
+        args = [passed, ...args.slice(1)];
       }
       const result: unknown = Reflect.apply(original, this, args);
       return result;

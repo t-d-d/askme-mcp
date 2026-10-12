@@ -1,5 +1,13 @@
+import { createHook } from "node:async_hooks";
 import { createSocket } from "node:dgram";
-import { lookup, lookupService, resolve, Resolver } from "node:dns";
+import {
+  lookup,
+  lookupService,
+  resolve,
+  Resolver,
+  type LookupAddress,
+  type LookupOptions,
+} from "node:dns";
 import {
   lookup as lookupAsync,
   resolve4 as resolve4Async,
@@ -96,6 +104,30 @@ describe("fitness: the gate is offline (test-tiers.md)", () => {
     expect(address).toMatch(/^(127\.|::1$)/u);
   });
 
+  it("answers a lookup of localhost itself, so neither the hosts file nor a DNS server is asked", async () => {
+    const asked = watchGetaddrinfo();
+    try {
+      expect(await lookupByCallback("localhost", { family: 6 })).toBe("::1");
+      expect(
+        await lookupByCallback("localhost", { family: "IPv6", all: true }),
+      ).toEqual([{ address: "::1", family: 6 }]);
+      expect(await lookupAsync("localhost", 6)).toEqual({
+        address: "::1",
+        family: 6,
+      });
+      expect(await lookupAsync("localhost", 4)).toEqual({
+        address: "127.0.0.1",
+        family: 4,
+      });
+      expect(await lookupAsync("LocalHost", { all: true })).toEqual([
+        { address: "127.0.0.1", family: 4 },
+      ]);
+    } finally {
+      asked.stop();
+    }
+    expect(asked.names()).toEqual([]);
+  });
+
   it("refuses a datagram to an address that is not loopback", () => {
     const socket = createSocket("udp4");
     try {
@@ -128,6 +160,40 @@ describe("fitness: the gate is offline (test-tiers.md)", () => {
     }
   });
 });
+
+// The callback form of lookup, which also takes a family by name.
+function lookupByCallback(
+  name: string,
+  options: LookupOptions,
+): Promise<string | LookupAddress[]> {
+  return new Promise((resolve, reject) => {
+    lookup(name, options, (error, address) => {
+      if (error) reject(error);
+      else resolve(address);
+    });
+  });
+}
+
+// A lookup reads the hosts file and asks a DNS server through getaddrinfo.
+// Each call, from the callback form or the promise form, makes a
+// GETADDRINFOREQWRAP request, which an async hook sees as it is made. The
+// request carries the name once lookup has filled it in. The hook only
+// watches: a lookup the guard lets through still runs.
+function watchGetaddrinfo(): { names: () => string[]; stop: () => void } {
+  const requests: object[] = [];
+  const hook = createHook({
+    init(_asyncId, type, _triggerAsyncId, resource) {
+      if (type === "GETADDRINFOREQWRAP") requests.push(resource);
+    },
+  }).enable();
+  return {
+    names: () =>
+      requests.map((request) => String(Reflect.get(request, "hostname"))),
+    stop: () => {
+      hook.disable();
+    },
+  };
+}
 
 function portOf(address: string | AddressInfo | null): AddressInfo {
   if (address === null || typeof address === "string") {
