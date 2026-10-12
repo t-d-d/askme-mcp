@@ -223,6 +223,54 @@ describe("the tabs", () => {
       "true",
     );
   });
+
+  it("stay on Everything when a hashtag that left the rules comes back", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#family").click();
+    await page.getByRole("listitem").first().waitFor({ state: "detached" });
+    answer = {
+      ...list,
+      version: list.version + 1,
+      hashtags: hashtags.filter(({ name }) => name !== "family"),
+    };
+    await page.clock.fastForward(pollMs);
+    await page.getByRole("heading", { name: "4 more waiting" }).waitFor();
+    answer = { ...list, version: list.version + 2 };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "#family").waitFor();
+    expect(await tab(page, "Everything").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(await page.getByRole("listitem").count()).toBe(4);
+  });
+
+  it("start again on Everything when a new ask ends an all clear", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#family").click();
+    await page.getByRole("listitem").first().waitFor({ state: "detached" });
+    answer = { ...list, version: list.version + 1, asks: [] };
+    await page.clock.fastForward(pollMs);
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+    answer = {
+      ...list,
+      version: list.version + 2,
+      asks: list.asks.filter(({ id }) => id === "b"),
+    };
+    await page.clock.fastForward(pollMs);
+    await page
+      .getByRole("article")
+      .filter({ hasText: "Which date format should the export use?" })
+      .waitFor();
+    expect(await tab(page, "Everything").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+  });
 });
 
 describe("how the tabs look", () => {

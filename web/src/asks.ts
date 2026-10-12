@@ -61,9 +61,9 @@ export const everything = null;
 // the asks sorted into that hashtag.
 export function onTab<
   Ask extends { sort: { hashtags: readonly string[] } | null },
->(asks: readonly Ask[], tab: Tab): Ask[] {
+>(asks: readonly Ask[], tab: Tab): readonly Ask[] {
   return tab === everything
-    ? [...asks]
+    ? asks
     : asks.filter((ask) => ask.sort?.hashtags.includes(tab) === true);
 }
 

@@ -15,7 +15,7 @@ export function AskList({
   tab,
   now,
 }: {
-  asks: PageAsk[];
+  asks: readonly PageAsk[];
   hashtags: Hashtag[];
   tab: Tab;
   now: number;
