@@ -81,6 +81,12 @@ export function Asks({ card }: { card: string | null }) {
   const tabsGoneWithFocus = useCallback(() => {
     tabsHadFocus.current = true;
   }, []);
+  // Tabs that come back with focus in them clear the flag, so StrictMode in
+  // development, which detaches their ref and attaches it again after focus
+  // has moved to the selected tab, leaves it clear.
+  const tabsBackWithFocus = useCallback(() => {
+    tabsHadFocus.current = false;
+  }, []);
   const actions = useMemo<AskActions>(
     () => ({ speak, markOpened, dismiss }),
     [speak, markOpened, dismiss],
@@ -183,6 +189,7 @@ export function Asks({ card }: { card: string | null }) {
                 selected={tab}
                 onSelect={choose}
                 onGoneWithFocus={tabsGoneWithFocus}
+                onBackWithFocus={tabsBackWithFocus}
                 ref={tabs}
               />
               {heldHere > 0 && heldLine(false)}
