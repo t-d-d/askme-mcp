@@ -55,7 +55,7 @@ With one ask waiting, the list keeps its place and says nothing else is waiting.
 | `--text-3` | `#55625B` | Small labels, ages, site names, notes |
 | `--line` | `#D3DAD2` | Hairlines between rows |
 | `--border` | `#C3CCC3` | The edge of a text box or an outlined button |
-| `--neutral-tint` | `#DDE2DC` | The Demo tag, "Not sorted yet", neutral second buttons, a disabled button |
+| `--neutral-tint` | `#DDE2DC` | "Not sorted yet", neutral second buttons, a disabled button |
 
 ### Hashtag colours
 
@@ -129,7 +129,7 @@ There are no shadows and no gradients. Depth comes from the white card on the gr
 
 ### Header
 
-The wordmark, a "Demo" tag in `--neutral-tint`, and at the right one control that opens the rules. At desktop width the right side has two text links: Rules and Connect agents.
+The wordmark, and at the right one control that opens the rules. At desktop width the right side has two text links: Rules and Connect agents. Nothing sits beside the wordmark: a tag there looks like a hashtag or a tab. The demo notice is on the signed-out page and on Connect your agents.
 
 ### Tabs
 
