@@ -29,6 +29,7 @@ const ask: StoredAsk = {
   area: "The online shop",
   spokenDetail: "The fix is ready, and the tests pass.",
   postedAt: "2026-10-11T09:30:00.000Z",
+  storedAt: "2026-10-11T09:30:00.000Z",
 };
 
 const rules: AccountRules = {
