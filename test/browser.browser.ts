@@ -42,7 +42,7 @@ describe("openPage", () => {
     expect(late).toEqual([]);
   });
 
-  it("stops the page's clock from the start, until a test moves it on", async () => {
+  it("gives the page a stopped clock, which moves only when a test moves it on", async () => {
     const open = await openPage(
       inject("pageUrl"),
       { width: 390, height: 844 },
