@@ -10,7 +10,8 @@ export const pagePaths = {
   rules: "/api/rules",
 } as const;
 
-// How much an ask matters, judged on what is stalled, from most to least.
+// How much an ask matters, judged on what it would cost if the person never
+// acted, from most to least.
 // Sorting picks one, and the page orders by it. It is never shown.
 export const levels = ["high", "normal", "low"] as const;
 
