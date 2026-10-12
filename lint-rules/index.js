@@ -5,8 +5,9 @@ import { sortKeys } from "../service/src/store/keys.ts";
 // Whether a string is a sort key the table uses (ADR 13), written whole or
 // as the start of one. The names come from the key module, where a name
 // that ends in # is a prefix.
+const sortKeyNames = Object.values(sortKeys);
 const isSortKey = (text) =>
-  Object.values(sortKeys).some((name) =>
+  sortKeyNames.some((name) =>
     name.endsWith("#") ? text.startsWith(name) : text === name,
   );
 

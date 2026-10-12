@@ -111,6 +111,7 @@ describe("fitness: one key builder (table-design.md)", () => {
 
   it.each([
     'export const k = { sk: "META" };\n',
+    'export const k = { sk: "RULES" };\n',
     'export const k = (id: string) => ({ sk: "OPEN#" + id });\n',
     "export const k = (id: string) => ({ sk: `CLOSED#${id}` });\n",
     'export const k = { sk: "DEDUPE#abc" };\n',
