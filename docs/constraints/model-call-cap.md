@@ -21,13 +21,14 @@ for everyone.
 - Over the cap, a sort sends nothing, leaves the ask as it was, and
   logs at info. A model failure on an earlier try is still logged at
   warn.
-- The first sort the cap refuses in a day records on META when the
-  cap resets, through the write function. A refused save writes
-  nothing.
+- The first call the cap refuses in a day, a sort's or a save's,
+  records on META when the cap resets, through the write function. A
+  refused save still saves none of the rules.
 - Over the cap, a rules save whose rules need reading is refused
   with cap_reached before anything is saved. Empty rules make no
-  call, so their save is not refused. A save of unchanged text is
-  refused while the cap is spent ([sort-queue.md](sort-queue.md)).
+  call, so their save is not refused. A save of unchanged text that
+  is not empty is refused while the cap is spent
+  ([sort-queue.md](sort-queue.md)).
 - The cap never refuses an agent.
 - The eval is outside the cap. It runs from the repo, on its own key.
 

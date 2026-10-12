@@ -10,8 +10,9 @@ ask calling the model at once.
 
 - The FIFO queue is the sort function's only trigger.
 - Posting an ask queues one job. Saving changed rules queues one for
-  each open ask, ten to a call. Nothing else queues a job. A send the queue
-  does not take is logged at warn.
+  each open ask, ten to a call. A save of unchanged text queues fewer,
+  as below. Nothing else queues a job. A send the queue does not take
+  is logged at warn.
 - A job names the account and the ask. Its group is the ask. Its
   deduplication id is the account, the ask and the time of the post
   or save that queued it. The job reads the rules in force when it
@@ -28,12 +29,14 @@ ask calling the model at once.
   the message go. A later delivery is let go before any work.
 - A save of unchanged text, whose last reading succeeded, reads
   nothing, leaves the rules version alone, records when it was made
-  and queues only the asks behind the rules in force. It is refused
-  while the cap is spent.
-- The poll's answer gives each ask one state, worked out from the
-  table: up to date when sorted with the rules in force, sorting when
-  behind them for less than half an hour since the later of its
-  posting and the last save, and stopped after that.
+  and queues only the asks behind the rules in force. Unless the text
+  is empty, it is refused while the cap is spent.
+- Each ask has one state, worked out from the table: up to date when
+  sorted with the rules in force, sorting when behind them for less
+  than half an hour since the later of when it was stored and the
+  last save, and stopped after that. The poll's full answer gives
+  each ask behind the rules the time it turns stopped, and the page
+  works out the state as time passes.
 - Only askme's role may send to the queue.
 
 ## Do not

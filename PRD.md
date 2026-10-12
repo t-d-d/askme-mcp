@@ -42,8 +42,8 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 - One text box holds the rules in plain English.
 - On save, the service lists the hashtags and any time windows it read from the rules, and shows them back.
 - Saving re-sorts every open ask, while the account's daily cap on model calls lasts. Each card keeps its old hashtags until its new sort is stored. An ask the cap leaves out keeps its old sort, or none, until the rules are saved again after the cap resets at the start of the next UTC day.
-- Once the cap is spent, saving the rules is refused until it resets, and nothing is saved. Saving an empty box still works and re-sorts every open ask, since it needs no model call.
-- Saving works on unchanged rules too. It reads nothing, and sorts again only the asks still on older rules.
+- Once the cap is spent, saving the rules is refused until it resets, and the rules are not saved. Saving an empty box still works and re-sorts every open ask, since it needs no model call.
+- Saving works on unchanged rules too. When their last reading succeeded, it reads nothing, and sorts again only the asks still on older rules. When it failed, the save reads them again, as any save does.
 - Time windows use the user's time zone, taken from the browser on save.
 - A new account starts with example rules in the box. With the box empty there are no hashtags, and every ask appears in Everything.
 - Only the signed-in user can read or change the rules.
