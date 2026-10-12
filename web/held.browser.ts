@@ -20,6 +20,7 @@ import {
   type OpenPage,
 } from "../test/browser";
 import { pollMs } from "./src/poll";
+import { undoMs } from "./src/useDismissing";
 
 type Page = OpenPage["page"];
 type Locator = ReturnType<Page["locator"]>;
@@ -27,8 +28,6 @@ type Locator = ReturnType<Page["locator"]>;
 const phone = { width: 390, height: 844 };
 const session = "test-session-token";
 const minute = 60_000;
-// How long the note with Undo shows after a dismissal.
-const undoMs = 5000;
 
 // Monday 12 October 2026, 7pm in London, where work's hours have closed.
 const evening = new Date("2026-10-12T18:00:00Z");

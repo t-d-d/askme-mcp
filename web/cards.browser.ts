@@ -683,10 +683,12 @@ describe("dismissing", () => {
     );
   });
 
-  // The note shows as the last ask goes, and goes a few seconds later.
+  // The note shows as the last ask goes, and goes a few seconds later. At
+  // 360 by 580 there is room to hold the headline, but little to spare.
   it.each([
     ["390 by 844", phone],
     ["360 by 690", { width: 360, height: 690 }],
+    ["360 by 580", { width: 360, height: 580 }],
   ])(
     "leaves All clear's headline where it is on a %s screen while the note shows and after it goes",
     async (_, screen) => {

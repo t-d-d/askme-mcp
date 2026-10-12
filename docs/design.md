@@ -112,7 +112,7 @@ Lines of running text stay under 80 characters. At desktop width the spoken text
 | Main button height | 56px, or 52px on a settings screen |
 | Side padding | 20px for text, 16px outside a card, 22px inside one |
 | Space at the foot of a screen | 26px |
-| Room at the foot for a note | 56px, kept while a note shows |
+| Room at the foot for a note | 57px, the note's height, kept while it shows |
 | Gap between buttons | 8px |
 | Phone layout | Designed at 390px wide. Nothing scrolls sideways. |
 | Desktop layout | Content is at most 1080px wide and centred |
@@ -198,7 +198,7 @@ Shown when nothing is waiting and the account has had at least one ask.
 
 - "All clear." at 146px, on two lines.
 - The headline and its two lines sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the held line. On a screen too short for that, 26px stays above them.
-- They stay where they are while a note shows at the foot of the screen, and the held line moves up out of its way. On a screen too short for that, they move up as well, or the screen scrolls further, so the note covers neither the last line nor the held line.
+- They stay where they are while a note shows at the foot of the screen. The held line moves up out of the note's way. On a screen too short for that, they move up too, or the screen scrolls further, until 26px stays between the last line and the held line or the note.
 - Both lines balance their line breaks, so a line that wraps never leaves a word or two on their own.
 - A fixed line in ink: "Your agents are getting on with it."
 - A second line in `--text-2` that changes on each visit:
