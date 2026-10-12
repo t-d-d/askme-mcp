@@ -12,7 +12,8 @@ import { heldAsks } from "./hours";
 import { NewAccount } from "./NewAccount";
 import { OpenCard } from "./OpenCard";
 import { hashtagColours } from "./palette";
-import { sortingLine, sortingState } from "./sorting";
+import { clockTime } from "./resets";
+import { capSpentUntil, sortingLine, sortingState } from "./sorting";
 import { SortingLine } from "./SortingLine";
 import { browserSpeech } from "./speech";
 import { Tabs, type TabsHandle } from "./Tabs";
@@ -57,9 +58,11 @@ import { inListOrder, lapsedAsks } from "./waiting";
 // hashtag has no hours, so it holds nothing back.
 //
 // One line under the tabs, below the held and lapsed lines, says how
-// sorting stands: how many asks are being sorted with the rules, or how
-// many couldn't be sorted. It counts every ask, on every tab, as of the last
-// poll, so an ask turns from sorting to stopped with no reload.
+// sorting stands: that today's sorting limit is reached and when it resets,
+// on the clock where the person is, or how many asks are being sorted with
+// the rules, or how many couldn't be sorted. It counts every ask, on every
+// tab, as of the last poll, so an ask turns from sorting to stopped, and the
+// limit goes once it resets, with no reload.
 //
 // An ask the person has opened shows as opened, and one they have dismissed
 // leaves the list, before the next poll says so.
@@ -123,7 +126,11 @@ export function Asks({ card }: { card: string | null }) {
   );
   if (showingHeld && held.size === 0) showHeld(false);
   if (showingLapsed && lapsed.size === 0) showLapsed(false);
-  const sorting = sortingLine(sortingState(asks, polledAt));
+  const capResets = capSpentUntil(data?.modelCapResetsAt, polledAt);
+  const sorting = sortingLine(
+    sortingState(asks, polledAt),
+    capResets === null ? null : clockTime(capResets),
+  );
   const waiting = (list: readonly PageAsk[]) =>
     list.filter(
       ({ id }) =>

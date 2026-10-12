@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
 import { sortAttempts } from "../service/src/sorter";
+import { sortKeys } from "../service/src/store/keys";
 import { pagePaths } from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
 import { fakes, type ModelCall } from "../test/fakes";
@@ -77,6 +78,25 @@ const sortingCallsFor = (summary: string): ModelCall[] =>
     JSON.stringify(call.body).includes(summary),
   );
 
+// The account's items, read straight from the table, apart from the count
+// of model calls, which every try raises whatever the model replies
+// (ADR 21), and that count.
+async function itemsAndCalls(sub: string) {
+  const items = await storedItems(
+    inject("databaseEndpoint"),
+    inject("tableName"),
+    sub,
+  );
+  const counted = (item: Record<string, unknown>) =>
+    typeof item.sk === "string" && item.sk.startsWith(sortKeys.modelCount);
+  return {
+    items: items.filter((item) => !counted(item)),
+    calls: items
+      .filter(counted)
+      .reduce((sum, item) => sum + Number(item.count), 0),
+  };
+}
+
 describe("fitness: a bad reply changes nothing (untrusted-ask-text.md)", () => {
   it.each([
     [
@@ -97,21 +117,14 @@ describe("fitness: a bad reply changes nothing (untrusted-ask-text.md)", () => {
       const posted = idAndStatus.parse(
         (await callTool(sub, "ask", ask)).structuredContent,
       );
-      const before = await storedItems(
-        inject("databaseEndpoint"),
-        inject("tableName"),
-        sub,
-      );
+      const before = await itemsAndCalls(sub);
       for (let n = 0; n < sortAttempts; n += 1)
         fakes.model.reply({ json: reply });
       await runSorts();
-      const after = await storedItems(
-        inject("databaseEndpoint"),
-        inject("tableName"),
-        sub,
-      );
-      expect(after).toEqual(before);
-      const stored = after.find((item) => item.id === posted.id);
+      const after = await itemsAndCalls(sub);
+      expect(after.items).toEqual(before.items);
+      expect(after.calls).toBe(before.calls + sortAttempts);
+      const stored = after.items.find((item) => item.id === posted.id);
       expect(stored).toBeDefined();
       expect(stored?.sort).toBeUndefined();
     },

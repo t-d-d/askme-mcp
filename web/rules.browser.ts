@@ -14,6 +14,7 @@ import {
   type OpenPage,
 } from "../test/browser";
 import { palette } from "./src/palette";
+import { resetTime } from "./src/resets";
 
 const phone = { width: 390, height: 844 };
 const session = "test-session-token";
@@ -275,6 +276,36 @@ describe("the rules screen", () => {
     expect(await page.getByText("Sorting your asks again.").count()).toBe(0);
   });
 
+  it("drops the note that asks are being sorted again once a later poll finds today's sorting limit reached", async () => {
+    let answer = behind(-60_000);
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      email,
+      timeZone: "Europe/London",
+      api: {
+        [pagePaths.rules]: rulesApi(saved, () => {
+          answer = behind(60_000);
+          return saved;
+        }),
+        [pagePaths.asks]: new Answering(() => answer),
+      },
+    });
+    const { page } = view;
+    const save = page.getByRole("button", { name: "Save rules" });
+    await expect.poll(() => save.isEnabled()).toBe(true);
+    await save.click();
+    await page.getByText("Sorting your asks again.").waitFor();
+    answer = {
+      ...behind(60_000),
+      version: 2,
+      modelCapResetsAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+    };
+    await page
+      .getByText("Saved. The button wakes up when you change the text.")
+      .waitFor({ timeout: 15_000 });
+    expect(await save.isDisabled()).toBe(true);
+  });
+
   it("keeps Save rules neutral while asks are still being sorted", async () => {
     view = await openRules(saved, phone, "Europe/London", behind(60_000));
     const { page } = view;
@@ -286,6 +317,57 @@ describe("the rules screen", () => {
     expect(
       await page.getByRole("button", { name: "Save rules" }).isDisabled(),
     ).toBe(true);
+  });
+
+  it("keeps Save rules neutral while asks couldn't be sorted and today's sorting limit is reached, until the text changes", async () => {
+    view = await openRules(saved, phone, "Europe/London", {
+      ...behind(-60_000),
+      modelCapResetsAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+    });
+    const { page } = view;
+    await expect
+      .poll(() => view?.apiCalls.some(({ path }) => path === pagePaths.asks))
+      .toBe(true);
+    await page
+      .getByText("Saved. The button wakes up when you change the text.")
+      .waitFor();
+    const save = page.getByRole("button", { name: "Save rules" });
+    expect(await save.isDisabled()).toBe(true);
+    expect(
+      await save.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      ),
+    ).toBe(await computedColour(page, "var(--neutral-tint)"));
+    await page.getByRole("textbox").fill(`${text}\n\n#family is home.`);
+    expect(await save.isEnabled()).toBe(true);
+  });
+
+  it("says today's limit is reached, and when it resets, when the save is refused at the cap, and keeps the text", async () => {
+    const changed = `${text}\n\n#family is home.`;
+    view = await openRules(
+      rulesApi(
+        saved,
+        () =>
+          new Status(429, {
+            code: "cap_reached",
+            class: "do not retry",
+            message: "Saving these rules needs model calls.",
+          }),
+      ),
+    );
+    const { page } = view;
+    await page.getByRole("textbox").fill(changed);
+    await page.getByRole("button", { name: "Save rules" }).click();
+    await page
+      .getByText(
+        `You've reached today's limit. It resets at ${resetTime(Date.now(), "Europe/London")}.`,
+      )
+      .waitFor();
+    expect(await page.getByRole("textbox").inputValue()).toBe(changed);
+    expect(await rows(page)).toEqual([
+      "#work\nWeekdays, 8am to 6pm",
+      "#shop\nAny time",
+    ]);
   });
 
   it("saves the text, says it is reading the rules, then shows the hashtags read", async () => {

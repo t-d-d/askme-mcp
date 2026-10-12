@@ -9,12 +9,24 @@
 // delivers it again about six minutes later. On the third delivery it logs
 // the failure at warn and lets the message go, and the ask waits for the
 // rules to be saved again.
+//
+// Each try is counted against the account's daily cap on model calls just
+// before it is sent (ADR 21). Over the cap, the sort sends nothing and
+// leaves the ask as it was. The function logs it at info, as the cap is
+// working as designed, and lets the message go: a job held on the queue
+// would come round again before the cap resets (ADR 22).
 import { z } from "zod";
 import { readEnv } from "./env";
 import { jobAccount, type AccountId } from "./identity";
 import { sortJobSchema } from "./jobs";
 import { createLogger, errorClass, type Logger } from "./log";
-import { createModel, defaultModel, ModelFailed, type Model } from "./model";
+import {
+  CapReached,
+  createCountedModel,
+  defaultModel,
+  ModelFailed,
+  type CountedModel,
+} from "./model";
 import { createKeyReader } from "./secrets";
 import { parseSortReply, sortingPrompt, type Sort } from "./sort";
 import { createStore, type Store } from "./store/store";
@@ -43,14 +55,17 @@ export const emptyRulesSort: Sort = {
 
 export interface SortContext {
   store: Pick<Store, "askToSort" | "recordSort">;
-  model: Model;
+  model: Pick<CountedModel, "forAccount">;
   log: Logger;
   now: Date;
 }
 
 // What became of a sort: done, as the ask is sorted with the rules in force,
-// already was, or has closed; or failed, and why.
-export type SortOutcome = "done" | { failed: string };
+// already was, or has closed; capped, as the account's daily cap on model
+// calls refused a try, with why the try before it failed, if one did; or
+// failed, and why.
+export type SortOutcome =
+  "done" | { capped: true; failed?: string } | { failed: string };
 
 // Sorts one open ask with the rules in force, unless it is already sorted
 // with them, and stores the sort. A job for an ask already up to date ends
@@ -68,6 +83,7 @@ export async function sortAsk(
   }
   let sort: Sort | undefined;
   let failure = "reply-rejected";
+  let tried = false;
   if (rules.text.trim() === "") {
     sort = emptyRulesSort;
   } else {
@@ -82,9 +98,10 @@ export async function sortAsk(
         sessionLink: ask.sessionLink,
       },
     );
+    const calls = model.forAccount(account);
     for (let tries = 0; tries < sortAttempts && sort === undefined; tries++) {
       try {
-        const reply = await model.reply({
+        const reply = await calls.reply({
           ...prompt,
           schemaName: "sort",
           maxTokens: sortMaxTokens,
@@ -93,9 +110,13 @@ export async function sortAsk(
         sort = parseSortReply(reply, rules.hashtags);
         failure = "reply-rejected";
       } catch (error) {
+        if (error instanceof CapReached) {
+          return tried ? { capped: true, failed: failure } : { capped: true };
+        }
         if (!(error instanceof ModelFailed)) throw error;
         failure = error.reason;
       }
+      tried = true;
     }
   }
   if (sort === undefined) return { failed: failure };
@@ -159,6 +180,14 @@ export async function runJob(
     outcome = { failed: errorClass(error) };
   }
   if (outcome === "done") return false;
+  if ("capped" in outcome) {
+    // A try before the cap failed, and will not be tried again.
+    if (outcome.failed !== undefined) {
+      log.warn("sort-failed", { ...at, errorClass: outcome.failed });
+    }
+    log.info("sort-capped", at);
+    return false;
+  }
   if (message.receives >= sortDeliveries) {
     log.warn("sort-failed", { ...at, errorClass: outcome.failed });
     return false;
@@ -169,7 +198,7 @@ export async function runJob(
 
 interface Services {
   store: Store;
-  model: Model;
+  model: CountedModel;
 }
 
 // Set up on the first run, so that a test can set the environment first.
@@ -178,18 +207,20 @@ let services: Services | undefined;
 function ready(): Services {
   if (services === undefined) {
     const env = readEnv();
+    const store = createStore({
+      tableName: env.tableName,
+      endpoint: env.databaseEndpoint,
+    });
     services = {
-      store: createStore({
-        tableName: env.tableName,
-        endpoint: env.databaseEndpoint,
-      }),
-      model: createModel({
+      store,
+      model: createCountedModel({
         endpoint: env.modelEndpoint,
         model: defaultModel,
         key: createKeyReader({
           parameter: env.modelKeyParameter,
           endpoint: env.ssmEndpoint,
         }),
+        store,
       }),
     };
   }

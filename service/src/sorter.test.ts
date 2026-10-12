@@ -3,7 +3,7 @@ import { z } from "zod";
 import { captureLogs } from "../../test/logs";
 import { callerOf, type AccountId } from "./identity";
 import { createLogger } from "./log";
-import { ModelFailed, type Model, type ModelRequest } from "./model";
+import { CapReached, ModelFailed, type ModelRequest } from "./model";
 import type { NewSort, StoredAsk, AccountRules } from "./store/store";
 import {
   emptyRulesSort,
@@ -71,20 +71,30 @@ function memoryStore(
   };
 }
 
-// A model that gives each reply in turn, and keeps what it was asked.
+// A model that gives each reply in turn, and keeps what it was asked. A
+// failure in the list, of the model or at the cap, is thrown in its turn.
+// Every call is made for the owner's account.
 function memoryModel(replies: unknown[]) {
   const asked: ModelRequest[] = [];
-  const model: Model = {
-    reply(request) {
-      asked.push(request);
-      const next = replies.shift();
-      return next instanceof ModelFailed
-        ? Promise.reject(next)
-        : Promise.resolve(next);
+  const model: SortContext["model"] = {
+    forAccount: (account) => {
+      expect(account).toBe(owner);
+      return {
+        reply(request) {
+          asked.push(request);
+          const next = replies.shift();
+          return next instanceof Error
+            ? Promise.reject(next)
+            : Promise.resolve(next);
+        },
+      };
     },
   };
   return { model, asked };
 }
+
+// The cap refusing a call, as the counted model does, having sent nothing.
+const capped = () => new CapReached(new Date("2026-10-12T00:00:00.000Z"));
 
 const good = { hashtags: ["shop"], level: "high", reason: "Customers see it." };
 const now = new Date("2026-10-11T09:31:00.000Z");
@@ -106,7 +116,7 @@ const logged = () =>
 
 const context = (
   memory: ReturnType<typeof memoryStore>,
-  model: Model,
+  model: SortContext["model"],
 ): SortContext => ({
   store: memory.store,
   model,
@@ -114,8 +124,10 @@ const context = (
   now,
 });
 
-const run = (memory: ReturnType<typeof memoryStore>, model: Model) =>
-  sortAsk(owner, ask.id, context(memory, model));
+const run = (
+  memory: ReturnType<typeof memoryStore>,
+  model: SortContext["model"],
+) => sortAsk(owner, ask.id, context(memory, model));
 
 describe("sorting an ask", () => {
   it("asks the model once, with the account's rules and the ask, and stores the sort with the rules version", async () => {
@@ -222,6 +234,29 @@ describe("sorting an ask", () => {
     expect(logged()).toEqual([]);
   });
 
+  it("stores nothing when the cap refuses the call, and says so to the job that asked", async () => {
+    const memory = memoryStore({ ask, rules });
+    const { model, asked } = memoryModel([capped()]);
+    expect(await run(memory, model)).toEqual({ capped: true });
+    expect(asked).toHaveLength(1);
+    expect(memory.recorded).toEqual([]);
+    expect(logged()).toEqual([]);
+  });
+
+  it("tries no more once the cap refuses, and says why the try before it failed", async () => {
+    const memory = memoryStore({ ask, rules });
+    const { model, asked } = memoryModel([
+      new ModelFailed("status-502"),
+      capped(),
+    ]);
+    expect(await run(memory, model)).toEqual({
+      capped: true,
+      failed: "status-502",
+    });
+    expect(asked).toHaveLength(sortAttempts);
+    expect(memory.recorded).toEqual([]);
+  });
+
   it("is done when the ask is no longer open, or already sorted with these rules", async () => {
     const { model } = memoryModel([]);
     expect(await run(memoryStore(undefined), model)).toBe("done");
@@ -243,7 +278,7 @@ describe("a job from the queue", () => {
   const deliver = (
     receives: number,
     memory: ReturnType<typeof memoryStore>,
-    model: Model,
+    model: SortContext["model"],
   ) =>
     runJob(job(receives), createLogger("req_sort"), () =>
       context(memory, model),
@@ -288,6 +323,50 @@ describe("a job from the queue", () => {
         accountId: owner,
         askId: ask.id,
         errorClass: "status-503",
+      }),
+    ]);
+  });
+
+  it("is let go at the cap on any delivery, with one info line, since the cap is working as designed", async () => {
+    for (const receives of [1, sortDeliveries]) {
+      capture.lines.length = 0;
+      const memory = memoryStore({ ask, rules });
+      expect(
+        await deliver(receives, memory, memoryModel([capped()]).model),
+      ).toBe(false);
+      expect(memory.recorded).toEqual([]);
+      expect(logged()).toEqual([
+        expect.objectContaining({
+          level: "info",
+          event: "sort-capped",
+          accountId: owner,
+          askId: ask.id,
+        }),
+      ]);
+    }
+  });
+
+  it("still logs a model failure on the try before the cap at warn, as the job is let go", async () => {
+    expect(
+      await deliver(
+        1,
+        memoryStore({ ask, rules }),
+        memoryModel([new ModelFailed("status-503"), capped()]).model,
+      ),
+    ).toBe(false);
+    expect(logged()).toEqual([
+      expect.objectContaining({
+        level: "warn",
+        event: "sort-failed",
+        accountId: owner,
+        askId: ask.id,
+        errorClass: "status-503",
+      }),
+      expect.objectContaining({
+        level: "info",
+        event: "sort-capped",
+        accountId: owner,
+        askId: ask.id,
       }),
     ]);
   });

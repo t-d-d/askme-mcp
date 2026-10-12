@@ -55,16 +55,19 @@ const listOf = (asks: AsksAnswer["asks"]): AsksAnswer => ({
   asks,
 });
 
-const open = (list: AsksAnswer, time = evening) =>
+const open = (list: AsksAnswer, time = evening, timeZone?: string) =>
   openPage(inject("pageUrl"), phone, {
     session,
     clock: time,
+    ...(timeZone === undefined ? {} : { timeZone }),
     api: { [pagePaths.asks]: new Answering((url) => answerPoll(url, list)) },
   });
 
 // The line under the tabs that says how sorting stands, found by its words.
 const line = (page: Page) =>
-  page.getByText(/^Sorting \d+ asks? with your rules$|couldn't be sorted/u);
+  page.getByText(
+    /^Sorting \d+ asks? with your rules$|couldn't be sorted|sorting limit is reached/u,
+  );
 
 const later = new Date(evening.getTime() + 10 * minute);
 const earlier = new Date(evening.getTime() - 10 * minute);
@@ -175,6 +178,55 @@ describe("the sorting line", () => {
     expect(sorting[0]).toBe(await computedColour(page, "var(--text-2)"));
     expect(await start("Sorting 2 asks with your rules")).toBe(
       await start("1 held until its hours"),
+    );
+  });
+});
+
+describe("the sorting line while today's sorting limit is reached", () => {
+  // The cap on model calls resets at midnight UTC: 1am in London, and 8pm
+  // the evening before in New York.
+  const resets = "2026-10-13T00:00:00.000Z";
+  const capped = (asks: AsksAnswer["asks"]): AsksAnswer => ({
+    ...listOf(asks),
+    modelCapResetsAt: resets,
+  });
+
+  it("says the limit is reached and when it resets, in the person's time zone, in place of the rest", async () => {
+    view = await open(
+      capped([ask("a", "shop", later), ask("b", "shop", earlier)]),
+      evening,
+      "Europe/London",
+    );
+    const { page } = view;
+    await page
+      .getByText("Today's sorting limit is reached. It resets at 01:00.")
+      .waitFor();
+    expect(await line(page).count()).toBe(1);
+  });
+
+  it("gives the time the limit resets on the clock where the person is", async () => {
+    view = await open(capped([ask("a", "shop")]), evening, "America/New_York");
+    await view.page
+      .getByText("Today's sorting limit is reached. It resets at 20:00.")
+      .waitFor();
+  });
+
+  it("is gone once the limit resets, with an idle poll and no reload", async () => {
+    const lastMinute = new Date(Date.parse(resets) - minute);
+    view = await open(
+      capped([ask("a", "shop", new Date(Date.parse(resets) + 10 * minute))]),
+      lastMinute,
+      "Europe/London",
+    );
+    const { page } = view;
+    await page.getByText("Today's sorting limit is reached.").waitFor();
+    await page.clock.fastForward(minute + pollMs);
+    await page.getByText("Sorting 1 ask with your rules").waitFor();
+    expect(await page.getByText("sorting limit is reached").count()).toBe(0);
+    const polls = view.apiCalls.filter(({ path }) => path === pagePaths.asks);
+    expect(polls.length).toBeGreaterThan(1);
+    expect(polls.slice(1).every(({ query }) => query === "?since=3")).toBe(
+      true,
     );
   });
 });

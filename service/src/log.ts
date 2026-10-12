@@ -63,6 +63,10 @@ export const events = [
   "sort-retried",
   // An ask was sorted, and its sort stored.
   "ask-sorted",
+  // A sort reached the account's daily cap on model calls, so it sent
+  // nothing and its job was let go. The ask keeps what it had, until the
+  // rules are saved after the cap resets. Expected, so logged at info.
+  "sort-capped",
   // A sort failed on its job's last delivery, or a delivery past the last
   // came, so the job was let go. The ask keeps what it had, unsorted or its
   // old sort, until the rules are saved again. Logged at warn.
@@ -78,6 +82,10 @@ export const events = [
   // A save of the rules came over the account's limit for the minute, and
   // was refused with rate_limited. Expected, so logged at info.
   "rules-limited",
+  // A save of the rules that needed the model was refused with cap_reached,
+  // as the account's daily cap on model calls was spent. Expected, so
+  // logged at info.
+  "rules-capped",
   // Something failed that the service did not expect. Logged at error.
   "request-failed",
 ] as const;

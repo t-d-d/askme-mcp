@@ -97,12 +97,18 @@ const link = z.url({ protocol: /^https$/u });
 // The time zone is the one the rules were saved in, which their hours use.
 // It is absent until rules are saved with one, and the page then uses its
 // own.
+//
+// While the account's daily cap on model calls is spent, the answer carries
+// when it resets, the next midnight UTC (ADR 22). It is there from the
+// first call the cap refuses, and only while that time is ahead. Nothing is
+// written when it passes, so the page stops showing the cap by the clock.
 export const asksAnswer = z.object({
   version: z.number().int().nonnegative(),
   everAsked: z.boolean(),
   hashtags: z.array(hashtag),
   formerHashtags: z.array(hashtag),
   timeZone: z.string().optional(),
+  modelCapResetsAt: z.iso.datetime().optional(),
   asks: z.array(
     z.object({
       id: z.string(),

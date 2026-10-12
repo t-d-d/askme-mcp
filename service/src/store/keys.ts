@@ -27,6 +27,7 @@ export const sortKeys = {
   pollCount: "POLL#",
   askCount: "RATE#",
   rulesSaveCount: "SAVE#",
+  modelCount: "MODEL#",
 } as const;
 
 export const keys = {
@@ -80,5 +81,11 @@ export const keys = {
   rulesSaveCount: (account: AccountId, window: string): Key => ({
     pk: account,
     sk: `${sortKeys.rulesSaveCount}${window}`,
+  }),
+  // The count of model calls for one UTC day, named by the minute it starts,
+  // as 2026-10-12T00:00 (ADR 21).
+  modelCount: (account: AccountId, window: string): Key => ({
+    pk: account,
+    sk: `${sortKeys.modelCount}${window}`,
   }),
 };

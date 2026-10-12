@@ -24,6 +24,7 @@ import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, type Captured } from "../test/logs";
 import { connect, origin } from "../test/mcp";
+import { setModelCalls } from "../test/model-cap";
 
 const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
@@ -420,6 +421,43 @@ describe("fitness: an unchanged save calls no model (sort-queue.md)", () => {
     expect(Date.parse((await sortingUntil(sub, behind)) ?? "")).toBe(
       Date.parse(rulesAfter.savedAt ?? "") + sortingMs,
     );
+  });
+
+  it("is refused with cap_reached while the cap is spent, and saves and queues nothing", async () => {
+    const sub = newAccount();
+    const owner = accountId(sub);
+    await saveRead(sub, "#work first.", ["work"]);
+    await postEarlier(
+      sub,
+      { summary: "Behind", area: "Work", spokenDetail: "Behind." },
+      new Date(Date.now() - 40 * minute),
+    );
+    const rulesBefore = await store.rules(owner);
+    await setModelCalls(owner);
+    const from = fakes.queue.sent.length;
+    const response = await saveRules(sub, "#work first.");
+    expect(response.status).toBe(429);
+    expect(z.object({ code: z.string() }).parse(await response.json())).toEqual(
+      { code: "cap_reached" },
+    );
+    expect(await store.rules(owner)).toEqual(rulesBefore);
+    expect(sentSince(from, sub)).toEqual([]);
+  });
+
+  it("still queues the asks behind the rules while the cap is spent when the text is empty", async () => {
+    const sub = newAccount();
+    expect((await saveRules(sub, "")).status).toBe(200);
+    const behind = await postEarlier(
+      sub,
+      { summary: "Behind", area: "Work", spokenDetail: "Behind." },
+      new Date(Date.now() - 40 * minute),
+    );
+    await setModelCalls(accountId(sub));
+    const from = fakes.queue.sent.length;
+    expect((await saveRules(sub, "")).status).toBe(200);
+    expect(sentSince(from, sub).map(({ groupId }) => groupId)).toEqual([
+      behind,
+    ]);
   });
 
   it("reads the rules again when their last reading failed, as Try again does", async () => {
