@@ -257,6 +257,68 @@ describe("holding asks back until their hours", () => {
     );
   });
 
+  it("moves focus to the selected tab when it goes at a poll with focus, and the tabs stay", async () => {
+    // Tuesday, a minute before work's hours open in London.
+    const early = new Date("2026-10-13T06:59:00Z");
+    view = await open(listOf(asksAt(early)), early);
+    const { page } = view;
+    await tab(page, "#shop").click();
+    await page.getByText("1 held until its hours").waitFor();
+    const show = page.getByRole("button", { name: "Show them" });
+    await show.focus();
+    expect(await focused(show)).toBe(true);
+    await page.clock.fastForward(minute + pollMs);
+    await page.getByText(/held/u).waitFor({ state: "detached" });
+    expect(await focused(tab(page, "#shop"))).toBe(true);
+  });
+
+  it("moves focus to All clear when it goes at a poll with focus at the foot of All clear", async () => {
+    const list = listOf(asksAt(evening).slice(0, 2));
+    let answer = list;
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: evening,
+      api: {
+        [pagePaths.asks]: new Answering((url) => answerPoll(url, answer)),
+      },
+    });
+    const { page } = view;
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+    await page.getByRole("button", { name: "Show them" }).focus();
+    // askme drops both held asks, so the list stays all clear.
+    answer = { ...list, version: list.version + 1, asks: [] };
+    await page.clock.fastForward(pollMs);
+    await page.getByText(/held/u).waitFor({ state: "detached" });
+    expect(
+      await focused(page.getByRole("heading", { name: "All clear." })),
+    ).toBe(true);
+  });
+
+  it("moves focus to All clear when it goes at a poll with focus under the tabs, and the tabs go", async () => {
+    const list = listOf(asksAt(evening).slice(0, 2));
+    let answer = list;
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: evening,
+      api: {
+        [pagePaths.asks]: new Answering((url) => answerPoll(url, answer)),
+      },
+    });
+    const { page } = view;
+    await page.getByRole("button", { name: "Show them" }).click();
+    await page.getByRole("navigation", { name: "Hashtags" }).waitFor();
+    await page.getByRole("button", { name: "Hide them" }).focus();
+    // askme drops both held asks, so the list goes all clear.
+    answer = { ...list, version: list.version + 1, asks: [] };
+    await page.clock.fastForward(pollMs);
+    await page
+      .getByRole("navigation", { name: "Hashtags" })
+      .waitFor({ state: "detached" });
+    expect(
+      await focused(page.getByRole("heading", { name: "All clear." })),
+    ).toBe(true);
+  });
+
   it("leaves focus where it is when the line comes back after going with focus", async () => {
     // Tuesday, a minute before work's hours open in London.
     const early = new Date("2026-10-13T06:59:00Z");
