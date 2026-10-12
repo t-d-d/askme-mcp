@@ -10,6 +10,7 @@ import { useAuth } from "./auth";
 import { Refusal } from "./load";
 import type { AskFirst } from "./SignedIn";
 import { hoursText } from "./hours";
+import { layers, useLayer } from "./slide";
 import { colourOf, tagColour } from "./palette";
 import styles from "./Rules.module.css";
 import { elsewhere, followToList } from "./toList";
@@ -24,6 +25,7 @@ const leaving = "Leave without saving your rules?";
 // open ask, and a last note says so, after the time zone the hours use. At
 // the foot, the address of the account signed in, and Sign out.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
+  useLayer(layers.rules);
   const auth = useAuth();
   const { loaded, save } = useRules();
   const { data, failed } = loaded;

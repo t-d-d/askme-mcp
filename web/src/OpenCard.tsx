@@ -6,6 +6,7 @@ import styles from "./OpenCard.module.css";
 import { OutLink } from "./OutLink";
 import { askColour, tagColour, type HashtagColour } from "./palette";
 import { Pills } from "./Pills";
+import { slide } from "./slide";
 import { listenLength } from "./speech";
 import type { Tab } from "./tab";
 import { backToList, followToList } from "./toList";
@@ -59,9 +60,12 @@ export function OpenCard({
           className={styles.dismiss}
           type="button"
           onClick={() => {
-            dismiss(id);
-            // The card is gone, so Back does not come back to it.
-            backToList();
+            // The card goes as the ask does, so it slides out then.
+            slide(() => {
+              dismiss(id);
+              // The card is gone, so Back does not come back to it.
+              backToList();
+            });
           }}
         >
           Dismiss

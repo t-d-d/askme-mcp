@@ -265,6 +265,7 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 ## Movement
 
 - Movement answers something the person did: a card slides away on a swipe, a row dims when opened, the held asks appear when shown.
+- An open card and the rules sit over the list, and Connect your agents over the rules. A screen that sits higher slides in from the right over the one it opens from, and slides out to the right to show the one under it, in 250ms. Nothing can be tapped while it moves. When the browser draws its own movement for Back, as a phone's may on a swipe, the screen changes at once.
 - Nothing moves by itself, and nothing loops.
 - When the person's device asks for reduced motion, changes happen at once.
 

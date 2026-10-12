@@ -11,6 +11,7 @@ import { Held } from "./Held";
 import { heldAsks } from "./hours";
 import { NewAccount } from "./NewAccount";
 import { OpenCard } from "./OpenCard";
+import { layers, useLayer } from "./slide";
 import { hashtagColours } from "./palette";
 import { browserSpeech } from "./speech";
 import { Tabs, type TabsHandle } from "./Tabs";
@@ -120,6 +121,7 @@ export function Asks({ card }: { card: string | null }) {
   const waiting = (list: readonly PageAsk[]) =>
     showingHeld ? list : list.filter(({ id }) => !held.has(id));
   const open = card === null ? undefined : asks.find(({ id }) => id === card);
+  useLayer(open === undefined ? layers.list : layers.card);
   // An open card keeps the list's tab, though every ask behind it is held.
   const allClear =
     open === undefined &&

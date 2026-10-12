@@ -67,6 +67,10 @@ export interface PageOptions {
   // "recorded", which says nothing and records what it was asked to read.
   // Left out, the page has Chromium's own.
   speech?: "absent" | "recorded";
+  // Let the page move. Left out, the device asks for reduced motion, so
+  // screens change at once, and a test can tap as soon as one shows: taps
+  // are lost while screens slide.
+  motion?: boolean;
 }
 
 // An answer that is a status, such as a failure, with a JSON body when one
@@ -220,6 +224,7 @@ export async function openPage(
   });
   const context = await browser.newContext({
     viewport,
+    reducedMotion: options.motion === true ? "no-preference" : "reduce",
     ...(options.timeZone === undefined ? {} : { timezoneId: options.timeZone }),
   });
   const refused: string[] = [];

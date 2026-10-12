@@ -106,6 +106,8 @@
 
   /* Movement: a swiped card going back to its place */
   --duration-move: 150ms;
+  /* Movement: a screen sliding in or out */
+  --duration-screen: 250ms;
 
   /* Width */
   --content-width: 1080px;
