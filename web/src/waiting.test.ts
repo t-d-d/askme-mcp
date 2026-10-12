@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { age, inListOrder, longestWaitingFirst, waiting } from "./waiting";
+import {
+  age,
+  inListOrder,
+  lapsedAsks,
+  longestWaitingFirst,
+  waiting,
+} from "./waiting";
 
 const now = Date.parse("2026-10-11T12:00:00.000Z");
 const ago = (ms: number) => new Date(now - ms).toISOString();
@@ -96,7 +102,7 @@ describe("the order of a sorted list", () => {
         sort: sorted("high"),
       },
     ];
-    expect(inListOrder(asks).map((ask) => ask.id)).toEqual([
+    expect(inListOrder(asks, now).map((ask) => ask.id)).toEqual([
       "high-old",
       "high-new",
       "normal",
@@ -125,7 +131,7 @@ describe("the order of a sorted list", () => {
         sort: null,
       },
     ];
-    expect(inListOrder(asks).map((ask) => ask.id)).toEqual([
+    expect(inListOrder(asks, now).map((ask) => ask.id)).toEqual([
       "low",
       "unsorted-old",
       "unsorted-new",
@@ -160,7 +166,7 @@ describe("the order of a sorted list", () => {
       },
       { id: "unsorted", postedAt: ago(2 * minute), opened: false, sort: null },
     ];
-    expect(inListOrder(asks).map((ask) => ask.id)).toEqual([
+    expect(inListOrder(asks, now).map((ask) => ask.id)).toEqual([
       "high",
       "high-opened",
       "normal",
@@ -174,6 +180,157 @@ describe("the order of a sorted list", () => {
       { id: "new", postedAt: ago(1 * minute), opened: true, sort: null },
       { id: "old", postedAt: ago(9 * minute), opened: true, sort: null },
     ];
-    expect(inListOrder(asks).map((ask) => ask.id)).toEqual(["old", "new"]);
+    expect(inListOrder(asks, now).map((ask) => ask.id)).toEqual(["old", "new"]);
+  });
+});
+
+describe("the order of the list as asks near the time they lapse", () => {
+  const hour = 60 * minute;
+  const lapsesIn = (ms: number) => new Date(now + ms).toISOString();
+  const sorted = (level: "high" | "normal" | "low") => ({
+    hashtags: [],
+    level,
+  });
+  const ask = (
+    id: string,
+    waited: number,
+    sort: { hashtags: string[]; level: "high" | "normal" | "low" } | null,
+    lapse?: number,
+    opened = false,
+  ) => ({
+    id,
+    postedAt: ago(waited),
+    opened,
+    sort,
+    ...(lapse === undefined ? {} : { lapsesAt: lapsesIn(lapse) }),
+  });
+  const order = (asks: Parameters<typeof inListOrder>[0], at = now) =>
+    inListOrder(asks, at).map(({ id }) => id);
+
+  it("puts an ask that lapses within the hour first, whatever its level, soonest first", () => {
+    const asks = [
+      ask("high", 50 * minute, sorted("high")),
+      ask("low-in-50", 1 * minute, sorted("low"), 50 * minute),
+      ask("unsorted-in-10", 2 * minute, null, 10 * minute),
+      ask("normal-in-60", 30 * minute, sorted("normal"), hour),
+    ];
+    expect(order(asks)).toEqual([
+      "unsorted-in-10",
+      "low-in-50",
+      "normal-in-60",
+      "high",
+    ]);
+  });
+
+  it("puts asks that lapse within the next day first at their level, soonest first, then the rest longest waiting first", () => {
+    const asks = [
+      ask("old", 3 * hour, sorted("normal")),
+      ask("in-5h", 1 * minute, sorted("normal"), 5 * hour),
+      ask("in-2h", 2 * minute, sorted("normal"), 2 * hour),
+      ask("in-2d", 2 * hour, sorted("normal"), 48 * hour),
+      ask("in-1d", 3 * minute, sorted("normal"), 24 * hour),
+      ask("high", 1 * minute, sorted("high")),
+      ask("low-in-2h", 4 * minute, sorted("low"), 2 * hour),
+    ];
+    expect(order(asks)).toEqual([
+      "high",
+      "in-2h",
+      "in-5h",
+      "in-1d",
+      "old",
+      "in-2d",
+      "low-in-2h",
+    ]);
+  });
+
+  it("does the same for asks not sorted yet", () => {
+    const asks = [
+      ask("old", 3 * hour, null),
+      ask("in-5h", 1 * minute, null, 5 * hour),
+      ask("low", 1 * minute, sorted("low")),
+    ];
+    expect(order(asks)).toEqual(["low", "in-5h", "old"]);
+  });
+
+  it("sinks an opened ask that lapses within the hour below the unopened ones there, and no further", () => {
+    const asks = [
+      ask("high", 50 * minute, sorted("high")),
+      ask("opened-in-5", 1 * minute, sorted("low"), 5 * minute, true),
+      ask("in-30", 2 * minute, sorted("low"), 30 * minute),
+    ];
+    expect(order(asks)).toEqual(["in-30", "opened-in-5", "high"]);
+  });
+
+  it("sinks an opened ask below the unopened ones at its level, and each part keeps its order", () => {
+    const asks = [
+      ask("opened-old", 4 * hour, sorted("normal"), undefined, true),
+      ask("opened-in-2h", 1 * minute, sorted("normal"), 2 * hour, true),
+      ask("old", 3 * hour, sorted("normal")),
+      ask("in-5h", 2 * minute, sorted("normal"), 5 * hour),
+      ask("low", 1 * minute, sorted("low")),
+    ];
+    expect(order(asks)).toEqual([
+      "in-5h",
+      "old",
+      "opened-in-2h",
+      "opened-old",
+      "low",
+    ]);
+  });
+
+  it("moves an ask up as its time comes near", () => {
+    const asks = [
+      ask("high", 50 * minute, sorted("high")),
+      ask("old", 3 * hour, sorted("low")),
+      ask("low-in-25h", 1 * minute, sorted("low"), 25 * hour),
+    ];
+    expect(order(asks)).toEqual(["high", "old", "low-in-25h"]);
+    expect(order(asks, now + 2 * hour)).toEqual(["high", "low-in-25h", "old"]);
+    expect(order(asks, now + 24 * hour + 1)).toEqual([
+      "low-in-25h",
+      "high",
+      "old",
+    ]);
+  });
+
+  it("puts lapsed asks after every other, longest waiting first, with opened ones last", () => {
+    const asks = [
+      // Lapsed earlier, but has waited less.
+      ask("lapsed-new", 10 * minute, sorted("high"), -5 * minute),
+      ask("lapsed-opened", 5 * hour, sorted("high"), -hour, true),
+      ask("unsorted", 1 * minute, null),
+      ask("lapsed-old", 2 * hour, sorted("low"), -minute),
+    ];
+    expect(order(asks)).toEqual([
+      "unsorted",
+      "lapsed-old",
+      "lapsed-new",
+      "lapsed-opened",
+    ]);
+  });
+});
+
+describe("the asks that have lapsed", () => {
+  const ask = (id: string, lapse?: number) => ({
+    id,
+    ...(lapse === undefined
+      ? {}
+      : { lapsesAt: new Date(now + lapse).toISOString() }),
+  });
+
+  it("is the asks whose time has passed, from the moment it comes", () => {
+    const asks = [
+      ask("passed", -1),
+      ask("now", 0),
+      ask("soon", 1),
+      ask("never"),
+    ];
+    expect([...lapsedAsks(asks, now)].sort()).toEqual(["now", "passed"]);
+  });
+
+  it("follows the clock", () => {
+    const asks = [ask("in-an-hour", 60 * minute)];
+    expect(lapsedAsks(asks, now).size).toBe(0);
+    expect([...lapsedAsks(asks, now + 60 * minute)]).toEqual(["in-an-hour"]);
   });
 });
