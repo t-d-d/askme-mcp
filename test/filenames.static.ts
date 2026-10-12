@@ -9,9 +9,15 @@ import { repoFiles } from "./repo";
 
 // A file's name as an import writes it, without its extension, and the name
 // of each folder above it, so web/src/Asks.tsx gives web, web/src and
-// web/src/Asks.
+// web/src/Asks. A declaration file's ".d.ts" is all extension, so an import
+// of "./vite-env" names web/src/vite-env.d.ts.
+const declaration = /\.d\.[cm]?ts$/u;
+const withoutExtension = (path: string): string =>
+  declaration.test(path)
+    ? path.replace(declaration, "")
+    : path.slice(0, path.length - extname(path).length);
 const names = (path: string): string[] => {
-  const parts = path.slice(0, path.length - extname(path).length).split("/");
+  const parts = withoutExtension(path).split("/");
   return parts.map((_, end) => parts.slice(0, end + 1).join("/"));
 };
 
