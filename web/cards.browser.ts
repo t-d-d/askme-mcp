@@ -139,6 +139,22 @@ async function swipe(
   await mouse.up();
 }
 
+// Presses Tab until a control has the focus, as a keyboard user reaches it.
+async function tabTo(
+  opened: OpenPage,
+  control: ReturnType<OpenPage["page"]["locator"]>,
+) {
+  for (let presses = 0; presses < 20; presses += 1) {
+    if (await control.evaluate((element) => element === document.activeElement))
+      return;
+    await opened.page.keyboard.press("Tab");
+  }
+  throw new Error("Tab never reached the control.");
+}
+
+const cardIsOpen = (opened: OpenPage) =>
+  opened.page.evaluate(() => window.location.hash.startsWith("#ask/"));
+
 describe("the top card's buttons", () => {
   it("lead the main button to the action link, say what it is, and name its site", async () => {
     const { page } = await open(listOf(both, neither));
@@ -219,25 +235,50 @@ describe("the top card's buttons", () => {
 });
 
 describe("the rows", () => {
-  it("lead each row to its action link, or its session link, and show the site it leads to", async () => {
+  it("lead each row to its card, whatever links it has, and show the site its main button leads to", async () => {
     const { page } = await open(
       listOf(both, sessionOnly, ticketOnly, issueOnly),
     );
     const rows = page.getByRole("listitem");
     const expected = [
-      ["Which date format?", sessionLink, "claude.ai"],
-      ["Pick a name for the ticket.", ticket, "linear.app"],
-      ["Close the old issue?", issue, "github.com"],
+      ["Which date format?", "#ask/session", "claude.ai"],
+      ["Pick a name for the ticket.", "#ask/ticket", "linear.app"],
+      ["Close the old issue?", "#ask/issue", "github.com"],
     ];
     expect(await rows.count()).toBe(expected.length);
     for (const [index, [summary, href, site]] of expected.entries()) {
       const link = rows.nth(index).getByRole("link");
       expect(await link.getAttribute("href")).toBe(href);
-      expect(await link.getAttribute("target")).toBe("_blank");
+      expect(await link.getAttribute("target")).toBeNull();
       const text = await link.innerText();
       expect(text.split("\n")[0]).toBe(summary);
       expect(text).toContain(site);
     }
+  });
+
+  it("open the card of a row with a link, to listen to and read, and mark nothing opened", async () => {
+    const opened = await open(listOf(both, sessionOnly));
+    const { page } = opened;
+    await page.getByRole("listitem").getByRole("link").click();
+    await page.getByRole("link", { name: "All asks" }).waitFor();
+    expect(await page.evaluate(() => window.location.hash)).toBe(
+      "#ask/session",
+    );
+    expect(
+      await page
+        .getByRole("heading", { name: sessionOnly.summary })
+        .isVisible(),
+    ).toBe(true);
+    expect(
+      await page.getByRole("button", { name: /^Listen/u }).isVisible(),
+    ).toBe(true);
+    expect(await page.getByText(sessionOnly.spokenDetail).isVisible()).toBe(
+      true,
+    );
+    expect(
+      await page.getByText(sessionOnly.sort?.reason ?? "").isVisible(),
+    ).toBe(true);
+    expect(sentTo(opened, askChangePaths.opened)).toEqual([]);
   });
 
   it("open the card of a row with neither link", async () => {
@@ -281,9 +322,12 @@ describe("following a link", () => {
     expect(sentTo(opened, askChangePaths.dismissed)).toEqual([]);
   });
 
-  it("from a row marks that ask as opened", async () => {
+  it("from a row's card marks that ask as opened", async () => {
     const opened = await open(listOf(both, sessionOnly));
-    await opened.page.getByRole("listitem").getByRole("link").click();
+    const { page } = opened;
+    await page.getByRole("listitem").getByRole("link").click();
+    await page.getByRole("link", { name: "All asks" }).waitFor();
+    await page.getByRole("link", { name: /^Reply in the session/u }).click();
     await expect
       .poll(() => sentTo(opened, askChangePaths.opened))
       .toEqual(["session"]);
@@ -506,6 +550,7 @@ describe("dismissing", () => {
       .poll(() => sentTo(opened, askChangePaths.dismissed))
       .toEqual(["session"]);
     expect(sentTo(opened, askChangePaths.opened)).toEqual([]);
+    expect(await cardIsOpen(opened)).toBe(false);
   });
 
   it("does nothing on a short drag, and follows no link", async () => {
@@ -516,6 +561,25 @@ describe("dismissing", () => {
       await opened.page.getByRole("button", { name: "Undo" }).count(),
     ).toBe(0);
     expect(sentTo(opened, askChangePaths.opened)).toEqual([]);
+    expect(await cardIsOpen(opened)).toBe(false);
+  });
+
+  it("dismisses a row from the keyboard alone, through its card, with a note and Undo", async () => {
+    const opened = await open(listOf(both, sessionOnly), { clock: true });
+    const { page } = opened;
+    await tabTo(opened, page.getByRole("listitem").getByRole("link"));
+    await page.keyboard.press("Enter");
+    await page.getByRole("link", { name: "All asks" }).waitFor();
+    await tabTo(opened, page.getByRole("button", { name: "Dismiss" }));
+    await page.keyboard.press("Enter");
+    const note = page.getByRole("status");
+    await note.getByRole("button", { name: "Undo" }).waitFor();
+    expect(await note.innerText()).toMatch(/^Dismissed\.\s+Undo$/u);
+    expect(await page.getByText(sessionOnly.summary).count()).toBe(0);
+    await page.clock.runFor(undoMs + 500);
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["session"]);
   });
 
   it("brings the ask back with Undo, and sends nothing", async () => {
@@ -612,7 +676,7 @@ describe("dismissing", () => {
     );
   });
 
-  it("still follows a link from the keyboard after a short touch drag that went back", async () => {
+  it("still opens a row's card from the keyboard after a short touch drag that went back", async () => {
     const opened = await open(listOf(both, sessionOnly));
     const { page } = opened;
     const row = page.getByRole("listitem").first();
@@ -638,9 +702,10 @@ describe("dismissing", () => {
     expect(await rowTexts(opened)).toEqual(["Which date format?"]);
     await row.getByRole("link").focus();
     await page.keyboard.press("Enter");
-    await expect
-      .poll(() => sentTo(opened, askChangePaths.opened))
-      .toEqual(["session"]);
+    await page.getByRole("link", { name: "All asks" }).waitFor();
+    expect(await page.evaluate(() => window.location.hash)).toBe(
+      "#ask/session",
+    );
   });
 
   it("brings the card back with a note when the dismissal fails", async () => {

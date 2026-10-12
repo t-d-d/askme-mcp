@@ -3,7 +3,6 @@ import type { PageAsk } from "../../shared/page-api";
 import type { AskActions } from "./actions";
 import { destinations } from "./links";
 import styles from "./MoreAsks.module.css";
-import { OutLink } from "./OutLink";
 import { askColour, tagColour, type HashtagColour } from "./palette";
 import { cardHref } from "./screen";
 import { shownUnder, type Tab } from "./tab";
@@ -45,7 +44,7 @@ export function MoreAsks({
               tab={tab}
               now={now}
               colours={colours}
-              actions={actions}
+              dismiss={actions.dismiss}
             />
           ))}
         </ol>
@@ -54,45 +53,30 @@ export function MoreAsks({
   );
 }
 
-// A row leads to the ask's action link, or its session link, and names the
-// site it leads to. With neither, it opens the ask's card. Swiping it
-// dismisses the ask, and an opened ask is dimmed and says so.
+// A row opens the ask's card, where it can be heard, read in full and
+// dismissed, and where its links are. It names the site its main button
+// leads to. Swiping it dismisses the ask, and an opened ask is dimmed and
+// says so.
 function Row({
   ask,
   tab,
   now,
   colours,
-  actions,
+  dismiss,
 }: {
   ask: PageAsk;
   tab: Tab;
   now: number;
   colours: ReadonlyMap<string, HashtagColour>;
-  actions: AskActions;
+  dismiss: AskActions["dismiss"];
 }) {
   const { id, summary, postedAt, sort, opened } = ask;
-  const { markOpened, dismiss } = actions;
   const { main } = destinations(ask);
   const shown = sort === null ? undefined : shownUnder(sort, tab);
   const swipe = useSwipe(
     useCallback(() => {
       dismiss(id);
     }, [dismiss, id]),
-  );
-  const content = (
-    <>
-      <span className={styles.summary}>{summary}</span>
-      <span className={styles.meta}>
-        {sort === null ? (
-          <span className={styles.pill}>Not sorted yet</span>
-        ) : (
-          shown !== undefined && <span className={styles.pill}>#{shown}</span>
-        )}
-        <span>{age(postedAt, now)}</span>
-        {opened && <span>Opened</span>}
-        {main !== undefined && <span className={styles.site}>{main.site}</span>}
-      </span>
-    </>
   );
   return (
     <li
@@ -101,21 +85,21 @@ function Row({
       style={tagColour(askColour(sort, tab, colours))}
       {...swipe}
     >
-      {main === undefined ? (
-        <a className={styles.link} href={cardHref(id)} draggable={false}>
-          {content}
-        </a>
-      ) : (
-        <OutLink
-          className={styles.link}
-          href={main.href}
-          onFollowed={() => {
-            markOpened(id);
-          }}
-        >
-          {content}
-        </OutLink>
-      )}
+      <a className={styles.link} href={cardHref(id)} draggable={false}>
+        <span className={styles.summary}>{summary}</span>
+        <span className={styles.meta}>
+          {sort === null ? (
+            <span className={styles.pill}>Not sorted yet</span>
+          ) : (
+            shown !== undefined && <span className={styles.pill}>#{shown}</span>
+          )}
+          <span>{age(postedAt, now)}</span>
+          {opened && <span>Opened</span>}
+          {main !== undefined && (
+            <span className={styles.site}>{main.site}</span>
+          )}
+        </span>
+      </a>
     </li>
   );
 }
