@@ -1,8 +1,14 @@
 import { askIdPattern } from "../../shared/page-api";
 
-// The open card's address. The page names its screens in the address's
-// fragment (SignedIn.tsx), and an ask's card is the list's screen with that
-// ask open, as #ask/<id>, so Back closes it.
+// The page's screens. It names them in the address's fragment
+// (SignedIn.tsx): #connect, #rules, and anything else for the list.
+export type Screen = "asks" | "connect" | "rules";
+
+export const screenIn = (hash: string): Screen =>
+  hash === "#connect" ? "connect" : hash === "#rules" ? "rules" : "asks";
+
+// The open card's address. An ask's card is the list's screen with that ask
+// open, as #ask/<id>, so Back closes it.
 const cardPrefix = "#ask/";
 
 export const cardHref = (id: string): string => `${cardPrefix}${id}`;
