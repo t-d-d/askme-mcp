@@ -1,8 +1,9 @@
 import { useId } from "react";
 import type { PageAsk } from "../../shared/page-api";
-import { age, shownUnder, type Tab } from "./asks";
 import styles from "./MoreAsks.module.css";
 import { askColour, tagColour, type HashtagColour } from "./palette";
+import { shownUnder, type Tab } from "./tab";
+import { age } from "./waiting";
 
 // Every ask after the first, as compact rows under a count. Each row shows
 // the hashtag it is shown under, in that hashtag's colour: its first on

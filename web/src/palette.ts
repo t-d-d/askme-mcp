@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Hashtag } from "../../shared/page-api";
-import { shownUnder, type Tab } from "./asks";
+import { shownUnder, type Tab } from "./tab";
 
 // The eight hashtag colours of docs/design.md, in the order new hashtags take
 // them. White on every strong, and each ink on its tint, is at least 4.5 to 1.

@@ -1,5 +1,5 @@
 import type { Hashtag } from "../../shared/page-api";
-import { everything, type Tab } from "./asks";
+import { everything, type Tab } from "./tab";
 import { colourOf, tagColour } from "./palette";
 import styles from "./Tabs.module.css";
 

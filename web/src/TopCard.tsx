@@ -1,7 +1,8 @@
 import type { PageAsk } from "../../shared/page-api";
-import { waiting, type Tab } from "./asks";
 import { askColour, neutral, tagColour, type HashtagColour } from "./palette";
+import type { Tab } from "./tab";
 import styles from "./TopCard.module.css";
+import { waiting } from "./waiting";
 
 // The first ask in the list, given most of the screen: its hashtags, how
 // long it has waited and its summary in large type. At desktop width its

@@ -1,9 +1,10 @@
 import type { Hashtag, PageAsk } from "../../shared/page-api";
 import styles from "./AskList.module.css";
-import { inListOrder, type Tab } from "./asks";
+import type { Tab } from "./tab";
 import { MoreAsks } from "./MoreAsks";
 import { hashtagColours } from "./palette";
 import { TopCard } from "./TopCard";
+import { inListOrder } from "./waiting";
 
 // One at a time: the ask that matters most, and of those the one that has
 // waited longest, is large, and the rest wait below it, or beside it at

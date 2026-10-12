@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AllClear } from "./AllClear";
 import { AskList } from "./AskList";
-import { everything, onTab, type Tab } from "./asks";
+import { everything, onTab, type Tab } from "./tab";
 import styles from "./Asks.module.css";
 import { Header } from "./Header";
 import { NewAccount } from "./NewAccount";

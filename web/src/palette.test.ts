@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { everything } from "./asks";
+import { everything } from "./tab";
 import {
   askColour,
   colourOf,
