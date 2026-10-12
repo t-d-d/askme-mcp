@@ -143,6 +143,15 @@ A hashtag can be limited to hours. An ask outside its hours is held back.
 - When nothing is held, the line is not there.
 - It also shows on the All clear screen, at the foot.
 
+### The sorting line
+
+Saving the rules sorts every open ask again, and an ask can be left behind. One line says how sorting stands. It looks like the held line, with no clock and no control, and sits under the tabs, below the held line when both show.
+
+- While the daily limit is reached: "Today's sorting limit is reached. It resets at 01:00." The time is in the person's time zone.
+- Otherwise, while any asks are being sorted: "Sorting 40 asks with your rules".
+- Otherwise, when sorting stopped for some asks: "3 asks couldn't be sorted. Saving your rules tries again."
+- Only one of these shows, in that order. With none of them, the line is not there.
+
 ### The top card
 
 The first ask in the list. White, with its hashtag pills, how long it has waited, the summary in large type, and a row of buttons.
@@ -217,7 +226,7 @@ Shown when the account has never had an ask. A white card says "Your agents can 
 ### Rules
 
 - One text box, with a label above it that says what to write.
-- "Save rules" is ink when the text has changed and `--neutral-tint` when it has not. Under it, one short note gives the state: "Saved.", "Reading your rules." or what went wrong.
+- "Save rules" is ink when the text has changed, or when some asks couldn't be sorted and the daily limit is not reached. Otherwise it is `--neutral-tint`. Under it, one short note gives the state: "Saved.", "Reading your rules." or what went wrong.
 - Below, what askme read from the rules: each hashtag's pill with its hours, or "Any time". This list changes only when a save finishes.
 - A last note names the time zone and says that saving re-sorts every open ask.
 - At the foot, under a hairline: the person's email address in `--text-3`, and "Sign out" at the right in ink, underlined, like "Show them". "Sign out" stays on the address's line, and a long address wraps beside it. With no email address, "Sign out" stands alone. The screen is taller than a phone, so the foot is reached by scrolling.
@@ -247,6 +256,9 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 | Too many presses | Slow down a little. Try again in a few seconds. |
 | Reading the rules fails | askme couldn't read your rules just now. Your text is saved. Try again. |
 | A dismissal fails | That didn't go through. The ask is back. |
+| Asks are being sorted | Sorting 40 asks with your rules |
+| Sorting stopped for some asks | 3 asks couldn't be sorted. Saving your rules tries again. |
+| The daily sorting limit is reached | Today's sorting limit is reached. It resets at 01:00. |
 | Dismissed | Dismissed. Undo |
 
 ## Movement

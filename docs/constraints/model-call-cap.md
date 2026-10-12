@@ -18,9 +18,12 @@ for everyone.
   the window is one UTC day.
 - The cap is a constant in the rate module. Tuning it needs no new
   decision.
-- Over the cap, a sort sends nothing, leaves the ask as it was, and
+- Over the cap, a sort sends nothing, leaves the ask's sort as it
+  was, marks the ask stopped ([sort-queue.md](sort-queue.md)) and
   logs at info. A model failure on an earlier try is still logged at
   warn.
+- The first call the cap refuses in a day records on META when the
+  cap resets, through the write function.
 - Over the cap, a rules save whose rules need reading is refused
   with cap_reached before anything is saved. Empty rules make no
   call, so their save is not refused.
@@ -46,4 +49,4 @@ Judgment: A model call made for no account is a new decision. The
 cap's value is the owner's call, set against the key's limit across
 every account.
 
-History: [ADR 21](../adr/0021-model-call-cap.md)
+History: [ADR 21](../adr/0021-model-call-cap.md), [ADR 22](../adr/0022-sort-queue.md)
