@@ -536,6 +536,70 @@ describe("dismissing", () => {
       .toEqual(["both"]);
   });
 
+  it("sends a waiting dismissal at once when the page is closed", async () => {
+    const opened = await open(listOf(both, neither), { clock: true });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent("pagehide")),
+    );
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both"]);
+  });
+
+  it("leaves room for the note on an open card, so it covers none of the card's buttons", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither), {
+      clock: true,
+    });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await page.getByRole("link", { name: sessionOnly.summary }).click();
+    await page.getByRole("link", { name: "All asks" }).waitFor();
+    const note = await page.getByRole("status").boundingBox();
+    const main = await page
+      .getByRole("link", { name: /^Reply in the session/u })
+      .boundingBox();
+    expect(note).not.toBeNull();
+    expect(main).not.toBeNull();
+    expect((main?.y ?? 0) + (main?.height ?? 0)).toBeLessThanOrEqual(
+      note?.y ?? 0,
+    );
+  });
+
+  it("still follows a link from the keyboard after a short touch drag that went back", async () => {
+    const opened = await open(listOf(both, sessionOnly));
+    const { page } = opened;
+    const row = page.getByRole("listitem").first();
+    const box = await row.boundingBox();
+    if (box === null) throw new Error("No row.");
+    const y = box.y + 20;
+    const touch = await page.context().newCDPSession(page);
+    const at = (x: number) => [{ x: box.x + x, y }];
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: at(300),
+    });
+    for (const x of [290, 280, 270, 260]) {
+      await touch.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: at(x),
+      });
+    }
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    expect(await rowTexts(opened)).toEqual(["Which date format?"]);
+    await row.getByRole("link").focus();
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.opened))
+      .toEqual(["session"]);
+  });
+
   it("brings the card back with a note when the dismissal fails", async () => {
     const opened = await open(listOf(both, neither), {
       clock: true,

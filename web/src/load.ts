@@ -33,15 +33,20 @@ export class Refusal extends Error {
 
 // Sends a request to the page's API with a JSON body and the session
 // token. A refusal throws as a Refusal, and any other failure as an error.
+//
+// A keepalive request is still sent when the page is closed while it is on
+// its way.
 async function sendJson(
   method: "PUT" | "POST",
   path: string,
   body: unknown,
   getToken: () => Promise<string | null>,
+  keepalive = false,
 ): Promise<Response> {
   const token = await getToken();
   const response = await fetch(path, {
     method,
+    keepalive,
     headers: {
       authorization: `Bearer ${token ?? ""}`,
       "content-type": "application/json",
@@ -74,11 +79,12 @@ export async function send<T>(
 
 // Tells the page's API what the person did to one ask, by its id. Resolves
 // once the API has taken it. A refusal throws as a Refusal, and any other
-// failure as an error.
+// failure as an error. With keepalive, it is sent even if the page closes.
 export async function changeAsk(
   path: string,
   change: AskChange,
   getToken: () => Promise<string | null>,
+  { keepalive = false }: { keepalive?: boolean } = {},
 ): Promise<void> {
-  await sendJson("POST", path, change, getToken);
+  await sendJson("POST", path, change, getToken, keepalive);
 }

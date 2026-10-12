@@ -101,6 +101,9 @@ export function useSwipe(onSwiped: () => void): Swipe {
   const onClickCapture = useCallback((event: MouseEvent<HTMLElement>) => {
     if (!swiped.current) return;
     swiped.current = false;
+    // A click from the keyboard has no pointer behind it, so it is never
+    // the end of a swipe. A touch swipe that went back may leave no click.
+    if (event.detail === 0) return;
     event.preventDefault();
     event.stopPropagation();
   }, []);

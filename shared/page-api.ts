@@ -81,9 +81,18 @@ export const askChangePaths = {
   dismissed: "/api/asks/dismissed",
 } as const;
 
+// The most characters an ask's id may hold, and the pattern of one: the
+// letters, digits, - and _ askme's ids are made of. The page's card address
+// and the changes it sends both use it.
+export const askIdLimit = 64;
+export const askIdPattern = new RegExp(
+  `^[A-Za-z0-9_-]{1,${String(askIdLimit)}}$`,
+  "u",
+);
+
 // What the page sends to change an ask: its id, as the list gave it.
 export const askChange = z.strictObject({
-  id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/u),
+  id: z.string().regex(askIdPattern),
 });
 
 export type AskChange = z.infer<typeof askChange>;

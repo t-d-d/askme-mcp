@@ -4,7 +4,7 @@
 // a note that says so.
 //
 // One dismissal waits at a time. Dismissing another sends the waiting one
-// at once, and so does leaving the list.
+// at once, and so does leaving the list or closing the page.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { askChangePaths } from "../../shared/page-api";
 import { useAuth } from "./auth";
@@ -45,9 +45,12 @@ export function useDismissing(): Dismissing {
   const failedTimer = useRef<number | undefined>(undefined);
 
   // Sends a dismissal. An ask the API no longer has is gone either way.
-  const send = useCallback(async (id: string) => {
+  // A dismissal sent as the page closes is kept alive past it.
+  const send = useCallback(async (id: string, keepalive = false) => {
     try {
-      await changeAsk(askChangePaths.dismissed, { id }, token.current);
+      await changeAsk(askChangePaths.dismissed, { id }, token.current, {
+        keepalive,
+      });
     } catch (error) {
       if (error instanceof Refusal && error.code === "not_found") return;
       setDismissed((ids) => without(ids, id));
@@ -60,13 +63,16 @@ export function useDismissing(): Dismissing {
   }, []);
 
   // Sends the waiting dismissal now, if there is one.
-  const sendWaiting = useCallback(() => {
-    const pending = waiting.current;
-    if (pending === null) return;
-    window.clearTimeout(pending.timer);
-    waiting.current = null;
-    void send(pending.id);
-  }, [send]);
+  const sendWaiting = useCallback(
+    (keepalive = false) => {
+      const pending = waiting.current;
+      if (pending === null) return;
+      window.clearTimeout(pending.timer);
+      waiting.current = null;
+      void send(pending.id, keepalive);
+    },
+    [send],
+  );
 
   const dismiss = useCallback(
     (id: string) => {
@@ -75,7 +81,8 @@ export function useDismissing(): Dismissing {
       setNote("dismissed");
       const timer = window.setTimeout(() => {
         waiting.current = null;
-        setNote(null);
+        // A note that an earlier dismissal failed keeps its own time.
+        setNote((shown) => (shown === "dismissed" ? null : shown));
         void send(id);
       }, undoMs);
       waiting.current = { id, timer };
@@ -92,13 +99,19 @@ export function useDismissing(): Dismissing {
     setNote(null);
   }, []);
 
-  useEffect(
-    () => () => {
+  // Closing the page or leaving it for another site sends the waiting
+  // dismissal, so it is not lost with the page.
+  useEffect(() => {
+    const leaving = () => {
+      sendWaiting(true);
+    };
+    window.addEventListener("pagehide", leaving);
+    return () => {
+      window.removeEventListener("pagehide", leaving);
       sendWaiting();
       window.clearTimeout(failedTimer.current);
-    },
-    [sendWaiting],
-  );
+    };
+  }, [sendWaiting]);
 
   return { dismissed, note, dismiss, undo };
 }

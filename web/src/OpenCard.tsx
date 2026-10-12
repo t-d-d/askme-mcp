@@ -17,6 +17,9 @@ import { waiting } from "./waiting";
 // session when the ask has both links. "All asks" goes back, and "Dismiss"
 // dismisses the ask and goes back.
 //
+// While a note shows at the foot of the screen, the card leaves room for it,
+// so it covers none of the buttons.
+//
 // The reason is the sorting model's words, so it is plain text only
 // (untrusted-ask-text.md).
 export function OpenCard({
@@ -25,12 +28,14 @@ export function OpenCard({
   now,
   colours,
   actions,
+  noted,
 }: {
   ask: PageAsk;
   tab: Tab;
   now: number;
   colours: ReadonlyMap<string, HashtagColour>;
   actions: AskActions;
+  noted: boolean;
 }) {
   const { id, sort, spokenDetail } = ask;
   const { speak, markOpened, dismiss } = actions;
@@ -41,6 +46,7 @@ export function OpenCard({
   return (
     <div
       className={styles.screen}
+      data-noted={noted ? "" : undefined}
       style={tagColour(askColour(sort, tab, colours))}
     >
       <header className={styles.header}>

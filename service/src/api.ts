@@ -6,6 +6,7 @@
 import { z } from "zod";
 import {
   askChange,
+  askIdLimit,
   asksAnswer,
   asksUnchanged,
   connectionAnswer,
@@ -330,7 +331,7 @@ async function changeAsk(
     log.info("input-invalid");
     return pageRefusal(
       "invalid_input",
-      `Send the ask's id as JSON, as {"id": "..."}, exactly as the list gave it, with nothing else. Then send it again.`,
+      `Send the ask's id as JSON, as {"id": "..."}, exactly as the list gave it: at most ${String(askIdLimit)} letters, digits, - or _, with nothing else. Then send it again.`,
     );
   }
   const { id } = input.data;

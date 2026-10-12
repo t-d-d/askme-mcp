@@ -60,51 +60,51 @@ export function Asks({ card }: { card: string | null }) {
       : everything;
   if (tab !== chosen) choose(tab);
   const shown = onTab(asks, tab);
-  const notes = <DismissedNote note={note} onUndo={undo} />;
-
+  const noted = note !== null;
   const open = card === null ? undefined : asks.find(({ id }) => id === card);
-  if (open !== undefined) {
-    return (
-      <>
+
+  // The note stays in one place in the tree, whichever screen shows, so a
+  // screen reader hears a note that comes as the card closes.
+  return (
+    <>
+      {open !== undefined ? (
         <OpenCard
           ask={open}
           tab={tab}
           now={receivedAt}
           colours={hashtagColours(coloured)}
           actions={actions}
+          noted={noted}
         />
-        {notes}
-      </>
-    );
-  }
-
-  return (
-    <div className={styles.screen} data-noted={note === null ? undefined : ""}>
-      <Header />
-      {!allClear && (
-        <Tabs hashtags={hashtags} selected={tab} onSelect={choose} />
-      )}
-      {failed && (
-        <p className={styles.note} role="status">
-          Not connected. Trying again.
-        </p>
-      )}
-      {data === undefined ? null : shown.length > 0 ? (
-        <main>
-          <AskList
-            asks={shown}
-            hashtags={coloured}
-            tab={tab}
-            now={receivedAt}
-            actions={actions}
-          />
-        </main>
-      ) : data.everAsked ? (
-        <AllClear />
       ) : (
-        <NewAccount />
+        <div className={styles.screen} data-noted={noted ? "" : undefined}>
+          <Header />
+          {!allClear && (
+            <Tabs hashtags={hashtags} selected={tab} onSelect={choose} />
+          )}
+          {failed && (
+            <p className={styles.note} role="status">
+              Not connected. Trying again.
+            </p>
+          )}
+          {data === undefined ? null : shown.length > 0 ? (
+            <main>
+              <AskList
+                asks={shown}
+                hashtags={coloured}
+                tab={tab}
+                now={receivedAt}
+                actions={actions}
+              />
+            </main>
+          ) : data.everAsked ? (
+            <AllClear />
+          ) : (
+            <NewAccount />
+          )}
+        </div>
       )}
-      {notes}
-    </div>
+      <DismissedNote note={note} onUndo={undo} />
+    </>
   );
 }
