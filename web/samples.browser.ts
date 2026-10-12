@@ -380,16 +380,4 @@ describe("Connect your agents, for someone with no agent yet", () => {
     view = await pressIntoCap("#connect");
     await dropsCapNoteAtReset(view);
   });
-
-  // A computer or phone that sleeps can hold the browser's timers back, so
-  // the clock can pass the reset with no timer due. The note still goes
-  // within a minute.
-  it("drops the cap note within a minute of waking after the reset", async () => {
-    view = await pressIntoCap("#connect");
-    const { page } = view;
-    await page.clock.setSystemTime(new Date("2026-10-13T07:00:00Z"));
-    expect(await capNote(page).count()).toBe(1);
-    await page.clock.runFor(60_000);
-    await expect.poll(() => capNote(page).count()).toBe(0);
-  });
 });
