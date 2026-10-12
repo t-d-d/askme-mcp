@@ -2,7 +2,7 @@ import ts from "typescript";
 import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { AccountId } from "../service/src/identity";
-import { keys } from "../service/src/store/keys";
+import { keys, sortKeys } from "../service/src/store/keys";
 import { importRefused, reported } from "../test/lint";
 import { readRepoFile, readYaml, repoFiles } from "../test/repo";
 
@@ -216,6 +216,27 @@ describe("fitness: the sort keys rule names every key the key module builds (tab
     ['export const other = { sk: "OPEN" };\n', "OPEN"],
   ])("finds a key the rule does not name: %s", (code, key) => {
     expect(unnamed(`${readRepoFile(keysPath)}${code}`)).toEqual([key]);
+  });
+});
+
+// The keys a key module builds that are not in the list it exports, which is
+// the list askme/no-hand-built-key reads.
+const unlisted = (text: string): string[] => {
+  const listed = new Set<string>(Object.values(sortKeys));
+  return builtKeys(text).filter((key) => !listed.has(key));
+};
+
+describe("fitness: the key module builds every key from the list lint reads (table-design.md)", () => {
+  it("lists every sort key and prefix the key module builds", () => {
+    expect(unlisted(readRepoFile(keysPath))).toEqual([]);
+  });
+
+  it.each([
+    ['const otherPrefix = "OTHER#";\n', "OTHER#"],
+    ["export const other = (id: string) => `OTHER#${id}`;\n", "OTHER#"],
+    ['export const other = { sk: "OTHER" };\n', "OTHER"],
+  ])("finds a key the list leaves out: %s", (code, key) => {
+    expect(unlisted(`${readRepoFile(keysPath)}${code}`)).toEqual([key]);
   });
 });
 

@@ -1,10 +1,14 @@
 // Project lint rules: code-level rules from the decision records, each held
 // by lint (ADR 10). eslint.config.js decides which files each one covers.
+import { sortKeys } from "../service/src/store/keys.ts";
 
-// A sort key the table uses (ADR 13), written as a whole string or as the
-// start of one.
-const sortKey =
-  /^(?:META|RULES)$|^(?:OPEN|CLOSED|DEDUPE|USAGE|POLL|RATE|SAVE|SORT)#/u;
+// Whether a string is a sort key the table uses (ADR 13), written whole or
+// as the start of one. The names come from the key module, where a name
+// that ends in # is a prefix.
+const isSortKey = (text) =>
+  Object.values(sortKeys).some((name) =>
+    name.endsWith("#") ? text.startsWith(name) : text === name,
+  );
 
 const noHandBuiltKey = {
   meta: {
@@ -19,13 +23,13 @@ const noHandBuiltKey = {
   create(context) {
     return {
       Literal(node) {
-        if (typeof node.value === "string" && sortKey.test(node.value)) {
+        if (typeof node.value === "string" && isSortKey(node.value)) {
           context.report({ node, messageId: "handBuilt" });
         }
       },
       TemplateLiteral(node) {
         const first = node.quasis[0]?.value.cooked ?? "";
-        if (sortKey.test(first)) {
+        if (isSortKey(first)) {
           context.report({ node, messageId: "handBuilt" });
         }
       },
