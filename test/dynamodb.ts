@@ -7,7 +7,11 @@
 // started first.
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { createServer, request as forward } from "node:http";
+import {
+  createServer,
+  request as forward,
+  type ServerResponse,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -189,7 +193,21 @@ export interface DatabaseRecorder {
   // The address to give the service in place of the database's.
   endpoint: string;
   calls: DatabaseCall[];
+  // Cancels the next transactions, as many as given, as real DynamoDB does
+  // when another transaction holds one of their items. The local DynamoDB
+  // runs one transaction at a time, so it never does this itself. A
+  // cancelled transaction is recorded, but never reaches it.
+  conflict(times: number, options?: Conflict): void;
   close(): Promise<void>;
+}
+
+// How the recorder cancels a transaction. Before it answers, meanwhile
+// runs, as the transaction that held the item would finish. With
+// conditionFailed, the answer also names a failed condition on the first
+// item, as when DynamoDB finds both at once.
+export interface Conflict {
+  meanwhile?: () => Promise<unknown>;
+  conditionFailed?: boolean;
 }
 
 // The actions that read the table.
@@ -214,6 +232,58 @@ function sortKeysIn(value: unknown): string[] {
   });
 }
 
+const transactionSchema = z.object({ TransactItems: z.array(z.unknown()) });
+
+// An error DynamoDB gives, which the SDK does not send again.
+function refuse(outgoing: ServerResponse, body: object): void {
+  outgoing.writeHead(400, { "content-type": "application/x-amz-json-1.0" });
+  outgoing.end(JSON.stringify(body));
+}
+
+// DynamoDB's answer to a transaction that met another one on an item: it is
+// cancelled whole, with a reason for each of its items, in order. Which item
+// was held makes no difference to the store, so the last one is named, and
+// a failed condition, when asked for, is named on the first. A transaction
+// of one item then names only the failed condition, which is the answer the
+// store acts on.
+function cancelled(
+  outgoing: ServerResponse,
+  request: unknown,
+  conditionFailed: boolean,
+): void {
+  const parsed = transactionSchema.safeParse(request);
+  const items = parsed.success ? parsed.data.TransactItems.length : 1;
+  const reasons = Array.from({ length: items }, (_, index) => {
+    if (index === 0 && conditionFailed) {
+      return {
+        Code: "ConditionalCheckFailed",
+        Message: "The conditional request failed",
+      };
+    }
+    return index === items - 1
+      ? {
+          Code: "TransactionConflict",
+          Message: "Transaction is ongoing for the item",
+        }
+      : { Code: "None" };
+  });
+  const codes = reasons.map((reason) => reason.Code).join(", ");
+  refuse(outgoing, {
+    __type: "com.amazonaws.dynamodb.v20120810#TransactionCanceledException",
+    Message: `Transaction cancelled, please refer cancellation reasons for specific reasons [${codes}]`,
+    CancellationReasons: reasons,
+  });
+}
+
+// The answer when the test's own meanwhile step failed: an error DynamoDB
+// gives for a bad request, which the SDK never retries.
+function meanwhileFailed(outgoing: ServerResponse): void {
+  refuse(outgoing, {
+    __type: "com.amazon.coral.validate#ValidationException",
+    Message: "The test's meanwhile step failed.",
+  });
+}
+
 // A stand-in for the database's address on loopback, which passes each
 // request on to the local DynamoDB and records what it asked for. A test
 // can then count the reads and writes behind one request to the service.
@@ -222,6 +292,10 @@ export async function recordDatabase(
 ): Promise<DatabaseRecorder> {
   const target = new URL(endpoint);
   const calls: DatabaseCall[] = [];
+  const conflicts: { left: number; options: Conflict } = {
+    left: 0,
+    options: {},
+  };
   const server = createServer((incoming, outgoing) => {
     const chunks: Buffer[] = [];
     incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -237,6 +311,25 @@ export async function recordDatabase(
         parsed = undefined;
       }
       calls.push({ action: action ?? "", sortKeys: sortKeysIn(parsed) });
+      if (action === "TransactWriteItems" && conflicts.left > 0) {
+        conflicts.left -= 1;
+        // When meanwhile fails, the transaction is refused with an error
+        // the SDK does not send again, so the test sees the failure.
+        // Dropping the connection would make the SDK resend it, and it
+        // would go through as if nothing had met it.
+        const { meanwhile, conditionFailed = false } = conflicts.options;
+        void Promise.resolve()
+          .then(meanwhile)
+          .then(
+            () => {
+              cancelled(outgoing, parsed, conditionFailed);
+            },
+            () => {
+              meanwhileFailed(outgoing);
+            },
+          );
+        return;
+      }
       const upstream = forward(
         new URL(incoming.url ?? "/", target),
         {
@@ -260,6 +353,10 @@ export async function recordDatabase(
   return {
     endpoint: `http://127.0.0.1:${String(port)}`,
     calls,
+    conflict: (times, options = {}) => {
+      conflicts.left = times;
+      conflicts.options = options;
+    },
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections();

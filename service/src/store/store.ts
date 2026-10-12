@@ -8,6 +8,7 @@
 // shows, so it leaves the version alone and an idle poll stays idle
 // (ADR 18). Lint holds every other write out.
 import { randomBytes } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   ConditionalCheckFailedException,
   DynamoDBClient,
@@ -57,6 +58,14 @@ const minuteMs = 60_000;
 // it. It is only counted inside its own window, so it is never read after
 // it expires (ADR 18).
 const counterLifetimeMs = 3_600_000;
+
+// How many times write() sends a transaction that DynamoDB keeps cancelling
+// because another transaction holds one of its items, as two writes to one
+// account do on META. Before each retry it waits a random time, up to a
+// limit that starts at firstWaitMs and doubles, so that two writes which met
+// once are unlikely to meet again. All the waits together are under 200ms.
+export const writeTries = 4;
+const firstWaitMs = 25;
 
 // An ask as the agent sent it, once its schema has parsed it.
 export interface NewAsk {
@@ -254,14 +263,20 @@ const newAskId = () => randomBytes(18).toString("base64url");
 
 const seconds = (time: number) => Math.floor(time / 1000);
 
+// When a transaction was cancelled, the reason DynamoDB gave for each of its
+// changes, in order.
+const reasonCodes = (error: unknown): (string | undefined)[] | undefined =>
+  error instanceof TransactionCanceledException
+    ? (error.CancellationReasons ?? []).map((reason) => reason.Code)
+    : undefined;
+
 // When a transaction was refused because a condition failed, whether each
 // of its changes, in order, was one whose condition failed.
 function failedChanges(error: unknown): boolean[] | undefined {
-  if (!(error instanceof TransactionCanceledException)) return undefined;
-  const failed = (error.CancellationReasons ?? []).map(
-    (reason) => reason.Code === "ConditionalCheckFailed",
+  const failed = reasonCodes(error)?.map(
+    (code) => code === "ConditionalCheckFailed",
   );
-  return failed.includes(true) ? failed : undefined;
+  return failed?.includes(true) === true ? failed : undefined;
 }
 
 // Whether a transaction was refused because one of its conditions failed,
@@ -271,6 +286,18 @@ const conditionFailed = (error: unknown) => failedChanges(error) !== undefined;
 // The start of the next UTC day, when a day's count starts again.
 const nextDay = (now: Date) =>
   Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+
+// Whether a transaction was refused only because another transaction held
+// one of its items: an item names a conflict, and no item names anything
+// else. DynamoDB cancels it whole, so sending it again is safe. Any other
+// reason, such as a failed condition, goes back to the caller.
+const conflicted = (error: unknown) => {
+  const codes = reasonCodes(error) ?? [];
+  return (
+    codes.includes("TransactionConflict") &&
+    codes.every((code) => code === "TransactionConflict" || code === "None")
+  );
+};
 
 export function createStore(config: {
   tableName: string;
@@ -300,24 +327,30 @@ export function createStore(config: {
     marks: { everAsked?: true } = {},
   ): Promise<void> {
     const set = marks.everAsked === true ? " SET everAsked = :yes" : "";
-    await db.send(
-      new TransactWriteCommand({
-        TransactItems: [
-          ...changes,
-          {
-            Update: {
-              TableName,
-              Key: keys.meta(account),
-              UpdateExpression: `ADD version :one${set}`,
-              ExpressionAttributeValues: {
-                ":one": 1,
-                ...(set === "" ? {} : { ":yes": true }),
-              },
-            },
+    const items: Change[] = [
+      ...changes,
+      {
+        Update: {
+          TableName,
+          Key: keys.meta(account),
+          UpdateExpression: `ADD version :one${set}`,
+          ExpressionAttributeValues: {
+            ":one": 1,
+            ...(set === "" ? {} : { ":yes": true }),
           },
-        ],
-      }),
-    );
+        },
+      },
+    ];
+    // The SDK does not retry a cancelled transaction, so this does.
+    for (let tries = 1; ; tries += 1) {
+      try {
+        await db.send(new TransactWriteCommand({ TransactItems: items }));
+        return;
+      } catch (error) {
+        if (!conflicted(error) || tries === writeTries) throw error;
+      }
+      await sleep(Math.random() * firstWaitMs * 2 ** (tries - 1));
+    }
   }
 
   // The update that adds one to a counter while it is under its limit, and
