@@ -159,13 +159,21 @@
   font-weight: var(--weight-label);
 }
 
+.none,
+.footnote {
+  color: var(--text-3);
+  font-size: var(--size-meta-small);
+  line-height: var(--leading-note);
+}
+
 .none {
   margin: 0;
   padding-top: var(--space-10);
   border-top: var(--hairline) solid var(--line);
-  color: var(--text-3);
-  font-size: var(--size-meta-small);
-  line-height: var(--leading-note);
+}
+
+.footnote {
+  margin: var(--space-10) 0 0;
 }
 
 @media (min-width: 768px) {

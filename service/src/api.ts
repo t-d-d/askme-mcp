@@ -29,16 +29,18 @@ export interface PageContext {
   origin: string;
   verify: (token: string) => Promise<AccountId>;
   store: Store;
-  // Hands an ask left unsorted to the sort function again.
+  // Hands asks to the sort function: every open ask when the rules are
+  // saved, and any a poll finds still waiting for a sort.
   sorts: SortRequests;
   // Reads the rules when they are saved.
   model: Model;
   log: Logger;
 }
 
-// How long after it was stored an ask may stay unsorted before a poll asks
-// for it to be sorted again. A sort takes seconds, so this is long enough
-// that a poll does not ask again while the first sort is still running.
+// How long after an ask was last handed to the sort function it may wait
+// for a sort before a poll asks again. A sort takes seconds, so this is
+// long enough that a poll does not ask again while the first sort is still
+// running.
 export const sortRetryAfterMs = 60_000;
 
 // The most asks one poll asks again for, so a poll is never held up long.
@@ -92,8 +94,24 @@ function rulesSaveRefusal(secondsLeft: number): Response {
 
 // The account's hashtags as the page shows them: in the rules' order, each
 // with the colour it took when it first appeared.
-const hashtagsOf = ({ hashtags, seen }: AccountRules) =>
+const hashtagsOf = ({
+  hashtags,
+  seen,
+}: Pick<AccountRules, "hashtags" | "seen">) =>
   hashtags.map((name) => ({ name, colour: Math.max(0, seen.indexOf(name)) }));
+
+// The hashtags open asks still carry that the rules no longer name, because
+// they have not been sorted again since the rules changed. Each keeps the
+// colour it took when it first appeared.
+function formerHashtagsOf({ hashtags, seen }: AccountRules, asks: StoredAsk[]) {
+  const carried = new Set(asks.flatMap(({ sort }) => sort?.hashtags ?? []));
+  return hashtagsOf({
+    hashtags: seen.filter(
+      (name) => carried.has(name) && !hashtags.includes(name),
+    ),
+    seen,
+  });
+}
 
 const rulesView = (rules: AccountRules) =>
   rulesAnswer.parse({
@@ -102,42 +120,88 @@ const rulesView = (rules: AccountRules) =>
     readFailed: rules.readFailed,
   });
 
-// Asks the sort function again for asks still unsorted a while after they
-// were stored, as when sorting failed (PRD, "Back end"). Not posted: a
-// replacing ask keeps the posting time of the one it replaces, so it would
-// be asked for again while its first sort runs. Each one counts against the
-// account's limit, so polling cannot spend the model's budget.
-async function retryUnsorted(
+// Hands one ask to the sort function, and says whether Lambda took it. When
+// it did not, the ask keeps what it has, unsorted or its old sort, and a
+// later poll asks again.
+async function handOn(
+  account: AccountId,
+  askId: string,
+  { sorts, log }: PageContext,
+): Promise<boolean> {
+  try {
+    await sorts.request({ accountId: account, askId });
+    return true;
+  } catch (error) {
+    log.warn("sort-request-failed", {
+      accountId: account,
+      askId,
+      errorClass: errorClass(error),
+    });
+    return false;
+  }
+}
+
+// When an ask was last handed to the sort function: when it was stored, or
+// when the rules were last saved, which hands on every open ask. Not when
+// it was posted: a replacing ask keeps the posting time of the one it
+// replaces, so it would be asked for again while its first sort runs.
+const handedOnAt = (ask: StoredAsk, { savedAt }: AccountRules) =>
+  Math.max(
+    Date.parse(ask.storedAt),
+    savedAt === undefined ? 0 : Date.parse(savedAt),
+  );
+
+// Asks the sort function again for asks still not sorted with the rules in
+// force a while after they were last handed to it, as when sorting failed
+// (PRD, "Back end"). That is an ask not sorted yet, or one sorted with
+// rules saved before. Each one counts against the account's limit, so
+// polling cannot spend the model's budget.
+async function sortAgain(
   account: AccountId,
   asks: StoredAsk[],
+  rules: AccountRules,
   now: Date,
-  { store, sorts, log }: PageContext,
+  context: PageContext,
 ): Promise<void> {
-  const stale = asks
+  const { store, log } = context;
+  const waiting = asks
     .filter(
       (ask) =>
-        ask.sort === undefined &&
-        now.getTime() - Date.parse(ask.storedAt) >= sortRetryAfterMs,
+        (ask.sort === undefined || ask.sort.rulesVersion < rules.version) &&
+        now.getTime() - handedOnAt(ask, rules) >= sortRetryAfterMs,
     )
     .slice(0, sortRetriesPerPoll);
   // Asked for together, so a slow Lambda holds the poll up once, not once
   // for each ask.
   await Promise.all(
-    stale.map(async (ask) => {
+    waiting.map(async (ask) => {
       const counted = await store.countSortRetry(account, now);
       if (!counted.counted) return;
-      try {
-        await sorts.request({ accountId: account, askId: ask.id });
+      if (await handOn(account, ask.id, context)) {
         log.info("sort-retried", { accountId: account, askId: ask.id });
-      } catch (error) {
-        log.warn("sort-request-failed", {
-          accountId: account,
-          askId: ask.id,
-          errorClass: errorClass(error),
-        });
       }
     }),
   );
+}
+
+// Hands every open ask to the sort function, to be sorted with the rules
+// just saved (PRD, "Rules"). Each keeps its old sort, and so its old
+// hashtags, until the new one is stored. A failure here is askme's own,
+// such as the table failing, so it alerts. The rules are saved all the
+// same, and a poll asks again for the asks a while later.
+async function sortAllAgain(
+  account: AccountId,
+  now: Date,
+  context: PageContext,
+): Promise<void> {
+  try {
+    const { asks } = await context.store.openAsks(account, now);
+    // Handed on together, so the save waits for Lambda once, not once for
+    // each ask.
+    await Promise.all(asks.map((ask) => handOn(account, ask.id, context)));
+  } catch (error) {
+    context.log.error("request-failed", { errorClass: errorClass(error) });
+  }
 }
 
 // The account's open asks, unless nothing changed since the version the
@@ -169,12 +233,13 @@ async function poll(
   if ("unchanged" in found) return answer(asksUnchanged.parse(found));
   const { version, everAsked, asks } = found;
   const rules = await store.rules(account);
-  await retryUnsorted(account, asks, now, context);
+  await sortAgain(account, asks, rules, now, context);
   return answer(
     asksAnswer.parse({
       version,
       everAsked,
       hashtags: hashtagsOf(rules),
+      formerHashtags: formerHashtagsOf(rules, asks),
       asks: asks.map(({ id, summary, spokenDetail, postedAt, sort }) => ({
         id,
         summary,
@@ -191,12 +256,14 @@ async function poll(
 
 // Saves the rules, and reads the hashtags from them with a model call. If
 // the model cannot read them, the text is still saved and the old hashtags
-// stay, and the answer says so, so the page can offer to try again.
+// stay, and the answer says so, so the page can offer to try again. Either
+// way, every open ask is then sorted again.
 async function saveRules(
   request: Request,
   account: AccountId,
-  { store, model, log }: PageContext,
+  context: PageContext,
 ): Promise<Response> {
+  const { store, model, log } = context;
   const input = rulesInput.safeParse(await jsonBody(request));
   if (!input.success) {
     log.info("input-invalid");
@@ -233,6 +300,7 @@ async function saveRules(
     now,
   );
   if (!("failed" in read)) log.info("rules-saved", { accountId: account });
+  await sortAllAgain(account, now, context);
   return answer(rulesView(saved));
 }
 
