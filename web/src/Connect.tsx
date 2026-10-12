@@ -2,16 +2,25 @@ import { useId, useRef } from "react";
 import { connectionAnswer, pagePaths } from "../../shared/page-api";
 import styles from "./Connect.module.css";
 import { cursorInstallLink } from "./cursor";
+import { SampleAsks } from "./SampleAsks";
 import { useAnswer } from "./useAnswer";
 
+// The list, where sample asks show once they are sent.
+const toList = () => {
+  window.location.hash = "#asks";
+};
+
 // How to connect an agent: the server address, the steps for Claude, and
-// one click for Cursor. There are no keys to copy.
+// one click for Cursor. There are no keys to copy. Someone with no agent
+// yet can send sample asks instead, and is taken to the list to watch
+// their rules sort them.
 export function Connect() {
   const { data, failed } = useAnswer(pagePaths.connection, connectionAnswer);
   const address = useRef<HTMLInputElement>(null);
   const addressId = useId();
   const claude = useId();
   const cursor = useId();
+  const samples = useId();
 
   const copy = () => {
     address.current?.select();
@@ -88,6 +97,16 @@ export function Connect() {
               <span className={styles.site}>cursor.com</span>
             </a>
           )}
+        </section>
+        <section className={styles.section} aria-labelledby={samples}>
+          <h2 className={styles.heading} id={samples}>
+            No agent yet?
+          </h2>
+          <p className={styles.note}>
+            Send a few sample asks from three parts of a life, and watch your
+            rules sort them.
+          </p>
+          <SampleAsks settings onSent={toList} />
         </section>
       </main>
       <footer>

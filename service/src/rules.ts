@@ -38,6 +38,31 @@ export interface Reading {
   hours: HashtagWindow[];
 }
 
+// The rules a new account starts with, until the person saves their own
+// (PRD, "Rules"), as docs/design/mockup/rules.html shows them. They name the
+// three areas the sample asks come from, so sorting can be watched with no
+// agent connected. They are read here, with no model call, and a test
+// checks that the reading is one a model's reply could give.
+export const exampleRules: { text: string; reading: Reading } = {
+  text: [
+    "#work is my day job. Only show it on weekdays between 8am and 6pm.",
+    "#shop is my online shop. Anything a customer can see comes first.",
+    "#family is home and the children. Show it at any time.",
+    "Anything that blocks a release or costs money ranks high. Routine questions rank low.",
+  ].join("\n\n"),
+  reading: {
+    hashtags: ["work", "shop", "family"],
+    hours: [
+      {
+        hashtag: "work",
+        days: ["mon", "tue", "wed", "thu", "fri"],
+        from: "08:00",
+        to: "18:00",
+      },
+    ],
+  },
+};
+
 const system = [
   "You read one person's rules for sorting the asks their AI agents send them.",
   "List the hashtags the rules name, in the order they first appear. A hashtag is a word written with # in front of it, such as #work.",

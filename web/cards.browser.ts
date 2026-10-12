@@ -78,7 +78,10 @@ afterEach(async () => {
 });
 
 // The page with a list, and the API taking every change to an ask. With
-// the clock, time stands still once the list shows, until a test moves it.
+// the clock, time jumps a minute once the list shows, then stands still
+// until a test moves it. The clock runs until the pause, and a pause aimed at
+// a moment already gone throws, so it aims further ahead than
+// vitest.config.ts lets a browser test run.
 async function open(
   list: AsksAnswer,
   options: PageOptions & { change?: unknown } = {},
@@ -98,7 +101,7 @@ async function open(
   await view.page.getByRole("article").waitFor();
   if (options.clock === true) {
     const now = await view.page.evaluate(() => Date.now());
-    await view.page.clock.pauseAt(now + 1);
+    await view.page.clock.pauseAt(now + minute);
   }
   return view;
 }
