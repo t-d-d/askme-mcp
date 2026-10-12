@@ -3,12 +3,8 @@ import { connectionAnswer, pagePaths } from "../../shared/page-api";
 import styles from "./Connect.module.css";
 import { cursorInstallLink } from "./cursor";
 import { SampleAsks } from "./SampleAsks";
+import { backToList, followToList } from "./toList";
 import { useAnswer } from "./useAnswer";
-
-// The list, where sample asks show once they are sent.
-const toList = () => {
-  window.location.hash = "#asks";
-};
 
 // How to connect an agent: the server address, the steps for Claude, and
 // one click for Cursor. There are no keys to copy. Someone with no agent
@@ -32,7 +28,7 @@ export function Connect() {
   return (
     <div className={styles.screen}>
       <header className={styles.header}>
-        <a className={styles.back} href="#asks">
+        <a className={styles.back} href="#asks" onClick={followToList}>
           <svg
             width="24"
             height="24"
@@ -113,7 +109,7 @@ export function Connect() {
             Send a few sample asks from three parts of a life, and watch your
             rules sort them.
           </p>
-          <SampleAsks settings onSent={toList} />
+          <SampleAsks settings onSent={backToList} />
         </section>
       </main>
       <footer>

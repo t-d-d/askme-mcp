@@ -214,6 +214,75 @@ describe.each([
   });
 });
 
+// "All asks" goes back (docs/design.md), so a visit to another screen leaves
+// one entry for the list in the history, not one more each time.
+describe("All asks on another screen", () => {
+  // Where the page's entry sits in the history.
+  const entry = (view: OpenPage) =>
+    view.page.evaluate(() => window.navigation.currentEntry?.index);
+
+  it.each([
+    ["the rules", ["Rules"], "Your rules"],
+    ["Connect your agents", ["Connect agents"], "Connect your agents"],
+    [
+      "Connect your agents, reached through the rules",
+      ["Rules", "Connect agents"],
+      "Connect your agents",
+    ],
+  ])(
+    "on %s goes back to the list's own entry in the history",
+    async (_, links, heading) => {
+      const view = await open(five, desktop);
+      try {
+        const { page } = view;
+        await page.getByRole("article").waitFor();
+        const list = await entry(view);
+        for (const link of links) {
+          await page.getByRole("link", { name: link }).click();
+        }
+        await page
+          .getByRole("heading", { name: heading, exact: true })
+          .waitFor();
+        await page.getByRole("link", { name: "All asks" }).click();
+        await page.getByRole("article").waitFor();
+        await expect.poll(() => entry(view)).toBe(list);
+      } finally {
+        await view.close();
+      }
+    },
+  );
+
+  it.each([
+    ["the rules", "#rules", "Your rules"],
+    ["Connect your agents", "#connect", "Connect your agents"],
+  ])(
+    "on %s opened straight from its address puts the list in its place in the history",
+    async (_, hash, heading) => {
+      const view = await openPage(`${inject("pageUrl")}${hash}`, desktop, {
+        session,
+        api: {
+          [pagePaths.asks]: five,
+          [pagePaths.connection]: connection,
+          [pagePaths.rules]: { text: "", hashtags: [], readFailed: false },
+        },
+      });
+      try {
+        const { page } = view;
+        await page
+          .getByRole("heading", { name: heading, exact: true })
+          .waitFor();
+        const screen = await entry(view);
+        await page.getByRole("link", { name: "All asks" }).click();
+        await page.getByRole("article").waitFor();
+        expect(new URL(page.url()).hash).toBe("#asks");
+        expect(await entry(view)).toBe(screen);
+      } finally {
+        await view.close();
+      }
+    },
+  );
+});
+
 describe("the top card's spoken detail", () => {
   it("shows beside the top ask at desktop width", async () => {
     const view = await open(five, desktop);

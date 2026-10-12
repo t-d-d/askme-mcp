@@ -8,6 +8,7 @@ import { askColour, tagColour, type HashtagColour } from "./palette";
 import { Pills } from "./Pills";
 import { listenLength } from "./speech";
 import type { Tab } from "./tab";
+import { backToList, followToList } from "./toList";
 import { waiting } from "./waiting";
 
 // One ask, open on a white screen (docs/design.md, "The open card"): its
@@ -50,7 +51,7 @@ export function OpenCard({
       style={tagColour(askColour(sort, tab, colours))}
     >
       <header className={styles.header}>
-        <a className={styles.back} href="#asks">
+        <a className={styles.back} href="#asks" onClick={followToList}>
           <BackIcon />
           All asks
         </a>
@@ -60,7 +61,7 @@ export function OpenCard({
           onClick={() => {
             dismiss(id);
             // The card is gone, so Back does not come back to it.
-            window.location.replace("#asks");
+            backToList();
           }}
         >
           Dismiss

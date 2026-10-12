@@ -19,3 +19,38 @@ export function cardIn(hash: string): string | null {
   const id = hash.slice(cardPrefix.length);
   return askIdPattern.test(id) ? id : null;
 }
+
+// The list's own address, for a screen with no list behind it to go back to.
+export const listHref = "#asks";
+
+// Whether the fragment shows the list, with no card open over it.
+const showsList = (hash: string): boolean =>
+  screenIn(hash) === "asks" && cardIn(hash) === null;
+
+// How many entries back in the history the nearest one is that shows the
+// list, given the address shown and those of the entries before it, oldest
+// first, with null for one the browser cannot read. Only this page's own
+// entries count, so the search ends at the first that is not one, and at
+// the first it cannot read. None when the list is shown already, and null
+// when there is no list to go back to.
+export function stepsBackToList(
+  here: string,
+  earlier: readonly (string | null)[],
+): number | null {
+  const page = new URL(here);
+  if (showsList(page.hash)) return 0;
+  for (let steps = 1; steps <= earlier.length; steps += 1) {
+    const address = earlier[earlier.length - steps];
+    if (address === null || address === undefined) return null;
+    const entry = new URL(address);
+    if (
+      entry.origin !== page.origin ||
+      entry.pathname !== page.pathname ||
+      entry.search !== page.search
+    ) {
+      return null;
+    }
+    if (showsList(entry.hash)) return steps;
+  }
+  return null;
+}

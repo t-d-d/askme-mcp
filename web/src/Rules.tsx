@@ -12,6 +12,7 @@ import type { AskFirst } from "./SignedIn";
 import { hoursText } from "./hours";
 import { colourOf, tagColour } from "./palette";
 import styles from "./Rules.module.css";
+import { elsewhere, followToList } from "./toList";
 import { browserTimeZone, useRules } from "./useRules";
 
 const leaving = "Leave without saving your rules?";
@@ -52,13 +53,7 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
   // nothing to the history. Once the person agrees, they are not asked again.
   // A link opened in a new tab or window leaves nothing, so it does not ask.
   const away = (event: MouseEvent) => {
-    const elsewhere =
-      event.button !== 0 ||
-      event.ctrlKey ||
-      event.metaKey ||
-      event.shiftKey ||
-      event.altKey;
-    if (!changed || elsewhere) return;
+    if (!changed || elsewhere(event)) return;
     if (window.confirm(leaving)) askFirst(null);
     else event.preventDefault();
   };
@@ -93,7 +88,14 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
   return (
     <div className={styles.screen}>
       <header className={styles.header}>
-        <a className={styles.back} href="#asks" onClick={away}>
+        <a
+          className={styles.back}
+          href="#asks"
+          onClick={(event) => {
+            away(event);
+            followToList(event);
+          }}
+        >
           <svg
             width="24"
             height="24"
