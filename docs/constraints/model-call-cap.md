@@ -19,9 +19,11 @@ for everyone.
 - The cap is a constant in the rate module. Tuning it needs no new
   decision.
 - Over the cap, a sort sends nothing, leaves the ask as it was, and
-  logs at info.
-- Over the cap, a rules save is refused with cap_reached before
-  anything is saved.
+  logs at info. A model failure on an earlier try is still logged at
+  warn.
+- Over the cap, a rules save whose rules need reading is refused
+  with cap_reached before anything is saved. Empty rules make no
+  call, so their save is not refused.
 - The cap never refuses an agent.
 - The eval is outside the cap. It runs from the repo, on its own key.
 
@@ -37,7 +39,8 @@ for everyone.
   ([untrusted-ask-text.md](untrusted-ask-text.md)).
 - Treat the model key's own limit as the cap: every account shares
   it, so one account reaching it stops sorting for all.
-- Log a capped sort at warn: the cap is working as designed.
+- Log a capped sort at warn, as a failed sort is: the cap is working
+  as designed.
 
 Judgment: A model call made for no account is a new decision. The
 cap's value is the owner's call, set against the key's limit across
