@@ -88,9 +88,15 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
     2 * stepMs,
   );
 
+  // On a phone the header has one control, which opens the rules, and the
+  // rules screen links on to Connect your agents (docs/design.md, "Header").
+  // Opening the rules only reads them.
   it(
     "shows the MCP address the deploy published under Connect your agents",
     async () => {
+      await page
+        .getByRole("link", { name: "Rules", exact: true })
+        .click({ timeout: stepMs });
       await page
         .getByRole("link", { name: "Connect agents" })
         .click({ timeout: stepMs });
@@ -103,7 +109,7 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
         await page.getByText("Not connected. Trying again.").isVisible(),
       ).toBe(false);
     },
-    3 * stepMs,
+    4 * stepMs,
   );
 });
 
