@@ -80,9 +80,11 @@ describe("the core eval set", () => {
       const one = named(name);
       expect(one?.expected.level, name).toBe("high");
       // The prompt has to know such a wait runs out. The ask does not say.
-      expect(one?.ask.spokenDetail, name).not.toMatch(
-        /expire|time[sd]? out|run[s]? out|minute/iu,
-      );
+      for (const text of [one?.ask.summary, one?.ask.spokenDetail]) {
+        expect(text, name).not.toMatch(
+          /expir|time[sd]?[ -]?out|r[au]n[s]? out|minute|valid for/iu,
+        );
+      }
     }
     expect(named("a passkey to set up when it suits")?.expected.level).toBe(
       "low",

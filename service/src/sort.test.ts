@@ -116,6 +116,7 @@ describe("the sorting prompt", () => {
   it("says that a passkey or sign-in wait runs out, so the agent has to start again (issue #91)", () => {
     const { system } = sortingPrompt(rules, ask);
     expect(system).toMatch(/passkey/u);
+    expect(system).toMatch(/sign-in/u);
     expect(system).toMatch(/times out/u);
     expect(system).toMatch(/set the work up again/u);
   });
