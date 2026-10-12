@@ -77,7 +77,14 @@ describe("the store", () => {
     expect(await store.openAsks(owner, now)).toEqual({
       version: 1,
       everAsked: true,
-      asks: [{ id, ...ask, postedAt: "2026-10-11T09:30:00.000Z" }],
+      asks: [
+        {
+          id,
+          ...ask,
+          postedAt: "2026-10-11T09:30:00.000Z",
+          storedAt: "2026-10-11T09:30:00.000Z",
+        },
+      ],
     });
   });
 
@@ -163,6 +170,7 @@ describe("resolving an ask", () => {
         id,
         ...ask,
         postedAt: posted.toISOString(),
+        storedAt: posted.toISOString(),
         expiresAt: (posted.getTime() + askLifetimeDays * day) / 1000,
         endedAs: "resolved",
         closedAt: closed.toISOString(),
@@ -223,7 +231,7 @@ describe("replacing an ask", () => {
     spokenDetail: "The electrician changed the plan. It needs a yes or no.",
   };
 
-  it("closes the old ask as replaced, and lists the new one in its place, waiting since the old one", async () => {
+  it("closes the old ask as replaced, and lists the new one in its place, waiting since the old one but stored now", async () => {
     const owner = account();
     const first = new Date("2026-10-11T09:30:00.000Z");
     const second = new Date("2026-10-11T11:00:00.000Z");
@@ -239,6 +247,7 @@ describe("replacing an ask", () => {
           ...newer,
           replaces: old.id,
           postedAt: first.toISOString(),
+          storedAt: second.toISOString(),
         },
       ],
     });
@@ -249,6 +258,7 @@ describe("replacing an ask", () => {
         id: old.id,
         ...ask,
         postedAt: first.toISOString(),
+        storedAt: first.toISOString(),
         expiresAt,
         endedAs: "replaced",
         closedAt: second.toISOString(),
@@ -277,6 +287,7 @@ describe("replacing an ask", () => {
           ...newer,
           replaces: "AAAAAAAAAAAAAAAAAAAAAAAA",
           postedAt: now.toISOString(),
+          storedAt: now.toISOString(),
         },
       ],
     });
@@ -526,7 +537,14 @@ describe("the asks since a version", () => {
     expect(await store.asksSince(owner, 0, now)).toEqual({
       version: 1,
       everAsked: true,
-      asks: [{ id, ...ask, postedAt: now.toISOString() }],
+      asks: [
+        {
+          id,
+          ...ask,
+          postedAt: now.toISOString(),
+          storedAt: now.toISOString(),
+        },
+      ],
     });
   });
 
@@ -640,6 +658,7 @@ describe("a sort result", () => {
         id,
         ...ask,
         postedAt: now.toISOString(),
+        storedAt: now.toISOString(),
         sort: { ...sort, sortedAt: now.toISOString() },
       },
     ]);
@@ -690,7 +709,12 @@ describe("an ask to sort", () => {
     );
     const { id } = await postNew(owner, ask, now);
     expect(await store.askToSort(owner, id, now)).toEqual({
-      ask: { id, ...ask, postedAt: now.toISOString() },
+      ask: {
+        id,
+        ...ask,
+        postedAt: now.toISOString(),
+        storedAt: now.toISOString(),
+      },
       rules,
     });
   });
