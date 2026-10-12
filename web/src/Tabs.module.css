@@ -15,12 +15,36 @@
   cursor: pointer;
 }
 
-/* Selected, Everything is ink with ground-colour text. */
-.everything {
+.everything,
+.hashtag {
   padding: var(--space-6) var(--space-12);
   border-radius: var(--radius-pill);
+}
+
+/* Everything is the neutral tint with ink text, and ink with ground-colour
+   text when selected. */
+.everything {
+  background: var(--neutral-tint);
+  color: var(--ink);
+}
+
+.tab[aria-pressed="true"] .everything {
   background: var(--ink);
   color: var(--ground);
+}
+
+/* A hashtag is its tint with its ink, and its strong colour with white text
+   when selected. White is the surface colour. */
+.hashtag {
+  padding-right: var(--space-10);
+  padding-left: var(--space-10);
+  background: var(--tag-tint);
+  color: var(--tag-ink);
+}
+
+.tab[aria-pressed="true"] .hashtag {
+  background: var(--tag-strong);
+  color: var(--surface);
 }
 
 @media (min-width: 768px) {

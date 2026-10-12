@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Hashtag } from "../../shared/page-api";
+import { shownUnder, type Tab } from "./asks";
 
 // The eight hashtag colours of docs/design.md, in the order new hashtags take
 // them. White on every strong, and each ink on its tint, is at least 4.5 to 1.
@@ -53,13 +54,17 @@ export function hashtagColours(
   return new Map(hashtags.map(({ name, colour }) => [name, colourOf(colour)]));
 }
 
-// A sorted ask takes the colour of its first hashtag, in the rules' order.
-export function sortedColour(
-  sort: { hashtags: readonly string[] },
+// The colour an ask's card hands to its buttons. An ask not sorted yet has
+// none. A sorted one takes the colour of the hashtag it is shown under: its
+// first on Everything, and the tab's own on a hashtag's tab.
+export function askColour(
+  sort: { hashtags: readonly string[] } | null,
+  tab: Tab,
   colours: ReadonlyMap<string, HashtagColour>,
 ): HashtagColour {
-  const [first] = sort.hashtags;
-  return (first === undefined ? undefined : colours.get(first)) ?? neutral;
+  if (sort === null) return unsorted;
+  const shown = shownUnder(sort, tab);
+  return (shown === undefined ? undefined : colours.get(shown)) ?? neutral;
 }
 
 // The only custom properties an inline style may set (ADR 14).
