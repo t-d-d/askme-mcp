@@ -8,10 +8,9 @@ import styles from "./Tabs.module.css";
 // them. With no hashtags there is only Everything.
 //
 // A hashtag's tab goes when its hashtag leaves the rules. If it has focus
-// then, focus moves to Everything, the tab the page selects in its place,
-// rather than falling back to the top of the page. The ref callback stays
-// the same between renders, so React calls its cleanup only as the tab goes,
-// while the tab still has focus.
+// then, focus moves to Everything rather than falling back to the top of
+// the page. The ref callback stays the same between renders, so React calls
+// its cleanup only as the tab goes, while the tab still has focus.
 export function Tabs({
   hashtags,
   selected,

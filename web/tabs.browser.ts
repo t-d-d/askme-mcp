@@ -88,6 +88,10 @@ const tab = (page: Page, name: string) =>
     .getByRole("navigation", { name: "Hashtags" })
     .getByRole("button", { name, exact: true });
 
+// Whether a control has the keyboard's focus.
+const focused = (control: Locator) =>
+  control.evaluate((element) => element === document.activeElement);
+
 const summaries = async (page: Page) => [
   ...(await page.getByRole("article").allInnerTexts()),
   ...(await page.getByRole("listitem").allInnerTexts()),
@@ -237,11 +241,24 @@ describe("the tabs", () => {
     };
     await page.clock.fastForward(pollMs);
     await tab(page, "#family").waitFor({ state: "detached" });
-    expect(
-      await tab(page, "Everything").evaluate(
-        (control) => control === document.activeElement,
-      ),
-    ).toBe(true);
+    expect(await focused(tab(page, "Everything"))).toBe(true);
+  });
+
+  it("move focus to Everything when the selected tab's hashtag leaves the rules", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#family").click();
+    await page.getByRole("listitem").first().waitFor({ state: "detached" });
+    answer = {
+      ...list,
+      version: list.version + 1,
+      hashtags: hashtags.filter(({ name }) => name !== "family"),
+    };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "#family").waitFor({ state: "detached" });
+    expect(await focused(tab(page, "Everything"))).toBe(true);
   });
 
   it("keep focus on a tab whose hashtag stays when another leaves the rules", async () => {
@@ -257,11 +274,7 @@ describe("the tabs", () => {
     };
     await page.clock.fastForward(pollMs);
     await tab(page, "#family").waitFor({ state: "detached" });
-    expect(
-      await tab(page, "#work").evaluate(
-        (control) => control === document.activeElement,
-      ),
-    ).toBe(true);
+    expect(await focused(tab(page, "#work"))).toBe(true);
   });
 
   it("stay on Everything when a hashtag that left the rules comes back", async () => {
