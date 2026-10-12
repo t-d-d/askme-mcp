@@ -24,6 +24,21 @@
   flex: 2;
 }
 
+/* While a note shows, the screen keeps room for it at its foot
+   (Asks.module.css). All clear reaches down into that room, so it keeps its
+   height and the headline stays where it is. The held line under it still
+   moves up out of the note's way, over the space below the last line. On a
+   screen too short to hold the headline, that space shrinks only until the
+   space at the foot is left between the last line and the held line or the
+   note, so the note covers neither. */
+.allClear[data-noted] {
+  margin-bottom: calc(-1 * var(--space-note));
+}
+
+.allClear[data-noted]::after {
+  min-height: calc(var(--space-note) - var(--space-foot));
+}
+
 .headline {
   margin: 0 0 var(--space-20);
   font-size: var(--size-all-clear);

@@ -93,6 +93,7 @@
   --space-outside-card: var(--space-16);
   --space-inside-card: var(--space-22);
   --space-foot: var(--space-26);
+  --space-note: calc(var(--tap) + 2 * var(--space-6) + var(--hairline));
   --gap-buttons: var(--space-8);
 
   /* An opened ask, which sinks below the unopened ones at its level */
