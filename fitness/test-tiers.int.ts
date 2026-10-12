@@ -1,3 +1,4 @@
+import { createHook } from "node:async_hooks";
 import { createSocket } from "node:dgram";
 import {
   lookup,
@@ -104,7 +105,7 @@ describe("fitness: the gate is offline (test-tiers.md)", () => {
   });
 
   it("answers a lookup of localhost itself, so neither the hosts file nor a DNS server is asked", async () => {
-    const asked = standInForGetaddrinfo();
+    const asked = watchGetaddrinfo();
     try {
       expect(await lookupByCallback("localhost", { family: 6 })).toBe("::1");
       expect(
@@ -122,9 +123,9 @@ describe("fitness: the gate is offline (test-tiers.md)", () => {
         { address: "127.0.0.1", family: 4 },
       ]);
     } finally {
-      asked.restore();
+      asked.stop();
     }
-    expect(asked.names).toEqual([]);
+    expect(asked.names()).toEqual([]);
   });
 
   it("refuses a datagram to an address that is not loopback", () => {
@@ -173,34 +174,23 @@ function lookupByCallback(
   });
 }
 
-// A lookup reads the hosts file and asks a DNS server through one function,
-// getaddrinfo in Node's resolver binding, for the callback and promise forms
-// alike. Node exposes no other way to see a lookup leave the process. The
-// stand-in records the name and fails the lookup, so a test that uses it
-// sends no query even when the guard lets one through.
-function standInForGetaddrinfo(): { names: string[]; restore: () => void } {
-  const binding: unknown = Reflect.get(process, "binding");
-  if (typeof binding !== "function") {
-    throw new Error("This Node has no process.binding.");
-  }
-  const resolver: unknown = Reflect.apply(binding, process, ["cares_wrap"]);
-  if (typeof resolver !== "object" || resolver === null) {
-    throw new Error("This Node has no resolver binding.");
-  }
-  const getaddrinfo: unknown = Reflect.get(resolver, "getaddrinfo");
-  if (typeof getaddrinfo !== "function") {
-    throw new Error("The resolver binding has no getaddrinfo.");
-  }
-  const names: string[] = [];
-  Reflect.set(resolver, "getaddrinfo", (...args: unknown[]): never => {
-    const [, name] = args;
-    names.push(String(name));
-    throw new Error(`The lookup of ${String(name)} reached getaddrinfo.`);
-  });
+// A lookup reads the hosts file and asks a DNS server through getaddrinfo.
+// Each call, from the callback form or the promise form, makes a
+// GETADDRINFOREQWRAP request, which an async hook sees as it is made. The
+// request carries the name once lookup has filled it in. The hook only
+// watches: a lookup the guard lets through still runs.
+function watchGetaddrinfo(): { names: () => string[]; stop: () => void } {
+  const requests: object[] = [];
+  const hook = createHook({
+    init(_asyncId, type, _triggerAsyncId, resource) {
+      if (type === "GETADDRINFOREQWRAP") requests.push(resource);
+    },
+  }).enable();
   return {
-    names,
-    restore: () => {
-      Reflect.set(resolver, "getaddrinfo", getaddrinfo);
+    names: () =>
+      requests.map((request) => String(Reflect.get(request, "hostname"))),
+    stop: () => {
+      hook.disable();
     },
   };
 }
