@@ -33,6 +33,7 @@ import {
   sortRetryLimit,
   windowOf,
 } from "../rate";
+import { hashtagWindow, type HashtagWindow } from "../rules";
 import { levels, type Sort } from "../sort";
 import { fingerprint } from "./fingerprint";
 import { keys, type Key } from "./keys";
@@ -159,6 +160,10 @@ const dedupeSchema = z.object({
 // (docs/design.md). The version goes up on every save, and savedAt says
 // when the last save was. When the last save could not be read, the
 // hashtags are the ones read before it.
+//
+// The hours are the windows read with the hashtags, absent when the rules
+// give no hashtag any, and the time zone is the one the browser that saved
+// the rules was in, which the hours use, absent until a save sends one.
 const rulesSchema = z.object({
   text: z.string(),
   hashtags: z.array(z.string()),
@@ -167,6 +172,8 @@ const rulesSchema = z.object({
   readFailed: z.boolean(),
   // Absent until the rules are first saved.
   savedAt: z.iso.datetime().optional(),
+  hours: z.array(hashtagWindow).min(1).optional(),
+  timeZone: z.string().optional(),
 });
 
 export type AccountRules = z.output<typeof rulesSchema>;
@@ -181,11 +188,21 @@ const noRules: AccountRules = {
   readFailed: false,
 };
 
-// Rules as a save hands them in: the text, and the hashtags read from it,
-// or none when the rules could not be read.
+// The hours as the rules item holds them: absent when there are none.
+const windowsOf = (hours: HashtagWindow[] | undefined) =>
+  hours === undefined || hours.length === 0 ? {} : { hours };
+
+// Rules as a save hands them in: the text, the time zone of the browser
+// that saved them, and the hashtags read from it with their hours. Without
+// a time zone, the one saved before stays. Without hashtags, the rules
+// could not be read, and the hashtags and hours read before stay.
 export interface NewRules {
   text: string;
+  timeZone?: string | undefined;
   hashtags?: string[];
+  // Read with the hashtags. With hashtags and no hours, every hashtag shows
+  // at any time.
+  hours?: HashtagWindow[];
 }
 
 // An open ask, with the account's rules, for the sorter.
@@ -245,9 +262,9 @@ export interface Store {
   countAsk(account: AccountId, now: Date): Promise<Counted>;
   // The account's rules.
   rules(account: AccountId): Promise<AccountRules>;
-  // Saves the rules text, and the hashtags read from it when there are
-  // some. With none, the old hashtags stay, and the rules are marked as not
-  // read.
+  // Saves the rules text and the time zone, and the hashtags read from it
+  // with their hours when there are some. With none, the old hashtags and
+  // hours stay, and the rules are marked as not read.
   saveRules(
     account: AccountId,
     rules: NewRules,
@@ -755,7 +772,7 @@ export function createStore(config: {
 
     // Each save starts from the rules as they are, and is written only if
     // no other save landed in between, so no hashtag drops out of seen.
-    async saveRules(account, { text, hashtags }, now) {
+    async saveRules(account, { text, timeZone, hashtags, hours }, now) {
       for (let tries = 0; ; tries += 1) {
         const current = await readRules(account);
         const read = hashtags ?? current.hashtags;
@@ -769,6 +786,8 @@ export function createStore(config: {
           version: current.version + 1,
           readFailed: hashtags === undefined,
           savedAt: now.toISOString(),
+          ...windowsOf(hashtags === undefined ? current.hours : hours),
+          timeZone: timeZone ?? current.timeZone,
         };
         try {
           await write(account, [

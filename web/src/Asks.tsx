@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { PageAsk } from "../../shared/page-api";
 import type { AskActions } from "./actions";
 import { AllClear } from "./AllClear";
 import { AskList } from "./AskList";
@@ -6,6 +7,8 @@ import { DismissedNote } from "./DismissedNote";
 import { everything, onTab, type Tab } from "./tab";
 import styles from "./Asks.module.css";
 import { Header } from "./Header";
+import { Held } from "./Held";
+import { heldAsks } from "./hours";
 import { NewAccount } from "./NewAccount";
 import { OpenCard } from "./OpenCard";
 import { hashtagColours } from "./palette";
@@ -30,11 +33,20 @@ import { useOpening } from "./useOpening";
 // again. A hashtag the rules no longer name has no tab, but keeps its
 // colour on the asks that still carry it.
 //
+// An ask with a hashtag outside its hours is held back, on every tab, as of
+// the last poll. The held line under the tabs counts the tab's held asks
+// and shows them, or hides them again. With every ask held and hidden the
+// list is all clear, and the line sits at its foot. Once nothing is held,
+// held asks are hidden again when they are next held. A held ask dismissed
+// here is still held until askme drops it, so Undo brings it back shown. A
+// former hashtag has no hours, so it holds nothing back.
+//
 // An ask the person has opened shows as opened, and one they have dismissed
 // leaves the list, before the next poll says so.
 export function Asks({ card }: { card: string | null }) {
-  const { data, receivedAt, failed } = useAsks();
+  const { data, receivedAt, polledAt, failed } = useAsks();
   const [chosen, choose] = useState<Tab>(everything);
+  const [showingHeld, showHeld] = useState(false);
   const [speak] = useState(browserSpeech);
   const { opened, markOpened } = useOpening();
   const { dismissed, note, dismiss, undo } = useDismissing();
@@ -53,15 +65,46 @@ export function Asks({ card }: { card: string | null }) {
   // Every hashtag an ask may carry, the former ones included, for colour.
   const coloured =
     data === undefined ? [] : [...hashtags, ...data.formerHashtags];
-  const allClear = data !== undefined && asks.length === 0 && data.everAsked;
+  // Counted over the list as polled, so an ask dismissed here still counts
+  // until askme drops it, and Undo brings it back as it was.
+  const held = useMemo(
+    () =>
+      heldAsks(
+        data?.asks ?? [],
+        data?.hashtags ?? [],
+        data?.timeZone,
+        polledAt,
+      ),
+    [data, polledAt],
+  );
+  if (showingHeld && held.size === 0) showHeld(false);
+  const waiting = (list: readonly PageAsk[]) =>
+    showingHeld ? list : list.filter(({ id }) => !held.has(id));
+  const open = card === null ? undefined : asks.find(({ id }) => id === card);
+  // An open card keeps the list's tab, though every ask behind it is held.
+  const allClear =
+    open === undefined &&
+    data?.everAsked === true &&
+    waiting(asks).length === 0;
   const tab =
     !allClear && hashtags.some(({ name }) => name === chosen)
       ? chosen
       : everything;
   if (tab !== chosen) choose(tab);
-  const shown = onTab(asks, tab);
+  const onThisTab = onTab(asks, tab);
+  const shown = waiting(onThisTab);
+  const heldHere = onThisTab.filter(({ id }) => held.has(id)).length;
+  const heldLine = (atFoot: boolean) => (
+    <Held
+      count={heldHere}
+      showing={showingHeld}
+      atFoot={atFoot}
+      onToggle={() => {
+        showHeld(!showingHeld);
+      }}
+    />
+  );
   const noted = note !== null;
-  const open = card === null ? undefined : asks.find(({ id }) => id === card);
 
   // The note stays in one place in the tree, whichever screen shows, so a
   // screen reader hears a note that comes as the card closes.
@@ -80,7 +123,10 @@ export function Asks({ card }: { card: string | null }) {
         <div className={styles.screen} data-noted={noted ? "" : undefined}>
           <Header />
           {!allClear && (
-            <Tabs hashtags={hashtags} selected={tab} onSelect={choose} />
+            <div className={styles.bar}>
+              <Tabs hashtags={hashtags} selected={tab} onSelect={choose} />
+              {heldHere > 0 && heldLine(false)}
+            </div>
           )}
           {failed && (
             <p className={styles.note} role="status">
@@ -98,7 +144,10 @@ export function Asks({ card }: { card: string | null }) {
               />
             </main>
           ) : data.everAsked ? (
-            <AllClear />
+            <>
+              <AllClear />
+              {allClear && heldHere > 0 && heldLine(true)}
+            </>
           ) : (
             <NewAccount />
           )}

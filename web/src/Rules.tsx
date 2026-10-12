@@ -8,17 +8,18 @@ import {
 import { rulesLimit } from "../../shared/page-api";
 import { Refusal } from "./load";
 import type { AskFirst } from "./SignedIn";
+import { hoursText } from "./hours";
 import { colourOf, tagColour } from "./palette";
 import styles from "./Rules.module.css";
-import { useRules } from "./useRules";
+import { browserTimeZone, useRules } from "./useRules";
 
 const leaving = "Leave without saving your rules?";
 
 // The rules: one box in plain English, and below it the hashtags askme read
-// from them. Saving waits while askme reads them. If it cannot, the text is
-// saved all the same, the old hashtags stay, and the page offers to try
-// again. Either way, saving re-sorts every open ask, and a last note says
-// so.
+// from them, each with its hours. Saving waits while askme reads them. If
+// it cannot, the text is saved all the same, the old hashtags and hours
+// stay, and the page offers to try again. Either way, saving re-sorts every
+// open ask, and a last note says so, after the time zone the hours use.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const { loaded, save } = useRules();
   const { data, failed } = loaded;
@@ -144,7 +145,7 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
               </p>
             ) : (
               <ul className={styles.hashtags}>
-                {data.hashtags.map(({ name, colour }) => (
+                {data.hashtags.map(({ name, colour, hours }) => (
                   <li className={styles.hashtag} key={name}>
                     <span
                       className={styles.pill}
@@ -152,14 +153,44 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
                     >
                       #{name}
                     </span>
+                    <span className={styles.hours}>
+                      {hoursText(hours ?? []).map((line, place) => (
+                        <span className={styles.window} key={place}>
+                          {line}
+                        </span>
+                      ))}
+                    </span>
                   </li>
                 ))}
               </ul>
             ))}
-          <p className={styles.footnote}>Saving re-sorts every open ask.</p>
+          <Footnote loaded={data !== undefined} saved={data?.timeZone} />
         </section>
       </main>
     </div>
+  );
+}
+
+// The last note: the time zone the hours use, once the rules have loaded,
+// and that saving re-sorts every open ask. A save takes this browser's time
+// zone, so when another browser saved the rules, the note says which one
+// saving here uses.
+function Footnote({
+  loaded,
+  saved,
+}: {
+  loaded: boolean;
+  saved: string | undefined;
+}) {
+  const here = browserTimeZone();
+  const zone =
+    saved === undefined || saved === here
+      ? `Hours use ${here}, taken from this browser. `
+      : `Hours use ${saved}, taken from the browser that saved them. Saving here uses ${here}. `;
+  return (
+    <p className={styles.footnote}>
+      {loaded && zone}Saving re-sorts every open ask.
+    </p>
   );
 }
 

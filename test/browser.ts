@@ -52,8 +52,11 @@ export interface PageOptions {
   // answer worked out for each call. A path with no answer gets a 404.
   api?: Record<string, unknown>;
   // Give the page Playwright's clock, which runs as usual until a test
-  // moves it on with page.clock.
-  clock?: boolean;
+  // moves it on with page.clock. Given a time, the clock starts there.
+  clock?: boolean | Date;
+  // The browser's time zone, such as Europe/London. Without one it is the
+  // machine's.
+  timeZone?: string;
   // The browser's speech: "absent", as in a browser that cannot speak, or
   // "recorded", which says nothing and records what it was asked to read.
   // Left out, the page has Chromium's own.
@@ -133,7 +136,10 @@ export async function openPage(
       "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
     ],
   });
-  const context = await browser.newContext({ viewport });
+  const context = await browser.newContext({
+    viewport,
+    ...(options.timeZone === undefined ? {} : { timezoneId: options.timeZone }),
+  });
   const refused: string[] = [];
   await context.route("**/*", async (route) => {
     const target = new URL(route.request().url());
@@ -189,7 +195,11 @@ export async function openPage(
       get: () => (hidden() ? "hidden" : "visible"),
     });
   }, hiddenFlag);
-  if (options.clock === true) await context.clock.install();
+  if (options.clock instanceof Date) {
+    await context.clock.install({ time: options.clock });
+  } else if (options.clock === true) {
+    await context.clock.install();
+  }
   if (options.speech === "absent") {
     await context.addInitScript(() => {
       Reflect.deleteProperty(window, "speechSynthesis");

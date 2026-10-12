@@ -10,6 +10,7 @@ import {
   rulesSaveLimit,
   sortRetryLimit,
 } from "./src/rate";
+import type { HashtagWindow } from "./src/rules";
 import { keys } from "./src/store/keys";
 import {
   askLifetimeDays,
@@ -721,6 +722,12 @@ describe("the asks since a version", () => {
 
 describe("the rules", () => {
   const now = new Date("2026-10-11T09:30:00.000Z");
+  const workHours: HashtagWindow = {
+    hashtag: "work",
+    days: ["mon", "tue", "wed", "thu", "fri"],
+    from: "08:00",
+    to: "18:00",
+  };
 
   it("are empty, with no hashtags, for an account that never saved any", async () => {
     expect(await store.rules(account())).toEqual({
@@ -749,6 +756,82 @@ describe("the rules", () => {
     });
     expect(await store.rules(owner)).toEqual(saved);
     expect(await versionOf(owner)).toBe(1);
+  });
+
+  it("keep each hashtag's hours, read with it, and the time zone they use", async () => {
+    const owner = account();
+    const saved = await store.saveRules(
+      owner,
+      {
+        text: "#work on weekdays, 8am to 6pm. #shop at any time.",
+        timeZone: "Europe/London",
+        hashtags: ["work", "shop"],
+        hours: [workHours],
+      },
+      now,
+    );
+    expect(saved).toMatchObject({
+      hashtags: ["work", "shop"],
+      hours: [workHours],
+      timeZone: "Europe/London",
+    });
+    expect(await store.rules(owner)).toEqual(saved);
+  });
+
+  it("keep the old hours, and take the new time zone, when the rules could not be read", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      {
+        text: "#work on weekdays, 8am to 6pm.",
+        timeZone: "Europe/London",
+        hashtags: ["work"],
+        hours: [workHours],
+      },
+      now,
+    );
+    const saved = await store.saveRules(
+      owner,
+      { text: "#work on weekdays, 9 to 5.", timeZone: "America/New_York" },
+      now,
+    );
+    expect(saved).toMatchObject({
+      hashtags: ["work"],
+      hours: [workHours],
+      timeZone: "America/New_York",
+      readFailed: true,
+    });
+  });
+
+  it("drop the old hours when the new rules give none", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      { text: "#work on weekdays.", hashtags: ["work"], hours: [workHours] },
+      now,
+    );
+    const saved = await store.saveRules(
+      owner,
+      { text: "#work at any time.", hashtags: ["work"] },
+      now,
+    );
+    expect(saved.hours).toBeUndefined();
+    expect((await store.rules(owner)).hours).toBeUndefined();
+  });
+
+  it("keep the time zone saved before when a save gives none", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      { text: "#work", timeZone: "Asia/Tokyo", hashtags: ["work"] },
+      now,
+    );
+    const saved = await store.saveRules(
+      owner,
+      { text: "#work first.", hashtags: ["work"] },
+      now,
+    );
+    expect(saved.timeZone).toBe("Asia/Tokyo");
   });
 
   it("keep the new text and the old hashtags when the rules could not be read", async () => {

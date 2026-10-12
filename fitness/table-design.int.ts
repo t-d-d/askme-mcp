@@ -89,7 +89,7 @@ const putRules = async (sub: string, text: string) =>
 
 // Saves the rules, with the model reading the hashtags given.
 async function saveRules(sub: string, text: string, hashtags: string[]) {
-  fakes.model.reply({ json: { hashtags } });
+  fakes.model.reply({ json: { hashtags, hours: [] } });
   const response = await putRules(sub, text);
   expect(response.status).toBe(200);
 }

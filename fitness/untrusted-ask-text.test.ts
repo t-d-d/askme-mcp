@@ -1,12 +1,16 @@
 // The prompt builder's checks from ADR 12, in memory: ask text stays in its
-// own section, and a prompt holds one account's rules and one of its asks.
-import { describe, expect, it } from "vitest";
+// own section, a prompt holds one account's rules and one of its asks, and
+// time windows run in code.
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import type { Hashtag } from "../shared/page-api";
 import { callerOf, type AccountId } from "../service/src/identity";
 import {
   sortingPrompt,
   type SortingAsk,
   type SortingRules,
 } from "../service/src/sort";
+import { heldAsks } from "../web/src/hours";
 
 const accountId = (sub: string): AccountId =>
   callerOf({
@@ -90,5 +94,55 @@ describe("fitness: one account per prompt (untrusted-ask-text.md)", () => {
     expect(() =>
       sortingPrompt(rules, { ...hostile, account: accountId("user_other") }),
     ).toThrow();
+  });
+});
+
+describe("fitness: time windows run in code (untrusted-ask-text.md)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const limited: SortingRules = {
+    ...rules,
+    text: "#work is my day job. Only show it on weekdays between 8am and 6pm. #shop is my online shop.",
+  };
+
+  it("gives the sorting model no clock, so its prompt is the same at any time", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-12T07:00:00Z"));
+    const morning = sortingPrompt(limited, hostile);
+    vi.setSystemTime(new Date("2026-10-17T23:30:00Z"));
+    expect(sortingPrompt(limited, hostile)).toEqual(morning);
+  });
+
+  it("asks the sorting model for hashtags, a level and a reason, and no time or hold", () => {
+    const { schema } = sortingPrompt(limited, hostile);
+    expect(
+      Object.keys(
+        z.record(z.string(), z.unknown()).parse(schema.properties),
+      ).sort(),
+    ).toEqual(["hashtags", "level", "reason"]);
+  });
+
+  it("holds an ask in the page's own code, from the minute its hashtag's hours close", () => {
+    const hashtags: Hashtag[] = [
+      {
+        name: "work",
+        colour: 0,
+        hours: [
+          {
+            days: ["mon", "tue", "wed", "thu", "fri"],
+            from: "08:00",
+            to: "18:00",
+          },
+        ],
+      },
+    ];
+    const asks = [{ id: "a", sort: { hashtags: ["work"] } }];
+    // Monday 12 October 2026, either side of 6pm in London.
+    const at = (iso: string) =>
+      heldAsks(asks, hashtags, "Europe/London", Date.parse(iso));
+    expect(at("2026-10-12T16:59:59.999Z").has("a")).toBe(false);
+    expect(at("2026-10-12T17:00:00Z").has("a")).toBe(true);
   });
 });

@@ -177,7 +177,7 @@ describe("fitness: no content reaches the output (logging.md)", () => {
         }),
       );
     // Rules the model reads, then rules it cannot.
-    fakes.model.reply({ json: { hashtags: ["work"] } });
+    fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
     expect((await save(`#work is ${marker}`)).status).toBe(200);
     fakes.model.reply({ status: 502 });
     expect((await save(`#work and #home are ${marker}`)).status).toBe(200);

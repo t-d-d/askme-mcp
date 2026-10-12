@@ -3,7 +3,12 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
-import { askChangePaths, pagePaths, rulesLimit } from "../shared/page-api";
+import {
+  askChangePaths,
+  pagePaths,
+  rulesLimit,
+  timeZoneLimit,
+} from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
 import { fakes, testModelKey } from "../test/fakes";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
@@ -440,6 +445,13 @@ const saveRules = async (account: string, body: unknown) =>
 
 const rulesText = "#work is my day job.\n\n#shop is my online shop.";
 
+// Weekdays, 8am to 6pm.
+const officeHours = {
+  days: ["mon", "tue", "wed", "thu", "fri"],
+  from: "08:00",
+  to: "18:00",
+};
+
 describe("the rules", () => {
   it("are empty for a new account, with no hashtags", async () => {
     const response = await get(pagePaths.rules, await session(newAccount()));
@@ -455,7 +467,7 @@ describe("the rules", () => {
   it("are saved, with the hashtags the model read from them, each with its colour", async () => {
     const account = newAccount();
     const calls = fakes.model.calls.length;
-    fakes.model.reply({ json: { hashtags: ["shop", "work"] } });
+    fakes.model.reply({ json: { hashtags: ["shop", "work"], hours: [] } });
     const response = await saveRules(account, { text: rulesText });
     expect(response.status).toBe(200);
     const saved = {
@@ -477,9 +489,91 @@ describe("the rules", () => {
     expect(fakes.parameters.asked).toContain("/askme/openrouter/api-key");
   });
 
+  it("are saved with the time zone sent, and each hashtag's hours, which the list carries too", async () => {
+    const account = newAccount();
+    fakes.model.reply({
+      json: {
+        hashtags: ["work", "shop"],
+        hours: [{ hashtag: "work", ...officeHours }],
+      },
+    });
+    const response = await saveRules(account, {
+      text: rulesText,
+      timeZone: "Europe/London",
+    });
+    expect(response.status).toBe(200);
+    const saved = {
+      text: rulesText,
+      hashtags: [
+        { name: "work", colour: 0, hours: [officeHours] },
+        { name: "shop", colour: 1 },
+      ],
+      readFailed: false,
+      timeZone: "Europe/London",
+    };
+    expect(await response.json()).toEqual(saved);
+    expect(
+      await (await get(pagePaths.rules, await session(account))).json(),
+    ).toEqual(saved);
+    expect(
+      await (await get(pagePaths.asks, await session(account))).json(),
+    ).toMatchObject({ hashtags: saved.hashtags, timeZone: "Europe/London" });
+  });
+
+  // The page applies the hours, in a zone its own browser knows, so the
+  // service keeps a name it does not know itself.
+  it("keep a time zone as it was sent, even one the service does not know", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
+    const response = await saveRules(account, {
+      text: "#work",
+      timeZone: "America/Not_Yet_Named",
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      timeZone: "America/Not_Yet_Named",
+    });
+  });
+
+  it("keep the time zone saved before when a save sends none", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
+    await saveRules(account, { text: "#work", timeZone: "Asia/Tokyo" });
+    fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
+    const response = await saveRules(account, { text: "#work first." });
+    expect(await response.json()).toMatchObject({ timeZone: "Asia/Tokyo" });
+  });
+
+  it("keep the old hours when the model cannot read the rules, in the time zone sent", async () => {
+    const account = newAccount();
+    fakes.model.reply({
+      json: {
+        hashtags: ["work"],
+        hours: [{ hashtag: "work", ...officeHours }],
+      },
+    });
+    await saveRules(account, {
+      text: "#work first.",
+      timeZone: "Europe/London",
+    });
+    const capture = captureLogs();
+    fakes.model.reply({ status: 502 });
+    const response = await saveRules(account, {
+      text: rulesText,
+      timeZone: "America/New_York",
+    });
+    capture.restore();
+    expect(await response.json()).toEqual({
+      text: rulesText,
+      hashtags: [{ name: "work", colour: 0, hours: [officeHours] }],
+      readFailed: true,
+      timeZone: "America/New_York",
+    });
+  });
+
   it("keep the text and the old hashtags when the model cannot read them, and say so", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work"] } });
+    fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
     await saveRules(account, { text: "#work first." });
     const capture = captureLogs();
     fakes.model.reply({ status: 502 });
@@ -502,7 +596,7 @@ describe("the rules", () => {
 
   it("keep the old hashtags when the model names one the rules do not write", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["home"] } });
+    fakes.model.reply({ json: { hashtags: ["home"], hours: [] } });
     const response = await saveRules(account, { text: rulesText });
     expect(await response.json()).toEqual({
       text: rulesText,
@@ -513,7 +607,7 @@ describe("the rules", () => {
 
   it("with the box empty, have no hashtags, and ask the model nothing", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work"] } });
+    fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
     await saveRules(account, { text: "#work" });
     const calls = fakes.model.calls.length;
     const response = await saveRules(account, { text: "" });
@@ -527,9 +621,9 @@ describe("the rules", () => {
 
   it("keep each hashtag's colour when the rules change", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
-    fakes.model.reply({ json: { hashtags: ["shop", "family"] } });
+    fakes.model.reply({ json: { hashtags: ["shop", "family"], hours: [] } });
     const response = await saveRules(account, {
       text: "#shop first, then #family.",
     });
@@ -545,6 +639,14 @@ describe("the rules", () => {
     ["rules over the limit", { text: "x".repeat(rulesLimit + 1) }],
     ["a body that is not JSON", "#work is my day job."],
     ["a body with another field", { text: "#work", hours: "9 to 5" }],
+    [
+      "a time zone that is not a zone's name",
+      { text: "#work", timeZone: "not a zone" },
+    ],
+    [
+      "a time zone's name over the limit",
+      { text: "#work", timeZone: `Europe/${"x".repeat(timeZoneLimit)}` },
+    ],
     ["no body", undefined],
   ])("refuse %s as invalid_input, and store nothing", async (_, body) => {
     const account = newAccount();
@@ -554,6 +656,7 @@ describe("the rules", () => {
     expect(refusal.code).toBe("invalid_input");
     expect(refusal.class).toBe("do not retry");
     expect(refusal.message).toContain(String(rulesLimit));
+    expect(refusal.message).toContain('"timeZone"');
     expect(
       await storedItems(
         inject("databaseEndpoint"),
@@ -645,7 +748,7 @@ const sortOf = (account: string, askId: string) => ({
 describe("sorting", () => {
   it("never holds up posting: the ask is listed as not sorted yet, then sorted", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
     await runSorts();
     const calls = fakes.model.calls.length;
@@ -677,7 +780,7 @@ describe("sorting", () => {
 
   it("lists the reason with the sort, for the open card", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
     await runSorts();
     const id = await post(account);
@@ -846,7 +949,7 @@ async function sortedEarlier(account: string, at: Date): Promise<string> {
 describe("saving the rules again", () => {
   it("hands every open ask to the sort function, sorted or not", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
     const sortedAsk = await post(account);
     // The model has no reply for the second ask, so it stays unsorted.
@@ -861,7 +964,7 @@ describe("saving the rules again", () => {
     });
 
     const invoked = fakes.lambda.invoked.length;
-    fakes.model.reply({ json: { hashtags: ["shop", "family"] } });
+    fakes.model.reply({ json: { hashtags: ["shop", "family"], hours: [] } });
     const response = await saveRules(account, {
       text: "#shop first, then #family.",
     });
@@ -883,7 +986,7 @@ describe("saving the rules again", () => {
 
   it("keeps each ask's old hashtags, in their colours, until it is sorted again", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
     fakes.model.reply({
       json: { hashtags: ["work", "shop"], level: "high", reason: "It waits." },
@@ -891,7 +994,7 @@ describe("saving the rules again", () => {
     const id = await post(account);
     await runSorts();
 
-    fakes.model.reply({ json: { hashtags: ["shop", "family"] } });
+    fakes.model.reply({ json: { hashtags: ["shop", "family"], hours: [] } });
     await saveRules(account, { text: "#shop first, then #family." });
     // A hashtag still in the rules keeps its colour, and one that left
     // them keeps its colour on the asks that still carry it.
@@ -920,7 +1023,7 @@ describe("saving the rules again", () => {
 
   it("takes every hashtag off the asks when the box is emptied, asking no model", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
     fakes.model.reply({
       json: { hashtags: ["work"], level: "high", reason: "It waits." },
@@ -941,7 +1044,7 @@ describe("saving the rules again", () => {
 
   it("saves the rules when Lambda cannot take the asks, and each keeps its old sort", async () => {
     const account = newAccount();
-    fakes.model.reply({ json: { hashtags: ["work", "shop"] } });
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
     fakes.model.reply({
       json: { hashtags: ["work"], level: "high", reason: "It waits." },
@@ -953,7 +1056,7 @@ describe("saving the rules again", () => {
     fakes.lambda.failing = true;
     let response: Response;
     try {
-      fakes.model.reply({ json: { hashtags: ["shop"] } });
+      fakes.model.reply({ json: { hashtags: ["shop"], hours: [] } });
       response = await saveRules(account, { text: "#shop only." });
     } finally {
       fakes.lambda.failing = false;
@@ -984,7 +1087,7 @@ describe("saving the rules again", () => {
       new Date(Date.now() - 2 * sortRetryAfterMs),
     );
     const invoked = fakes.lambda.invoked.length;
-    fakes.model.reply({ json: { hashtags: ["shop"] } });
+    fakes.model.reply({ json: { hashtags: ["shop"], hours: [] } });
     await saveRules(account, { text: "#shop only." });
     expect((await sorted(account)).asks).toEqual([
       { id, sort: { hashtags: ["work"], level: "normal" } },
