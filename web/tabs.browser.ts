@@ -224,6 +224,46 @@ describe("the tabs", () => {
     );
   });
 
+  it("move focus to Everything when the focused tab's hashtag leaves the rules", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#family").focus();
+    answer = {
+      ...list,
+      version: list.version + 1,
+      hashtags: hashtags.filter(({ name }) => name !== "family"),
+    };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "#family").waitFor({ state: "detached" });
+    expect(
+      await tab(page, "Everything").evaluate(
+        (control) => control === document.activeElement,
+      ),
+    ).toBe(true);
+  });
+
+  it("keep focus on a tab whose hashtag stays when another leaves the rules", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#work").focus();
+    answer = {
+      ...list,
+      version: list.version + 1,
+      hashtags: hashtags.filter(({ name }) => name !== "family"),
+    };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "#family").waitFor({ state: "detached" });
+    expect(
+      await tab(page, "#work").evaluate(
+        (control) => control === document.activeElement,
+      ),
+    ).toBe(true);
+  });
+
   it("stay on Everything when a hashtag that left the rules comes back", async () => {
     let answer = list;
     view = await open(new Answering((url) => answerPoll(url, answer)), true);
