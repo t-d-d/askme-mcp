@@ -77,12 +77,19 @@ async function openNewAccount(
     hash = "",
     clock = false,
     postedAnyway = false,
-  }: { hash?: string; clock?: boolean; postedAnyway?: boolean } = {},
+    timeZone,
+  }: {
+    hash?: string;
+    clock?: boolean | Date;
+    postedAnyway?: boolean;
+    timeZone?: string;
+  } = {},
 ): Promise<OpenPage> {
   let sent = false;
   return openPage(`${inject("pageUrl")}${hash}`, phone, {
     session,
     clock,
+    ...(timeZone === undefined ? {} : { timeZone }),
     api: {
       [pagePaths.asks]: new Answering((url) =>
         answerPoll(url, sent ? withSamples : newAccount),
@@ -215,25 +222,39 @@ describe("a new account", () => {
     ).toHaveLength(1);
   });
 
+  // The cap resets at the next midnight UTC: that evening west of UTC, the
+  // next morning east of it.
   it.each([
     [
       "the daily cap",
       "cap_reached",
-      "You've reached today's limit. It resets tomorrow.",
+      "Europe/London",
+      "You've reached today's limit. It resets at 01:00.",
+    ],
+    [
+      "the daily cap",
+      "cap_reached",
+      "America/New_York",
+      "You've reached today's limit. It resets at 20:00.",
     ],
     [
       "the rate limit",
       "rate_limited",
+      "Europe/London",
       "Slow down a little. Try again in a few seconds.",
     ],
   ])(
-    "says when %s is reached, and when to try again",
-    async (_, code, words) => {
-      view = await openNewAccount(refusal(code));
+    "says when %s is reached, and when to try again, in %s",
+    async (_, code, timeZone, words) => {
+      view = await openNewAccount(refusal(code), {
+        clock: new Date("2026-10-12T15:00:00Z"),
+        timeZone,
+      });
       const { page } = view;
       await samplesButton(page).click();
-      const note = page.getByRole("status").filter({ hasText: words });
+      const note = page.getByRole("status").filter({ hasText: /\S/u });
       await note.waitFor();
+      expect(await note.innerText()).toBe(words);
       expect(await samplesButton(page).isEnabled()).toBe(true);
       expect(await scrollsSideways(page)).toBe(false);
     },
@@ -303,12 +324,16 @@ describe("Connect your agents, for someone with no agent yet", () => {
   });
 
   it("stays, and says so, when the daily cap is reached", async () => {
-    view = await openNewAccount(refusal("cap_reached"), { hash: "#connect" });
+    view = await openNewAccount(refusal("cap_reached"), {
+      hash: "#connect",
+      clock: new Date("2026-10-12T15:00:00Z"),
+      timeZone: "Europe/London",
+    });
     const { page } = view;
     await samplesButton(page).click();
     await page
       .getByRole("status")
-      .filter({ hasText: "You've reached today's limit. It resets tomorrow." })
+      .filter({ hasText: "You've reached today's limit. It resets at 01:00." })
       .waitFor();
     expect(
       await page
