@@ -190,6 +190,11 @@ describe("the tabs", () => {
       .getByRole("article")
       .filter({ hasText: "Swap Saturday's school run?" })
       .waitFor();
+    expect(
+      await page
+        .getByRole("heading", { name: "Nothing else waiting" })
+        .isVisible(),
+    ).toBe(true);
     expect(await page.getByRole("listitem").count()).toBe(0);
 
     await tab(page, "Everything").click();

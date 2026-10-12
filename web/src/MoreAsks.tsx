@@ -10,9 +10,11 @@ import { shownUnder, type Tab } from "./tab";
 import { useSwipe } from "./useSwipe";
 import { age } from "./waiting";
 
-// Every ask after the first, as compact rows under a count. Each row shows
-// the hashtag it is shown under, in that hashtag's colour: its first on
-// Everything, and the tab's on a hashtag's tab.
+// Every ask after the first, as compact rows under a count. With none, the
+// count says nothing else is waiting, and keeps the list's place beside the
+// top card at desktop width. Each row shows the hashtag it is shown under,
+// in that hashtag's colour: its first on Everything, and the tab's on a
+// hashtag's tab.
 export function MoreAsks({
   asks,
   tab,
@@ -30,20 +32,24 @@ export function MoreAsks({
   return (
     <section className={styles.more} aria-labelledby={heading}>
       <h2 className={styles.count} id={heading}>
-        {asks.length} more waiting
+        {asks.length === 0
+          ? "Nothing else waiting"
+          : `${String(asks.length)} more waiting`}
       </h2>
-      <ol className={styles.rows}>
-        {asks.map((ask) => (
-          <Row
-            key={ask.id}
-            ask={ask}
-            tab={tab}
-            now={now}
-            colours={colours}
-            actions={actions}
-          />
-        ))}
-      </ol>
+      {asks.length > 0 && (
+        <ol className={styles.rows}>
+          {asks.map((ask) => (
+            <Row
+              key={ask.id}
+              ask={ask}
+              tab={tab}
+              now={now}
+              colours={colours}
+              actions={actions}
+            />
+          ))}
+        </ol>
+      )}
     </section>
   );
 }

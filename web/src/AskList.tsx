@@ -40,15 +40,13 @@ export function AskList({
         colours={colours}
         actions={actions}
       />
-      {rest.length > 0 && (
-        <MoreAsks
-          asks={rest}
-          tab={tab}
-          now={now}
-          colours={colours}
-          actions={actions}
-        />
-      )}
+      <MoreAsks
+        asks={rest}
+        tab={tab}
+        now={now}
+        colours={colours}
+        actions={actions}
+      />
     </div>
   );
 }
