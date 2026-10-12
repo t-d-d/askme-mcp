@@ -1,10 +1,11 @@
+import { join } from "node:path";
 import ts from "typescript";
 import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { AccountId } from "../service/src/identity";
 import { keys } from "../service/src/store/keys";
-import { importRefused, reported } from "../test/lint";
-import { readRepoFile, readYaml, repoFiles } from "../test/repo";
+import { eslint, importRefused, reported } from "../test/lint";
+import { readRepoFile, readYaml, repoFiles, root } from "../test/repo";
 
 const tableSchema = z.object({
   Type: z.literal("AWS::DynamoDB::Table"),
@@ -219,26 +220,44 @@ describe("fitness: the sort keys rule names every key the key module builds (tab
   });
 });
 
+// A key escaped to sit inside a template.
+const inTemplate = (key: string): string => key.replace(/[`\\$]/gu, "\\$&");
+
 // A key written by hand, as a string and as a template: a prefix with an id
-// after it, as OPEN#<id>, and a whole key alone, as META.
-const handWritten = (key: string): string[] => [
-  `export const k = { sk: ${JSON.stringify(key)} };\n`,
+// after it, as OPEN#<id>, and a whole key alone, as META. Each form is one
+// line with a name of its own, so one file can hold them all.
+const handWritten = (key: string, name: string): string[] => [
+  `export const ${name}s = { sk: ${JSON.stringify(key)} };`,
   key.endsWith("#")
-    ? `export const k = (id: string) => ({ sk: \`${key}\${id}\` });\n`
-    : `export const k = { sk: \`${key}\` };\n`,
+    ? `export const ${name}t = (id: string) => ({ sk: \`${inTemplate(key)}\${id}\` });`
+    : `export const ${name}t = { sk: \`${inTemplate(key)}\` };`,
 ];
 
 // The keys a key module builds that lint lets a file outside it write by
-// hand, in either form.
+// hand, in either form. Every form is linted in one run, one per line.
 const letThrough = async (text: string): Promise<string[]> => {
-  const found = new Set<string>();
-  for (const key of builtKeys(text)) {
-    for (const code of handWritten(key)) {
-      const rules = await reported(code, servicePath);
-      if (!rules.includes("askme/no-hand-built-key")) found.add(key);
-    }
-  }
-  return [...found];
+  const forms = builtKeys(text).flatMap((key, index) =>
+    handWritten(key, `k${String(index)}`).map((code) => ({ key, code })),
+  );
+  const code = `${forms.map((form) => form.code).join("\n")}\n`;
+  const results = await eslint.lintText(code, {
+    filePath: join(root, servicePath),
+  });
+  const messages = results.flatMap((result) => result.messages);
+  const fatal = messages.find((message) => message.fatal === true);
+  expect(fatal?.message, "the hand-written keys parse").toBeUndefined();
+  const refused = new Set(
+    messages
+      .filter((message) => message.ruleId === "askme/no-hand-built-key")
+      .map((message) => message.line),
+  );
+  return [
+    ...new Set(
+      forms
+        .filter((_, index) => !refused.has(index + 1))
+        .map((form) => form.key),
+    ),
+  ];
 };
 
 describe("fitness: lint refuses every key the key module builds, written by hand elsewhere (table-design.md)", () => {
