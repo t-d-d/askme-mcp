@@ -432,6 +432,15 @@ const ownerOf = (account: string) =>
     extra: { accountId: account, requestId: "r" },
   }).accountId;
 
+// The store, for writing past the service.
+const store = createStore({
+  tableName: inject("tableName"),
+  endpoint: inject("databaseEndpoint"),
+});
+afterAll(() => {
+  store.close();
+});
+
 // Posts an ask straight to the store at a time in the past, so it is not
 // handed to the sort function, as when its sort failed back then. Gives its
 // id.
@@ -440,17 +449,9 @@ async function postEarlier(
   newAsk: NewAsk,
   at: Date,
 ): Promise<string> {
-  const store = createStore({
-    tableName: inject("tableName"),
-    endpoint: inject("databaseEndpoint"),
-  });
-  try {
-    const posting = await store.postAsk(ownerOf(account), newAsk, at);
-    if (posting.kind !== "posted") throw new Error("Not posted.");
-    return posting.id;
-  } finally {
-    store.close();
-  }
+  const posting = await store.postAsk(ownerOf(account), newAsk, at);
+  if (posting.kind !== "posted") throw new Error("Not posted.");
+  return posting.id;
 }
 
 // The sort function, handed one of the account's asks.
@@ -470,11 +471,7 @@ describe("sorting", () => {
     const id = await post(account);
     // Posting asked the model nothing: it handed the ask on.
     expect(fakes.model.calls).toHaveLength(calls);
-    expect(fakes.lambda.invoked.at(-1)).toEqual({
-      functionName: "askme-prod-sort",
-      invocationType: "Event",
-      payload: { accountId: account, askId: id },
-    });
+    expect(fakes.lambda.invoked.at(-1)).toEqual(sortOf(account, id));
     expect(await sorted(account)).toEqual({
       hashtags: [
         { name: "work", colour: 0 },
