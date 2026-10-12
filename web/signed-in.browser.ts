@@ -7,6 +7,7 @@ import {
   type ConnectionAnswer,
 } from "../shared/page-api";
 import {
+  allClearGaps,
   Answering,
   answerPoll,
   computedColour,
@@ -84,22 +85,6 @@ const scrollsSideways = (page: OpenPage["page"], width: number) =>
   page
     .evaluate(() => document.documentElement.scrollWidth)
     .then((scrollWidth) => scrollWidth > width);
-
-// The space between the header and All clear's headline, and between its
-// last line and the foot of the screen.
-const allClearGaps = (page: OpenPage["page"]) =>
-  page.evaluate(async () => {
-    await document.fonts.ready;
-    const header = document.querySelector("header")?.getBoundingClientRect();
-    const headline = document.querySelector("h1")?.getBoundingClientRect();
-    const last = [...document.querySelectorAll("main p")]
-      .at(-1)
-      ?.getBoundingClientRect();
-    return {
-      above: (headline?.top ?? 0) - (header?.bottom ?? 0),
-      below: window.innerHeight - (last?.bottom ?? 0),
-    };
-  });
 
 // The width of each line a paragraph takes, and of the paragraph.
 const lineWidths = (page: OpenPage["page"], text: string) =>

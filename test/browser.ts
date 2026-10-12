@@ -113,6 +113,41 @@ export async function computedColour(
   }, colour);
 }
 
+// The space between whatever sits above All clear, the header or the tabs,
+// and its headline, and between its last line and the foot: the held line
+// with the given words, or else the foot of the screen. A missing part
+// throws, so a test never measures from 0.
+export async function allClearGaps(
+  page: Page,
+  footText?: string,
+): Promise<{ above: number; below: number }> {
+  return page.evaluate(async (footText) => {
+    await document.fonts.ready;
+    const box = (element: Element | null | undefined, name: string) => {
+      if (element === null || element === undefined) {
+        throw new Error(`All clear has no ${name}`);
+      }
+      return element.getBoundingClientRect();
+    };
+    const above = box(
+      document.querySelector("main")?.previousElementSibling,
+      "header or tabs",
+    );
+    const headline = box(document.querySelector("h1"), "headline");
+    const last = box([...document.querySelectorAll("main p")].at(-1), "line");
+    const foot =
+      footText === undefined
+        ? window.innerHeight
+        : box(
+            [...document.querySelectorAll("span")].find(
+              (span) => span.textContent === footText,
+            )?.parentElement,
+            "held line",
+          ).top;
+    return { above: headline.top - above.bottom, below: foot - last.bottom };
+  }, footText);
+}
+
 const hiddenFlag = "testHidden";
 
 // Sets the flag the replaced visibility reads, and tells the page, as the

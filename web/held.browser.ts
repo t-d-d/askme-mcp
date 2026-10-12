@@ -11,6 +11,7 @@ import {
   type Level,
 } from "../shared/page-api";
 import {
+  allClearGaps,
   answerPoll,
   Answering,
   openPage,
@@ -237,21 +238,20 @@ describe("holding asks back until their hours", () => {
     view = await open(listOf(asksAt(evening).slice(0, 2)), evening);
     const { page } = view;
     await page.getByText("2 held until their hours").waitFor();
-    const { above, below } = await page.evaluate(async () => {
-      await document.fonts.ready;
-      const header = document.querySelector("header")?.getBoundingClientRect();
-      const headline = document.querySelector("h1")?.getBoundingClientRect();
-      const last = [...document.querySelectorAll("main p")]
-        .at(-1)
-        ?.getBoundingClientRect();
-      const held = [...document.querySelectorAll("span")]
-        .find((span) => span.textContent === "2 held until their hours")
-        ?.parentElement?.getBoundingClientRect();
-      return {
-        above: (headline?.top ?? 0) - (header?.bottom ?? 0),
-        below: (held?.top ?? 0) - (last?.bottom ?? 0),
-      };
-    });
+    const { above, below } = await allClearGaps(
+      page,
+      "2 held until their hours",
+    );
+    expect(Math.abs(above - below / 2)).toBeLessThanOrEqual(4);
+  });
+
+  it("leaves All clear on a tab a third of the way down the space under the tabs", async () => {
+    view = await open(listOf(asksAt(evening)), evening);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#work").click();
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+    const { above, below } = await allClearGaps(page);
     expect(Math.abs(above - below / 2)).toBeLessThanOrEqual(4);
   });
 

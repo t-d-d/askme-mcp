@@ -111,6 +111,7 @@ Lines of running text stay under 80 characters. At desktop width the spoken text
 | Smallest thing you can tap | 44px by 44px |
 | Main button height | 56px, or 52px on a settings screen |
 | Side padding | 20px for text, 16px outside a card, 22px inside one |
+| Space at the foot of a screen | 26px |
 | Gap between buttons | 8px |
 | Phone layout | Designed at 390px wide. Nothing scrolls sideways. |
 | Desktop layout | Content is at most 1080px wide and centred |

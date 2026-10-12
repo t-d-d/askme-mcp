@@ -16,10 +16,10 @@
 }
 
 /* On All clear, the line sits at the foot of the screen, because All clear
-   fills the space above it. Its margin is the same as the screen's padding
-   at the foot, so All clear sits the same with the line or without it. */
+   fills the space above it. Its margin is the screen's space at the foot,
+   so All clear sits the same with the line or without it. */
 .foot {
-  margin-top: var(--space-26);
+  margin-top: var(--space-foot);
 }
 
 .toggle {

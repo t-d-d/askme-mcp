@@ -1,14 +1,14 @@
 /* It fills the space down to the foot of the screen and sits a third of
    the way down it, so the space above is half the space below. The two
    spacers split the free space one to two. The padding keeps a gap on a
-   screen too short for that. Below it, the screen's own padding, or the
-   held line's margin, adds the same again, so the fixed space below is
+   screen too short for that. Below it, the screen's space at the foot, or
+   the held line's margin, adds the same again, so the fixed space below is
    double the fixed space above too. */
 .allClear {
   display: flex;
   flex: 1;
   flex-direction: column;
-  padding: var(--space-26) var(--space-inside-card);
+  padding: var(--space-foot) var(--space-inside-card);
 }
 
 .allClear::before,
