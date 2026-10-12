@@ -73,7 +73,11 @@ const refusal = (code: string) =>
 // and whose samples route answers as given.
 async function openNewAccount(
   samples: unknown = new Status(204),
-  { hash = "", clock = false }: { hash?: string; clock?: boolean } = {},
+  {
+    hash = "",
+    clock = false,
+    postedAnyway = false,
+  }: { hash?: string; clock?: boolean; postedAnyway?: boolean } = {},
 ): Promise<OpenPage> {
   let sent = false;
   return openPage(`${inject("pageUrl")}${hash}`, phone, {
@@ -89,11 +93,34 @@ async function openNewAccount(
           samples instanceof Answering
             ? await samples.answer(...call)
             : samples;
-        if (answer instanceof Status && answer.code === 204) sent = true;
+        if (postedAnyway || (answer instanceof Status && answer.code === 204))
+          sent = true;
         return answer;
       }),
     },
   });
+}
+
+// Stops the page's clock once the new account's card shows, just after
+// its first poll.
+async function stopClock({ page }: OpenPage): Promise<void> {
+  await page
+    .getByRole("heading", { name: "Your agents can ask here." })
+    .waitFor();
+  const now = await page.evaluate(() => Date.now());
+  await page.clock.pauseAt(now + 1);
+}
+
+// Moves the stopped clock on in small steps, a second in all, well short
+// of the next poll, until the sample asks show in the list.
+async function showsSamplesBeforeNextPoll({ page }: OpenPage): Promise<void> {
+  const card = page
+    .getByRole("article")
+    .filter({ hasText: "Approve the hotfix for the login page" });
+  for (let step = 0; step < 20 && (await card.count()) === 0; step += 1) {
+    await page.clock.runFor(50);
+  }
+  expect(await card.count()).toBe(1);
 }
 
 // The page, or a part of it.
@@ -150,13 +177,11 @@ describe("a new account", () => {
   it("sends sample asks with the session token, and shows them without waiting for the next poll", async () => {
     view = await openNewAccount(new Status(204), { clock: true });
     const { page } = view;
+    await stopClock(view);
     await samplesButton(page).click();
-    // The page's clock stands still, so no poll falls due: the list is
-    // asked for again because the samples were sent.
-    await page
-      .getByRole("article")
-      .filter({ hasText: "Approve the hotfix for the login page" })
-      .waitFor();
+    // No poll falls due: the list is asked for again because the samples
+    // were sent.
+    await showsSamplesBeforeNextPoll(view);
     expect(await page.getByRole("listitem").count()).toBe(2);
     const sends = view.apiCalls.filter((call) => call.path === samplesPath);
     expect(sends).toEqual([
@@ -213,6 +238,19 @@ describe("a new account", () => {
       expect(await scrollsSideways(page)).toBe(false);
     },
   );
+
+  // A limit reached part way keeps the asks posted before it, so the list
+  // is asked for again even when the press is refused.
+  it("shows the samples posted before a limit stopped the press, without waiting for the next poll", async () => {
+    view = await openNewAccount(refusal("rate_limited"), {
+      clock: true,
+      postedAnyway: true,
+    });
+    const { page } = view;
+    await stopClock(view);
+    await samplesButton(page).click();
+    await showsSamplesBeforeNextPoll(view);
+  });
 
   it("says when the press did not go through", async () => {
     view = await openNewAccount(new Status(503));

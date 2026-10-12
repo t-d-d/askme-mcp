@@ -102,9 +102,13 @@ function rulesSaveRefusal(secondsLeft: number): Response {
 }
 
 function samplesRateRefusal(secondsLeft: number): Response {
+  const perWindow =
+    askLimit.windowMinutes === 1
+      ? "a minute"
+      : `in ${inMinutes(askLimit.windowMinutes)}`;
   return pageRefusal(
     "rate_limited",
-    `This account is posting asks too fast. askme takes at most ${String(askLimit.asks)} asks a minute, sample asks included. Wait ${plural(secondsLeft, "second")}, then send sample asks again.`,
+    `This account is posting asks too fast. askme takes at most ${String(askLimit.asks)} asks ${perWindow}, sample asks included. Wait ${plural(secondsLeft, "second")}, then send sample asks again.`,
   );
 }
 
