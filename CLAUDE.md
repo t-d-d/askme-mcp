@@ -44,6 +44,7 @@ askme.mcp is one place where all of a person's AI agents ask for their input, so
 - The eval key is separate from the live service's, and has a small spending limit.
 - A change to the sorting prompt or the model needs a run before and after. Put both scores in the pull request.
 - A run spends money, against a key with a small limit. Run the set across several models only when the issue asks for it.
+- `npm run eval:candidates` runs the set across every model in `evals/candidates.ts` and saves the scores in `evals/scores.md`. The best of them is the default model.
 
 ## The gate
 
