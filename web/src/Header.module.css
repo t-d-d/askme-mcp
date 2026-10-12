@@ -6,27 +6,11 @@
   padding: var(--space-16) var(--space-12) var(--space-2) var(--space-text);
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-}
-
 .wordmark {
   font-size: var(--size-wordmark);
   line-height: var(--leading-wordmark);
   font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-wordmark);
-}
-
-.demo {
-  padding: var(--space-2) var(--space-8);
-  border-radius: var(--radius-pill-small);
-  background: var(--neutral-tint);
-  color: var(--text-2);
-  font-size: var(--size-meta-small);
-  line-height: var(--leading-meta);
-  font-weight: var(--weight-label);
 }
 
 .nav {
