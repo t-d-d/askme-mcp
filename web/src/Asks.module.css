@@ -23,11 +23,7 @@
 }
 
 /* The tabs, and the held and lapsed lines under them. */
-.bar {
-  display: flex;
-  flex-direction: column;
-}
-
+.bar,
 .lines {
   display: flex;
   flex-direction: column;

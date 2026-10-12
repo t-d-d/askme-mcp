@@ -46,12 +46,9 @@ const dayMs = 24 * hourMs;
 const timeLeft = ({ lapsesAt }: MayLapse, now: number) =>
   lapsesAt === undefined ? undefined : Date.parse(lapsesAt) - now;
 
-// Whether an ask's time has passed at a moment. It has from the moment it
-// lapses.
-const hasLapsed = (ask: MayLapse, now: number) => {
-  const left = timeLeft(ask, now);
-  return left !== undefined && left <= 0;
-};
+// Whether an ask's time has passed, by the time left. It has from the
+// moment it lapses.
+const passed = (left: number | undefined) => left !== undefined && left <= 0;
 
 // The ids of the asks that have lapsed at a moment (PRD, "Web page"). A
 // lapsed ask is not closed. It leaves the order and waits behind a line of
@@ -60,31 +57,27 @@ export function lapsedAsks(
   asks: readonly (MayLapse & { id: string })[],
   now: number,
 ): ReadonlySet<string> {
-  return new Set(asks.filter((ask) => hasLapsed(ask, now)).map(({ id }) => id));
+  return new Set(
+    asks.filter((ask) => passed(timeLeft(ask, now))).map(({ id }) => id),
+  );
 }
 
-// The part of the list an ask goes in at a moment: first the asks that
-// lapse within the hour, whatever their level, then each level, then the
-// asks not sorted yet, and last the lapsed asks, when they are shown.
-function part(
-  ask: MayLapse & { sort: { level: Level } | null },
-  now: number,
-): number {
-  if (hasLapsed(ask, now)) return levels.length + 2;
-  const left = timeLeft(ask, now);
+// The part of the list an ask goes in, by its level and the time it has
+// left: first the asks that lapse within the hour, whatever their level,
+// then each level, then the asks not sorted yet, and last the lapsed asks,
+// when they are shown.
+function part(sort: { level: Level } | null, left: number | undefined) {
+  if (passed(left)) return levels.length + 2;
   if (left !== undefined && left <= hourMs) return 0;
-  return ask.sort === null
-    ? levels.length + 1
-    : levels.indexOf(ask.sort.level) + 1;
+  return sort === null ? levels.length + 1 : levels.indexOf(sort.level) + 1;
 }
 
-// An ask's place in its part at a moment: the time left, when it lapses
-// within the next day, so those come first, soonest first. Every other ask
-// has the same place after them, and keeps the order it waited in.
-const placeInPart = (ask: MayLapse, now: number) => {
-  const left = timeLeft(ask, now);
-  return left !== undefined && left > 0 && left <= dayMs ? left : dayMs + 1;
-};
+// An ask's place in its part, by the time it has left: that time, when it
+// lapses within the next day, so those come first, soonest first. Every
+// other ask has the same place after them, and keeps the order it waited
+// in. So does every lapsed ask, in the part of its own.
+const placeInPart = (left: number | undefined) =>
+  left !== undefined && !passed(left) && left <= dayMs ? left : dayMs + 1;
 
 // The order of the list at a moment (PRD, "Web page"). An ask that lapses
 // within the hour comes first, whatever its level, soonest first. Then come
@@ -102,11 +95,10 @@ export function inListOrder<
     sort: { level: Level } | null;
   },
 >(asks: readonly Ask[], now: number): Ask[] {
-  const placed = longestWaitingFirst(asks).map((ask) => ({
-    ask,
-    part: part(ask, now),
-    place: placeInPart(ask, now),
-  }));
+  const placed = longestWaitingFirst(asks).map((ask) => {
+    const left = timeLeft(ask, now);
+    return { ask, part: part(ask.sort, left), place: placeInPart(left) };
+  });
   return placed
     .sort(
       (a, b) =>

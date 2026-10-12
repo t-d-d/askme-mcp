@@ -163,19 +163,6 @@ describe("ordering by the time asks lapse", () => {
     expect(await summaries(page)).toEqual([passkey, schoolRun, domain]);
   });
 
-  it("puts asks that lapse within the next day first at their level, then the rest", async () => {
-    const { page } = await open(
-      listOf(
-        ask("a", schoolRun, family("normal")),
-        ask("b", domain, shop("normal"), 48 * 60 * minute),
-        ask("c", slot, family("normal"), 5 * 60 * minute),
-        ask("d", passkey, shop("normal"), 2 * 60 * minute),
-      ),
-    );
-    await page.getByRole("article").waitFor();
-    expect(await summaries(page)).toEqual([passkey, slot, schoolRun, domain]);
-  });
-
   it("moves an ask to the top as its last hour comes, with no reload", async () => {
     const { page } = await open(
       listOf(

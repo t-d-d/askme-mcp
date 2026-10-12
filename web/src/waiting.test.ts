@@ -295,7 +295,8 @@ describe("the order of the list as asks near the time they lapse", () => {
 
   it("puts lapsed asks after every other, longest waiting first, with opened ones last", () => {
     const asks = [
-      ask("lapsed-new", 10 * minute, sorted("high"), 0),
+      // Lapsed earlier, but has waited less.
+      ask("lapsed-new", 10 * minute, sorted("high"), -5 * minute),
       ask("lapsed-opened", 5 * hour, sorted("high"), -hour, true),
       ask("unsorted", 1 * minute, null),
       ask("lapsed-old", 2 * hour, sorted("low"), -minute),
