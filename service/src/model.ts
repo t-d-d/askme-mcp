@@ -5,6 +5,9 @@
 //
 // Every call asks for a reply that follows a JSON Schema, declares no
 // tools, and is routed only to providers that keep no prompts (ADR 12).
+// It also turns reasoning off. The provider counts the tokens a model spends
+// thinking against max_tokens, so a model that thinks first can run out
+// before its reply, or partway through it.
 import { z } from "zod";
 
 // The model that sorts, chosen with the eval set. Changing it needs a run
@@ -91,6 +94,7 @@ export function createModel(config: {
               zdr: true,
               require_parameters: true,
             },
+            reasoning: { enabled: false },
             max_tokens: request.maxTokens,
           }),
           signal: AbortSignal.timeout(request.timeoutMs),
