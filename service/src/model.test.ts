@@ -58,12 +58,13 @@ const request: ModelRequest = {
 
 const model = (
   fetch: ReturnType<typeof fakeFetch>["fetch"],
-  { key }: { key: string | undefined } = { key: "test-model-key" },
+  key: () => Promise<string | undefined> = () =>
+    Promise.resolve("test-model-key"),
 ) =>
   createModel({
     endpoint: "http://127.0.0.1:9/api/v1",
     model: "anthropic/claude-haiku-5.5",
-    key: () => Promise.resolve(key),
+    key,
     fetch,
   });
 
@@ -99,7 +100,7 @@ describe("a call to the model", () => {
 
   it("sends no key when it has none, as in a cloud session", async () => {
     const fake = fakeFetch(() => completion('{"level":"high"}'));
-    await model(fake.fetch, { key: undefined }).reply(request);
+    await model(fake.fetch, () => Promise.resolve(undefined)).reply(request);
     expect(fake.sent[0]?.headers.has("authorization")).toBe(false);
   });
 
@@ -202,12 +203,7 @@ describe("the model's key, read for a call", () => {
   it("counts against the call's time limit, and nothing is sent once that has run out", async () => {
     const fake = fakeFetch(() => completion('{"level":"high"}'));
     const failure = await failureOf(
-      createModel({
-        endpoint: "http://127.0.0.1:9/api/v1",
-        model: "anthropic/claude-haiku-5.5",
-        key: keyAfter(200),
-        fetch: fake.fetch,
-      }).reply({ ...request, timeoutMs: 20 }),
+      model(fake.fetch, keyAfter(200)).reply({ ...request, timeoutMs: 20 }),
     );
     expect(failure).toBeInstanceOf(ModelFailed);
     expect(reasonOf(failure)).toBe("timeout");
@@ -217,12 +213,10 @@ describe("the model's key, read for a call", () => {
   it("leaves the call only what is left of its time limit", async () => {
     // Each alone fits in 300ms. Together they take 350ms.
     const failure = await failureOf(
-      createModel({
-        endpoint: "http://127.0.0.1:9/api/v1",
-        model: "anthropic/claude-haiku-5.5",
-        key: keyAfter(200),
-        fetch: answersAfter(150),
-      }).reply({ ...request, timeoutMs: 300 }),
+      model(answersAfter(150), keyAfter(200)).reply({
+        ...request,
+        timeoutMs: 300,
+      }),
     );
     expect(failure).toBeInstanceOf(ModelFailed);
     expect(reasonOf(failure)).toBe("timeout");
@@ -232,12 +226,7 @@ describe("the model's key, read for a call", () => {
     const fake = fakeFetch(() => completion('{"level":"high"}'));
     const unreadable = new Error("The key could not be read.");
     const failure = await failureOf(
-      createModel({
-        endpoint: "http://127.0.0.1:9/api/v1",
-        model: "anthropic/claude-haiku-5.5",
-        key: () => Promise.reject(unreadable),
-        fetch: fake.fetch,
-      }).reply(request),
+      model(fake.fetch, () => Promise.reject(unreadable)).reply(request),
     );
     expect(failure).toBe(unreadable);
     expect(fake.sent).toEqual([]);

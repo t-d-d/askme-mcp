@@ -482,7 +482,7 @@ describe("sorting", () => {
     }
   });
 
-  it(`posts the ask within ${String(sortRequestTimeoutMs)}ms when Lambda does not answer, and it waits unsorted`, async () => {
+  it(`posts the ask, waiting at most ${String(sortRequestTimeoutMs)}ms on a Lambda that does not answer, and it waits unsorted`, async () => {
     const account = newAccount();
     fakes.lambda.hanging = true;
     try {

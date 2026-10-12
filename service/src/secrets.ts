@@ -6,9 +6,10 @@ import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { z } from "zod";
 import { awsClientConfig } from "./aws";
 
-// How long one read of the key may take in all, retries included. A read
-// that runs out is not kept, so the next call asks again rather than wait
-// on a Parameter Store that never answered.
+// How long one read of the key may take in all, retries included. It is
+// shorter than any model call's time limit, which the read counts against.
+// A read that runs out is not kept, so the next call asks again rather than
+// wait on a Parameter Store that never answered.
 export const keyReadTimeoutMs = 2000;
 
 const answerSchema = z.object({
