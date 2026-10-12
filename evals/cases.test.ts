@@ -84,10 +84,11 @@ describe("the core eval set", () => {
     // The page puts an ask that lapses within the hour first (PRD, "Web
     // page"). Its level says only what it costs if the person never acts:
     // the shop keeps its old shipping rates, but the trip goes unpaid.
-    expect(named("the passkey ask")?.expected.level).toBe("normal");
-    expect(
-      named("a sign-in code for the school's payment site")?.expected.level,
-    ).toBe("high");
+    const signInCode = "a sign-in code for the school's payment site";
+    expect(named("the passkey ask")?.expected.level, "the passkey ask").toBe(
+      "normal",
+    );
+    expect(named(signInCode)?.expected.level, signInCode).toBe("high");
     expect(named("a passkey to set up when it suits")?.expected.level).toBe(
       "low",
     );
