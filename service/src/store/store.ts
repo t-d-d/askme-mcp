@@ -62,12 +62,15 @@ const minuteMs = 60_000;
 const counterLifetimeMs = 3_600_000;
 
 // How many times write() sends a transaction that DynamoDB keeps cancelling
-// because another transaction holds one of its items. Every write conflicts
-// with any other write to the account at the same moment, as each one
-// raises the version on META, whatever else the two change. Before each
-// retry it waits a random time, up to a limit that starts at firstWaitMs and
-// doubles, so that two writes which met once are unlikely to meet again.
-// All the waits together are under 200ms.
+// because another transaction holds one of its items. Every call to write()
+// conflicts with any other call to write() for the account at the same
+// moment, as each one raises the version on META, whatever else the two
+// change. A transaction refused for any other reason, such as a failed
+// condition, goes back to the caller at once, so one call sends at most
+// writeTries refused transactions. Before each retry it waits a random
+// time, up to a limit that starts at firstWaitMs and doubles, so that two
+// writes which met once are unlikely to meet again. All the waits together
+// are under 200ms.
 export const writeTries = 4;
 const firstWaitMs = 25;
 
