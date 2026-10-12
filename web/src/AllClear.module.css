@@ -13,6 +13,11 @@
   letter-spacing: var(--tracking-all-clear);
 }
 
+/* Focus comes here only from the page, and the headline is not a control. */
+.headline:focus {
+  outline: none;
+}
+
 .fixed,
 .line {
   max-width: var(--measure);

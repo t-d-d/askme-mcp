@@ -246,6 +246,7 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 
 - Text is at least 4.5 to 1 against what it sits on.
 - Everything works from a keyboard, and focus is always visible: a 2px ink outline, 2px away from the control.
+- When the list goes all clear while a tab has focus, the tabs go and focus moves to the "All clear." headline, so a screen reader says what happened. The headline is not a control, so it draws no outline, and Tab never stops on it.
 - A button is a `button`, and a link is an `a` with an address. An icon-only control has a spoken label.
 - Nothing you can tap is smaller than 44px by 44px.
 

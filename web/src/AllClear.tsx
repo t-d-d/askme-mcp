@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import styles from "./AllClear.module.css";
 
 // The second line changes on each visit.
@@ -12,11 +13,14 @@ const lines = [
 
 const thisVisit = lines[Math.floor(Math.random() * lines.length)];
 
-// Shown when nothing is waiting and the account has had an ask before.
-export function AllClear() {
+// Shown when nothing is waiting and the account has had an ask before. The
+// page can move focus to the headline, though Tab never stops there.
+export function AllClear({ ref }: { ref?: Ref<HTMLHeadingElement> }) {
   return (
     <main className={styles.allClear}>
-      <h1 className={styles.headline}>All clear.</h1>
+      <h1 className={styles.headline} ref={ref} tabIndex={-1}>
+        All clear.
+      </h1>
       <p className={styles.fixed}>Your agents are getting on with it.</p>
       <p className={styles.line}>{thisVisit}</p>
     </main>

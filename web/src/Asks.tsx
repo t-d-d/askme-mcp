@@ -1,4 +1,10 @@
-import { useMemo, useState } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { PageAsk } from "../../shared/page-api";
 import type { AskActions } from "./actions";
 import { AllClear } from "./AllClear";
@@ -27,7 +33,8 @@ import { useOpening } from "./useOpening";
 // the rules gives way to Everything, and so does any tab when the whole list
 // is all clear and the tabs go, so a hashtag that comes back, or the next
 // ask, finds the page on Everything. A hashtag's tab with nothing waiting is
-// all clear, under the tabs.
+// all clear, under the tabs. If a tab has focus as the tabs go, focus moves
+// to the All clear headline, so a screen reader says what happened.
 //
 // After the rules change, an ask keeps its old hashtags until it is sorted
 // again. A hashtag the rules no longer name has no tab, but keeps its
@@ -50,6 +57,11 @@ export function Asks({ card }: { card: string | null }) {
   const [speak] = useState(browserSpeech);
   const { opened, markOpened } = useOpening();
   const { dismissed, note, dismiss, undo } = useDismissing();
+  const headline = useRef<HTMLHeadingElement>(null);
+  const tabsHadFocus = useRef(false);
+  const tabsGoneWithFocus = useCallback(() => {
+    tabsHadFocus.current = true;
+  }, []);
   const actions = useMemo<AskActions>(
     () => ({ speak, markOpened, dismiss }),
     [speak, markOpened, dismiss],
@@ -105,6 +117,12 @@ export function Asks({ card }: { card: string | null }) {
     />
   );
   const noted = note !== null;
+  // The tabs also go when a card opens, so this moves focus only onto All
+  // clear, and only in the render the tabs went in.
+  useLayoutEffect(() => {
+    if (allClear && tabsHadFocus.current) headline.current?.focus();
+    tabsHadFocus.current = false;
+  });
 
   // The note stays in one place in the tree, whichever screen shows, so a
   // screen reader hears a note that comes as the card closes.
@@ -124,7 +142,12 @@ export function Asks({ card }: { card: string | null }) {
           <Header />
           {!allClear && (
             <div className={styles.bar}>
-              <Tabs hashtags={hashtags} selected={tab} onSelect={choose} />
+              <Tabs
+                hashtags={hashtags}
+                selected={tab}
+                onSelect={choose}
+                onGoneWithFocus={tabsGoneWithFocus}
+              />
               {heldHere > 0 && heldLine(false)}
             </div>
           )}
@@ -145,7 +168,7 @@ export function Asks({ card }: { card: string | null }) {
             </main>
           ) : data.everAsked ? (
             <>
-              <AllClear />
+              <AllClear ref={headline} />
               {allClear && heldHere > 0 && heldLine(true)}
             </>
           ) : (
