@@ -216,6 +216,9 @@ describe("the top card's buttons", () => {
     });
     const card = page.getByRole("article");
     await card.getByRole("button", { name: "Listen" }).waitFor();
+    await card
+      .getByRole("link", { name: /^Reply in the session on claude\.ai/u })
+      .waitFor();
     const lines = await card
       .locator(`a[href="${pullRequest}"] span`)
       .first()

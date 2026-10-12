@@ -156,7 +156,7 @@ Saving the rules sorts every open ask again, and an ask can be left behind. One 
 
 The first ask in the list. White, with its hashtag pills, how long it has waited, the summary in large type, and a row of buttons.
 
-- **Main button.** Strong fill. Two lines: what it does, then the site it leads to. It opens the action link, or the session link when there is no action link.
+- **Main button.** Strong fill. Two lines: what the link is, then the site it leads to. It opens the action link, or the session link when there is no action link.
 - **Listen.** Tint fill, a speaker icon.
 - **Session.** Tint fill, a speech-bubble icon. Shown only when the ask has both links.
 - Tapping the summary opens the card.
