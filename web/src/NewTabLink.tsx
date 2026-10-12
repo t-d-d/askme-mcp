@@ -15,7 +15,7 @@ export function NewTabLink({
   "id" | "target" | "rel" | "aria-labelledby"
 >) {
   const id = useId();
-  const words = useId();
+  const words = `${id}-words`;
   return (
     <>
       <a
