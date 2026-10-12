@@ -55,10 +55,15 @@ export function Asks({ card }: { card: string | null }) {
   // The held line is drawn anew as it moves, so its control goes and another
   // comes in the same render. The ref callback stays the same between
   // renders, so React calls its cleanup only as a control goes, while it
-  // still has focus, and calls it again only as one comes.
+  // still has focus, and calls it again only as one comes. The control that
+  // takes focus clears the flag, so StrictMode in development, which runs the
+  // cleanup and the call a second time, leaves the flag clear.
   const heldHadFocus = useRef(false);
   const keepHeldFocus = useCallback((control: HTMLButtonElement) => {
-    if (heldHadFocus.current) control.focus();
+    if (heldHadFocus.current) {
+      heldHadFocus.current = false;
+      control.focus();
+    }
     return () => {
       if (control === document.activeElement) heldHadFocus.current = true;
     };
