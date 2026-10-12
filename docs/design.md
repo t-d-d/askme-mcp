@@ -167,12 +167,14 @@ askme knows only the link's address, so the label comes from its shape.
 
 | Link | Label |
 | --- | --- |
-| A GitHub pull request | See pull request |
-| A GitHub issue | See issue |
+| A GitHub pull request | Pull request |
+| A GitHub issue | Issue |
 | Any other action link | Go to, then the site's name |
 | The session link | Reply in the session |
 
 The second line is always the site's name, such as github.com. The list of recognised shapes can grow. It never uses words the agent supplied.
+
+A recognised shape's label names what the link opens, with no verb. The button only ever opens a page, so a word such as "See" adds nothing, and the shorter label stays on one line beside the Listen and session buttons.
 
 ### List rows
 

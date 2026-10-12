@@ -170,10 +170,10 @@ describe("the top card's buttons", () => {
   it("lead the main button to the action link, say what it is, and name its site", async () => {
     const { page } = await open(listOf(both, neither));
     const card = page.getByRole("article");
-    const main = card.getByRole("link", { name: /^See pull request/u });
+    const main = card.getByRole("link", { name: /^Pull request/u });
     expect(await main.getAttribute("href")).toBe(pullRequest);
     expect((await main.innerText()).split("\n")).toEqual([
-      "See pull request",
+      "Pull request",
       "github.com",
     ]);
   });
@@ -199,7 +199,7 @@ describe("the top card's buttons", () => {
   });
 
   it.each([
-    [issueOnly, "See issue", "github.com"],
+    [issueOnly, "Issue", "github.com"],
     [ticketOnly, "Go to linear.app", "linear.app"],
   ])("say what the link is from its shape alone", async (only, label, site) => {
     const { page } = await open(listOf(only));
@@ -209,11 +209,31 @@ describe("the top card's buttons", () => {
     expect((await main.innerText()).split("\n")).toEqual([label, site]);
   });
 
+  // Listen and the session beside it leave the main button at its narrowest.
+  it("keep a pull request's label on one line on a narrow phone, beside both icon buttons", async () => {
+    const { page } = await open(listOf(both), {
+      screen: { width: 360, height: phone.height },
+    });
+    const card = page.getByRole("article");
+    await card.getByRole("button", { name: "Listen" }).waitFor();
+    const lines = await card
+      .locator(`a[href="${pullRequest}"] span`)
+      .first()
+      .evaluate(async (label) => {
+        await document.fonts.ready;
+        const range = document.createRange();
+        range.selectNodeContents(label);
+        const rects = [...range.getClientRects()];
+        return new Set(rects.map(({ top }) => Math.round(top))).size;
+      });
+    expect(lines).toBe(1);
+  });
+
   it("say in each link's name that it opens a new tab, and show nothing new", async () => {
     const { page } = await open(listOf(both));
     const card = page.getByRole("article");
     for (const name of [
-      "See pull request github.com (opens in a new tab)",
+      "Pull request github.com (opens in a new tab)",
       "Reply in the session on claude.ai (opens in a new tab)",
     ]) {
       expect(await card.getByRole("link", { name, exact: true }).count()).toBe(
@@ -326,7 +346,7 @@ describe("following a link", () => {
     const opened = await open(listOf(both, sessionOnly, neither));
     await opened.page
       .getByRole("article")
-      .getByRole("link", { name: /^See pull request/u })
+      .getByRole("link", { name: /^Pull request/u })
       .click();
     await expect
       .poll(() => sentTo(opened, askChangePaths.opened))
@@ -417,7 +437,7 @@ describe("the open card", () => {
       "About 10 seconds",
       "The spoken detail of Merge the fix for checkout rounding?",
       "The reason for Merge the fix for checkout rounding?",
-      "See pull request",
+      "Pull request",
       "Reply in the session",
     ].map((part) => text.indexOf(part));
     expect(order.every((at) => at >= 0)).toBe(true);
@@ -426,7 +446,7 @@ describe("the open card", () => {
 
   it("leads the main button at the foot to the action link, and an outlined second one to the session", async () => {
     const { page } = await openCard([both]);
-    const main = page.getByRole("link", { name: /^See pull request/u });
+    const main = page.getByRole("link", { name: /^Pull request/u });
     expect(await main.getAttribute("href")).toBe(pullRequest);
     const second = page.getByRole("link", { name: /^Reply in the session/u });
     expect(await second.getAttribute("href")).toBe(sessionLink);
@@ -439,7 +459,7 @@ describe("the open card", () => {
   it("says in each link's name at its foot that it opens a new tab, and shows nothing new", async () => {
     const { page } = await openCard([both]);
     for (const name of [
-      "See pull request github.com (opens in a new tab)",
+      "Pull request github.com (opens in a new tab)",
       "Reply in the session claude.ai (opens in a new tab)",
     ]) {
       expect(await page.getByRole("link", { name, exact: true }).count()).toBe(
@@ -1134,7 +1154,7 @@ describe("going back to the list from a card", () => {
   it("after a link on the top card's card sank its ask puts focus on the summary of the ask now on top", async () => {
     const opened = await open(listOf(both, sessionOnly, neither));
     await summaryOf(opened, both.summary).click();
-    await opened.page.getByRole("link", { name: /^See pull request/u }).click();
+    await opened.page.getByRole("link", { name: /^Pull request/u }).click();
     await expect
       .poll(() => sentTo(opened, askChangePaths.opened))
       .toEqual(["both"]);
