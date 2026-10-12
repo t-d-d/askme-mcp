@@ -327,6 +327,32 @@ describe("holding asks back until their hours", () => {
     expect(await focused(tab(page, "Everything"))).toBe(true);
   });
 
+  // Vitest sets NODE_ENV to "test", so the page here is built with React's
+  // development code. Its StrictMode detaches the new tabs' ref and attaches
+  // it again after focus has moved into them.
+  it("leaves focus where it is when the list goes all clear after it went to Everything as the tabs came back", async () => {
+    // Tuesday, a minute before work's hours open in London.
+    const early = new Date("2026-10-13T06:59:00Z");
+    const list = listOf(asksAt(early).slice(0, 2));
+    const changing = await openChanging(list, early);
+    view = changing.opened;
+    const { page } = view;
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+    await page.getByRole("button", { name: "Show them" }).focus();
+    await page.clock.fastForward(minute + pollMs);
+    await page.getByRole("navigation", { name: "Hashtags" }).waitFor();
+    expect(await focused(tab(page, "Everything"))).toBe(true);
+    const rules = page.getByRole("link", { name: "Rules" });
+    await rules.focus();
+    // askme drops both asks, so the list goes all clear.
+    changing.answerWith({ ...list, version: list.version + 1, asks: [] });
+    await page.clock.fastForward(pollMs);
+    await page
+      .getByRole("navigation", { name: "Hashtags" })
+      .waitFor({ state: "detached" });
+    expect(await focused(rules)).toBe(true);
+  });
+
   it("moves focus to All clear when it goes at a poll with focus at the foot of All clear", async () => {
     const list = listOf(asksAt(evening).slice(0, 2));
     const changing = await openChanging(list, evening);
