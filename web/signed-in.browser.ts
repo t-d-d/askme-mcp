@@ -638,6 +638,16 @@ describe.each([
     expect(await link.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
+  it("says in the Cursor button's name that it opens a new tab, and shows nothing new", async () => {
+    const name = "Add askme to Cursor cursor.com (opens in a new tab)";
+    expect(
+      await view.page.getByRole("link", { name, exact: true }).count(),
+    ).toBe(1);
+    expect(await view.page.locator("body").innerText()).not.toContain(
+      "new tab",
+    );
+  });
+
   it("carries the demo notice", async () => {
     expect(
       await view.page
