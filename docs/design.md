@@ -30,9 +30,11 @@ At desktop width the first ask sits on the left with its spoken text, and the re
 
 ![The list at desktop width](design/screens/list-desktop.png)
 
-With one ask waiting, the list keeps its place beside the card and says nothing else is waiting. The card is as wide as it is beside a longer list.
+With one ask waiting, the list keeps its place and says nothing else is waiting. At desktop width the card is as wide as it is beside a longer list.
 
-![The list at desktop width with one ask](design/screens/list-desktop-one.png)
+| One ask on a phone | One ask at desktop width |
+| --- | --- |
+| ![The list on a phone with one ask](design/screens/list-one.png) | ![The list at desktop width with one ask](design/screens/list-desktop-one.png) |
 
 ## Colour
 
