@@ -2,6 +2,9 @@
 // call that reads the rules, and reports the scores. Like the sorting eval
 // it has no pass mark: the run fails only when it cannot reach the model at
 // all. evals/model.ts says how the model is reached.
+//
+// It reads with the service's default model, or with each model EVAL_MODELS
+// names, once. A run across the candidates reads with the default model.
 import { describe, expect, it } from "vitest";
 import { weekdays, type TimeWindow } from "../shared/page-api";
 import {
@@ -10,7 +13,8 @@ import {
   type Reading,
 } from "../service/src/rules";
 import { hoursText, isOpen, minutesInDay } from "../web/src/hours";
-import { evalClient, setupLines } from "./model";
+import { defaultModel } from "../service/src/model";
+import { clientFor, evalKey, keyLine, namedModels, proxyLine } from "./model";
 import { readingCases, type ReadingCase } from "./reading";
 
 // How many sets of rules are sent at once.
@@ -56,7 +60,10 @@ const described = ({ hashtags, hours }: Reading) =>
     .map((name) => `#${name}: ${hoursText(windowsOf(hours, name)).join("; ")}`)
     .join(", ") || "no hashtags";
 
-function report(outcomes: Outcome[]): string {
+// The models it reads with.
+const models = namedModels.length > 0 ? namedModels : [defaultModel];
+
+function report(model: string, outcomes: Outcome[]): string {
   const n = outcomes.length;
   const misses = outcomes
     .filter((outcome) => !hashtagsRight(outcome) || !hoursRight(outcome))
@@ -68,7 +75,7 @@ function report(outcomes: Outcome[]): string {
       return `- ${one.name}: expected ${described(one.expected)}; got ${got}`;
     });
   return [
-    ...setupLines(),
+    `Model: ${model}`,
     "",
     "| Rules | Hashtags right | Hours right | Both right | No fitting reply |",
     "| --- | --- | --- | --- | --- |",
@@ -81,32 +88,43 @@ function report(outcomes: Outcome[]): string {
 
 describe("the reading eval against the real model", () => {
   it("reads the hashtags and hours of every set of rules, and reports the scores", async () => {
-    const client = evalClient();
+    const key = evalKey();
 
-    async function readOne(one: ReadingCase): Promise<Outcome> {
-      const read = await readRules(one.text, client);
-      return "failed" in read
-        ? { one, failure: read.failed }
-        : { one, reading: read };
+    async function readWith(model: string): Promise<Outcome[]> {
+      const client = clientFor(model, key);
+      const readOne = async (one: ReadingCase): Promise<Outcome> => {
+        const read = await readRules(one.text, client);
+        return "failed" in read
+          ? { one, failure: read.failed }
+          : { one, reading: read };
+      };
+      const outcomes: Outcome[] = [];
+      for (let start = 0; start < readingCases.length; start += parallel) {
+        outcomes.push(
+          ...(await Promise.all(
+            readingCases.slice(start, start + parallel).map(readOne),
+          )),
+        );
+      }
+      return outcomes;
     }
 
-    const outcomes: Outcome[] = [];
-    for (let start = 0; start < readingCases.length; start += parallel) {
-      outcomes.push(
-        ...(await Promise.all(
-          readingCases.slice(start, start + parallel).map(readOne),
-        )),
-      );
-    }
+    const runs = await Promise.all(models.map(readWith));
+    runs.forEach((outcomes, place) => {
+      console.log(`\n${report(models[place] ?? "", outcomes)}\n`);
+    });
     console.log(
-      `\n${report(outcomes)}\n\nThe service reads the rules once on each save, and the page offers to try again when it fails. The eval tries once.\n`,
+      `${keyLine}\n${proxyLine}\n\nThe service reads the rules once on each save, and the page offers to try again when it fails. The eval tries once.\n`,
     );
-    // The run counts only if the model answered at all.
+    // The run counts only if a model answered at all.
     expect(
-      outcomes.some(
-        ({ failure }) => failure === undefined || failure === "reply-rejected",
+      runs.some((outcomes) =>
+        outcomes.some(
+          ({ failure }) =>
+            failure === undefined || failure === "reply-rejected",
+        ),
       ),
-      "No set of rules got a reply from the model. See the reasons above.",
+      "No set of rules got a reply from any model. See the reasons above.",
     ).toBe(true);
   });
 });

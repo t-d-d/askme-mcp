@@ -2,7 +2,8 @@
 // "./Asks" can find asks.ts instead of Asks.tsx, and tsc stops with TS1149.
 // Two files whose whole names differ only in case cannot both be checked out
 // there at all. Either way the gate fails on a Mac, though it passes on Linux
-// in CI.
+// in CI. A Mac also reads two spellings of an accented letter as one: é as
+// one code point, or as e followed by a combining accent.
 import { extname } from "node:path";
 import { describe, expect, it } from "vitest";
 import { repoFiles } from "./repo";
@@ -21,16 +22,24 @@ const names = (path: string): string[] => {
   return parts.map((_, end) => parts.slice(0, end + 1).join("/"));
 };
 
+// Two spellings of é print alike, so a clash shows each character outside
+// ASCII as its code point: caf\u{e9}, then cafe\u{301}.
+const visible = (name: string): string =>
+  name.replace(
+    /[^\x20-\x7e]/gu,
+    (letter) => `\\u{${(letter.codePointAt(0) ?? 0).toString(16)}}`,
+  );
+
 describe("the repo's file names", () => {
-  it("has no two files or folders whose names differ only in case", () => {
+  it("has no two files or folders whose names differ only in case or in how a letter is spelt", () => {
     const spellings = new Map<string, Set<string>>();
     for (const name of repoFiles().flatMap(names)) {
-      const key = name.toLowerCase();
+      const key = name.normalize("NFD").toLowerCase();
       spellings.set(key, (spellings.get(key) ?? new Set()).add(name));
     }
     const clashes = [...spellings.values()]
       .filter((spelt) => spelt.size > 1)
-      .map((spelt) => [...spelt]);
+      .map((spelt) => [...spelt].map(visible));
     expect(clashes).toEqual([]);
   });
 });
