@@ -148,6 +148,38 @@ export async function allClearGaps(
   }, footText);
 }
 
+// With the page scrolled to its foot, where the note at the foot of the
+// screen starts, and where All clear's last line ends, and the held line
+// with the given words. A missing part throws.
+export async function underTheNote(
+  page: Page,
+  footText?: string,
+): Promise<{ note: number; last: number; held: number | undefined }> {
+  return page.evaluate(async (footText) => {
+    await document.fonts.ready;
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    const box = (element: Element | null | undefined, name: string) => {
+      if (element === null || element === undefined) {
+        throw new Error(`The screen has no ${name}`);
+      }
+      return element.getBoundingClientRect();
+    };
+    const note = box(document.querySelector('div[role="status"]'), "note");
+    if (note.height === 0) throw new Error("The note is not showing");
+    const last = box([...document.querySelectorAll("main p")].at(-1), "line");
+    const held =
+      footText === undefined
+        ? undefined
+        : box(
+            [...document.querySelectorAll("span")].find(
+              (span) => span.textContent === footText,
+            )?.parentElement,
+            "held line",
+          ).bottom;
+    return { note: note.top, last: last.bottom, held };
+  }, footText);
+}
+
 const hiddenFlag = "testHidden";
 
 // Sets the flag the replaced visibility reads, and tells the page, as the

@@ -16,6 +16,7 @@ import {
   Answering,
   openPage,
   Status,
+  underTheNote,
   type OpenPage,
 } from "../test/browser";
 import { pollMs } from "./src/poll";
@@ -26,6 +27,8 @@ type Locator = ReturnType<Page["locator"]>;
 const phone = { width: 390, height: 844 };
 const session = "test-session-token";
 const minute = 60_000;
+// How long the note with Undo shows after a dismissal.
+const undoMs = 5000;
 
 // Monday 12 October 2026, 7pm in London, where work's hours have closed.
 const evening = new Date("2026-10-12T18:00:00Z");
@@ -90,13 +93,15 @@ const listOf = (asks: AsksAnswer["asks"]): AsksAnswer => ({
 });
 
 // The list, polled as the service answers: whole the first time, and as
-// unchanged after that.
-const open = (list: AsksAnswer, time: Date) =>
-  openPage(inject("pageUrl"), phone, {
+// unchanged after that. The API takes a dismissal. The screen is a phone's
+// unless another is given.
+const open = (list: AsksAnswer, time: Date, screen = phone) =>
+  openPage(inject("pageUrl"), screen, {
     session,
     clock: time,
     api: {
       [pagePaths.asks]: new Answering((url) => answerPoll(url, list)),
+      [askChangePaths.dismissed]: new Status(204),
     },
   });
 
@@ -470,5 +475,55 @@ describe("holding, with cards opened and dismissed", () => {
     await expect.poll(() => apiCalls.length).toBeGreaterThan(polls);
     await page.clock.runFor(100);
     expect(await card.getAttribute("style")).toBe(before);
+  });
+
+  // Dismisses the one ask showing, with the page's time standing still, so
+  // the note with Undo stays until the test moves the time on.
+  async function dismissTheLastShowing(page: Page) {
+    const showing = "Swap Saturday's school run?";
+    await page.getByRole("link", { name: showing }).waitFor();
+    await page.clock.pauseAt(new Date(evening.getTime() + minute));
+    await page.getByRole("link", { name: showing }).click();
+    await page.getByRole("button", { name: "Dismiss" }).click();
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+  }
+
+  it.each([
+    ["390 by 844", phone],
+    ["360 by 690", { width: 360, height: 690 }],
+  ])(
+    "leaves All clear's headline where it is, with the line under it, on a %s screen while the note shows and after it goes",
+    async (_, screen) => {
+      view = await open(listOf(asksAt(evening).slice(0, 3)), evening, screen);
+      const { page } = view;
+      await dismissTheLastShowing(page);
+      const line = "2 held until their hours";
+      const { last, held, note } = await underTheNote(page, line);
+      expect(last).toBeLessThanOrEqual(note);
+      expect(held).toBeLessThanOrEqual(note);
+      const noted = await allClearGaps(page, line);
+      await page.clock.runFor(undoMs + 500);
+      await page.getByRole("status").waitFor({ state: "hidden" });
+      const gone = await allClearGaps(page, line);
+      expect(Math.abs(noted.above - gone.above)).toBeLessThanOrEqual(1);
+    },
+  );
+
+  // Some are too short to hold the headline where it is, and some too short
+  // for All clear at all, so the page scrolls.
+  it("keeps All clear's last line and the line under it clear of the note on short screens", async () => {
+    view = await open(listOf(asksAt(evening).slice(0, 3)), evening);
+    const { page } = view;
+    await dismissTheLastShowing(page);
+    const line = "2 held until their hours";
+    for (const height of [400, 480, 560, 640]) {
+      await page.setViewportSize({ width: 360, height });
+      const { last, held, note } = await underTheNote(page, line);
+      expect(last).toBeLessThanOrEqual(note);
+      expect(held).toBeLessThanOrEqual(note);
+      // The line moves up out of the note's way, but not over the last line.
+      expect((await allClearGaps(page, line)).below).toBeGreaterThan(0);
+    }
   });
 });

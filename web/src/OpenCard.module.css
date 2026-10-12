@@ -8,7 +8,7 @@
 
 /* Room at the foot for the note after a dismissal, so it covers nothing. */
 .screen[data-noted] {
-  padding-bottom: calc(var(--tap) + 2 * var(--space-6));
+  padding-bottom: var(--space-note);
 }
 
 .header {
