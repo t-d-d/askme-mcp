@@ -9,6 +9,7 @@ import {
   modelReport,
   ranked,
   scoresFile,
+  unanswered,
   type ModelRun,
   type Outcome,
 } from "./score";
@@ -178,11 +179,23 @@ describe("comparing models", () => {
     expect(lines(saved)).toContain("Best: `maker/b`");
     expect(saved).toContain("2026-10-12");
     expect(saved).toContain("2 times");
+    expect(saved).toContain("a miss in every round is listed once for each");
   });
 
   it("keeps each model's own report, misses and all", () => {
     const saved = scoresFile(runs, { date: "2026-10-12", rounds: 2 });
     for (const run of runs) expect(saved).toContain(modelReport(run));
+  });
+});
+
+describe("a model that never answered", () => {
+  it("is named, so a broken run does not overwrite the saved scores", () => {
+    const silent: ModelRun = {
+      model: "maker/silent",
+      outcomes: [{ one: core("a hotfix"), failure: "status-402" }],
+    };
+    expect(unanswered([...runs, silent])).toEqual(["maker/silent"]);
+    expect(unanswered(runs)).toEqual([]);
   });
 });
 

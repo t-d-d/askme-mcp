@@ -11,7 +11,7 @@
 // It runs the service's default model, or the models EVAL_MODELS names,
 // separated by commas. `npm run eval:candidates` runs every model in
 // evals/candidates.ts, sends each ask to each of them twice, and saves the
-// scores in evals/scores.md.
+// scores in evals/scores.md, unless a model gave no fitting reply at all.
 import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { callerOf } from "../service/src/identity";
@@ -29,7 +29,13 @@ import {
 } from "../service/src/sorter";
 import { candidates } from "./candidates";
 import { cases, evalRules, type EvalCase } from "./cases";
-import { modelReport, scoresFile, type ModelRun, type Outcome } from "./score";
+import {
+  modelReport,
+  scoresFile,
+  unanswered,
+  type ModelRun,
+  type Outcome,
+} from "./score";
 
 const env = process.env;
 const cloud = env.CLAUDE_CODE_REMOTE === "true";
@@ -87,6 +93,11 @@ describe("the eval set against the real model", () => {
         "Set OPENROUTER_API_KEY to the eval key, or run the eval in a Claude cloud session, where the key is added for you.",
       );
     }
+    if (acrossCandidates && named.length > 0) {
+      throw new Error(
+        "EVAL_MODELS and npm run eval:candidates each choose the models. Use one of them.",
+      );
+    }
     if (proxy !== undefined && !nodeUsesProxy()) {
       throw new Error(
         `A proxy is set, but this Node (${process.versions.node}) will not send fetch through it. Run the eval with npm run eval, on Node 22.21 or later.`,
@@ -124,28 +135,35 @@ describe("the eval set against the real model", () => {
         }
       }
 
+      // A pool: each worker takes the next ask as soon as its last one is
+      // back, so one slow reply does not hold up the others.
       const set = Array.from({ length: rounds }, () => cases).flat();
-      const outcomes: Outcome[] = [];
-      for (let start = 0; start < set.length; start += parallel) {
-        outcomes.push(
-          ...(await Promise.all(
-            set.slice(start, start + parallel).map(sortOne),
-          )),
-        );
+      const outcomes: Outcome[] = new Array<Outcome>(set.length);
+      let next = 0;
+      async function worker(): Promise<void> {
+        while (next < set.length) {
+          const index = next++;
+          const one = set[index];
+          if (one !== undefined) outcomes[index] = await sortOne(one);
+        }
       }
+      await Promise.all(Array.from({ length: parallel }, worker));
       return { model, outcomes };
     }
 
-    const runs: ModelRun[] = [];
-    for (const model of models) {
-      const run = await runModel(model);
-      runs.push(run);
-      console.log(`\n${modelReport(run)}\n`);
-    }
+    // The models run at once, each with its own pool, so a run across the
+    // candidates fits the test's time limit.
+    const runs = await Promise.all(models.map(runModel));
+    for (const run of runs) console.log(`\n${modelReport(run)}\n`);
     console.log(
-      `${header}\n\nThe service tries each ask up to ${String(sortAttempts)} times. The eval tries once, to measure the model.\n`,
+      `${header}\n\nThe service tries each ask up to ${String(sortAttempts)} times. The eval tries each ask once a round, to measure the model.\n`,
     );
-    if (acrossCandidates) {
+    const silent = unanswered(runs);
+    if (acrossCandidates && silent.length > 0) {
+      console.log(
+        `Not saved in evals/scores.md: no fitting reply came from ${silent.join(", ")}. See the reasons above.\n`,
+      );
+    } else if (acrossCandidates) {
       const saved = scoresFile(runs, {
         date: new Date().toISOString().slice(0, 10),
         rounds,
