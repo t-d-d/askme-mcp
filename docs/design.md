@@ -167,6 +167,8 @@ The second line is always the site's name, such as github.com. The list of recog
 
 Every ask after the first. A summary of up to two lines, then one line with the small hashtag pill, the age and the site name at the right. Rows are separated by hairlines and sit on the ground colour.
 
+Tapping a row opens its card, the same as tapping the top card's summary. The site name says where the card's main button leads.
+
 | State | How it looks |
 | --- | --- |
 | Open | As above |

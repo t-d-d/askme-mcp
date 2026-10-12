@@ -20,7 +20,7 @@ askme is one place where all of a person's AI agents ask for their input, sorted
 4. **The service sorts it.** A model call reads the rules and the ask. It picks hashtags from the user's own set, one of three priority levels, and a one-line reason. If the call fails, the ask is kept and shown as unsorted.
 5. **The user sees it.** Cards are ordered by priority, then by how long they have waited. An ask with a hashtag outside its hours is held back, and one line says how many are held and lets the user show them.
 6. **The user listens or reads.** A card can be read aloud.
-7. **The user acts where the work is.** Tapping a card opens the place to act: a pull request, say, or the agent's own session, where the user replies with full context. askme does not carry the answer back.
+7. **The user acts where the work is.** A card's main button opens the place to act: a pull request, say, or the agent's own session, where the user replies with full context. askme does not carry the answer back.
 8. **The ask clears.** The agent resolves it as soon as it is unblocked, or the user swipes it away.
 
 The split behind this: the sending agent describes its ask, but it does not judge how much the ask matters or where it belongs. That judgement is made on the user's side, against rules that agents never see.
@@ -85,7 +85,7 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 - An ask is held back if any of its hashtags is outside its hours. When asks are held, a line under the tabs says how many, with a control to show them. With nothing held, the line is not there. This works the same on every tab.
 - Order is priority level, then longest waiting first. Opened cards sink below unopened ones at the same level. The first ask is shown large, and the rest as a compact list below it.
 - A card shows the summary, its hashtags in colour, and its age.
-- Tapping a card opens its action link. With no action link it opens the session link, and with neither it opens the detail. A card with both has a second control for the session. Each link shows the name of the site it leads to. The main button says what the link is when askme recognises it, such as a pull request, and otherwise names the site. Following a link marks the card as opened and does not clear it.
+- The large card's main button opens its action link, or the session link when there is no action link. With neither, there is no main button. A card with both has a second control for the session. Tapping a row in the list, or the large card's summary, opens the detail, which has the same buttons. Each link shows the name of the site it leads to. The main button says what the link is when askme recognises it, such as a pull request, and otherwise names the site. Following a link marks the card as opened and does not clear it.
 - A Listen button reads the spoken detail aloud, using the browser's built-in speech. A disclosure shows the same text and the reason.
 - Swiping dismisses a card, with a brief undo.
 - New asks appear without a manual refresh. When nothing is waiting, the page says "All clear" and that the agents are getting on with it. A new account sees how to connect an agent instead.
