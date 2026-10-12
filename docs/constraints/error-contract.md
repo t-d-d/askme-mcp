@@ -1,5 +1,5 @@
 # Error contract
-Relevance: Any refusal from an MCP tool or the API, a new limit, or the wording of an error message or tool description: errors module, tool handlers, API handlers, schemas
+Relevance: Any refusal from an MCP tool or the API, a call to an unknown tool, a new limit, or the wording of an error message or tool description: errors module, tool handlers, API handlers, schemas
 Decision: Every refusal carries one of six codes, each marked retry or do not retry, and is sent as a tool result the model can read.
 
 Why: The caller is a language model. It acts on the words of a
@@ -19,6 +19,8 @@ refusal, so a vague one causes a loop or a lost ask.
 - An unknown replaces id posts the ask as new.
 - The retry budget is two, stated in the tool descriptions.
 - The page's API uses the same table.
+- An unknown tool name is not a refusal. The SDK answers it with the
+  MCP spec's protocol error, -32602.
 
 ## Do not
 
@@ -27,8 +29,10 @@ refusal, so a vague one causes a loop or a lost ask.
 - Report a refusal as a protocol error: the model never sees it.
 - Put a stack trace or an internal message in a reply.
 - Make any refusal a reason for the agent to stop its own work.
+- Turn an unknown tool name into a tool result: it goes against the
+  MCP spec, and means taking over how the SDK routes calls.
 
 Judgment: A failure that fits no code is service_unavailable until
-the ADR changes.
+the ADR changes. An unknown tool name is not such a failure.
 
-History: [ADR 11](../adr/0011-error-contract.md)
+History: [ADR 11](../adr/0011-error-contract.md), [ADR 19](../adr/0019-unknown-tool-name.md)
