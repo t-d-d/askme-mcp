@@ -51,7 +51,8 @@ import { inListOrder } from "./waiting";
 // leaves the list, before the next poll says so.
 //
 // Closing a card puts the list back where it was, with focus on the link
-// that opened the card (useListPlace.ts).
+// that opened the card, or on the All clear headline when nothing is left
+// on the tab (useListPlace.ts).
 export function Asks({ card }: { card: string | null }) {
   const { data, receivedAt, polledAt, failed } = useAsks();
   const [chosen, choose] = useState<Tab>(everything);
@@ -134,6 +135,7 @@ export function Asks({ card }: { card: string | null }) {
   const list = useListPlace(
     open?.id,
     shown.map(({ id }) => id),
+    headline,
   );
   const heldLine = (atFoot: boolean) => (
     <Held

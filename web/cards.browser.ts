@@ -142,6 +142,10 @@ async function swipe(
 const hasFocus = (control: ReturnType<OpenPage["page"]["locator"]>) =>
   control.evaluate((element) => element === document.activeElement);
 
+// The style of the outline around an element, as drawn now.
+const outline = (element: ReturnType<OpenPage["page"]["locator"]>) =>
+  element.evaluate((each) => getComputedStyle(each).outlineStyle);
+
 // Presses Tab until a control has the focus, as a keyboard user reaches it.
 async function tabTo(
   opened: OpenPage,
@@ -945,6 +949,64 @@ describe("going back to the list from a card", () => {
     await summaryOf(opened, both.summary).click();
     await dismissCard(opened);
     expect(await hasFocus(summaryOf(opened, sessionOnly.summary))).toBe(true);
+  });
+
+  const allClear = (opened: OpenPage) =>
+    opened.page.getByRole("heading", { name: "All clear." });
+
+  it("after Dismiss of the only ask puts focus on All clear, with no outline, and Tab passes it by", async () => {
+    const opened = await open(listOf(both));
+    await summaryOf(opened, both.summary).click();
+    // Reached from the keyboard, so the focus outline shows.
+    const dismiss = opened.page.getByRole("button", { name: "Dismiss" });
+    await tabTo(opened, dismiss);
+    expect(await outline(dismiss)).toBe("solid");
+    await opened.page.keyboard.press("Enter");
+    await allClear(opened).waitFor();
+    expect(await hasFocus(allClear(opened))).toBe(true);
+    // The heading is not a control, so it draws no outline.
+    expect(await outline(allClear(opened))).toBe("none");
+    // Round the page and back again, Tab passes it by.
+    for (let presses = 0; presses < 10; presses += 1) {
+      await opened.page.keyboard.press("Tab");
+      expect(await hasFocus(allClear(opened))).toBe(false);
+    }
+  });
+
+  it("after Dismiss of the only ask on a hashtag's tab puts focus on All clear under the tabs", async () => {
+    const work = ask("work", "Which date format?", 30 * minute, {
+      sort: { hashtags: ["work"], level: "normal", reason: "For work." },
+    });
+    const opened = await open({
+      ...listOf(both, work),
+      hashtags: [
+        { name: "shop", colour: 1 },
+        { name: "work", colour: 2 },
+      ],
+    });
+    const workTab = opened.page
+      .getByRole("navigation", { name: "Hashtags" })
+      .getByRole("button", { name: "#work", exact: true });
+    await workTab.click();
+    await summaryOf(opened, work.summary).click();
+    await dismissCard(opened);
+    await allClear(opened).waitFor();
+    expect(await workTab.getAttribute("aria-pressed")).toBe("true");
+    expect(await hasFocus(allClear(opened))).toBe(true);
+  });
+
+  it("after Dismiss of the only ask from a card opened straight from its address puts focus on All clear", async () => {
+    view = await openPage(`${inject("pageUrl")}#ask/both`, phone, {
+      session,
+      api: {
+        [pagePaths.asks]: listOf(both),
+        [askChangePaths.dismissed]: new Status(204),
+      },
+    });
+    await view.page.getByRole("heading", { name: both.summary }).waitFor();
+    await dismissCard(view);
+    await allClear(view).waitFor();
+    expect(await hasFocus(allClear(view))).toBe(true);
   });
 
   // The header's link is followed where it is, so the test scrolls nothing.
