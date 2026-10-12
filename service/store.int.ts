@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
-import { storedItems, storeItem } from "../test/dynamodb";
+import { storedItems } from "../test/dynamodb";
 import { callerOf, type AccountId } from "./src/identity";
 import {
   askLimit,
@@ -575,7 +575,6 @@ describe("the rules", () => {
       seen: [],
       version: 0,
       readFailed: false,
-      hours: [],
     });
   });
 
@@ -592,7 +591,6 @@ describe("the rules", () => {
       seen: ["work", "shop"],
       version: 1,
       readFailed: false,
-      hours: [],
     });
     expect(await store.rules(owner)).toEqual(saved);
     expect(await versionOf(owner)).toBe(1);
@@ -643,6 +641,22 @@ describe("the rules", () => {
     });
   });
 
+  it("drop the old hours when the new rules give none", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      { text: "#work on weekdays.", hashtags: ["work"], hours: [workHours] },
+      now,
+    );
+    const saved = await store.saveRules(
+      owner,
+      { text: "#work at any time.", hashtags: ["work"] },
+      now,
+    );
+    expect(saved.hours).toBeUndefined();
+    expect((await store.rules(owner)).hours).toBeUndefined();
+  });
+
   it("keep the time zone saved before when a save gives none", async () => {
     const owner = account();
     await store.saveRules(
@@ -656,22 +670,6 @@ describe("the rules", () => {
       now,
     );
     expect(saved.timeZone).toBe("Asia/Tokyo");
-  });
-
-  it("read rules saved before askme read hours as having none, and no time zone", async () => {
-    const owner = account();
-    await storeItem(endpoint, tableName, {
-      ...keys.rules(owner),
-      text: "#work first.",
-      hashtags: ["work"],
-      seen: ["work"],
-      version: 3,
-      readFailed: false,
-      savedAt: now.toISOString(),
-    });
-    const rules = await store.rules(owner);
-    expect(rules.hours).toEqual([]);
-    expect(rules.timeZone).toBeUndefined();
   });
 
   it("keep the new text and the old hashtags when the rules could not be read", async () => {
@@ -692,7 +690,6 @@ describe("the rules", () => {
       seen: ["work"],
       version: 2,
       readFailed: true,
-      hours: [],
     });
     expect(await versionOf(owner)).toBe(2);
   });

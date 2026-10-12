@@ -151,16 +151,16 @@ const dedupeSchema = z.object({
 // (docs/design.md). The version goes up on every save. When the last save
 // could not be read, the hashtags are the ones read before it.
 //
-// The hours are the windows read with the hashtags, and the time zone is
-// the one the browser that saved the rules was in, which the hours use.
-// Rules saved before askme read hours have neither.
+// The hours are the windows read with the hashtags, absent when the rules
+// give no hashtag any, and the time zone is the one the browser that saved
+// the rules was in, which the hours use, absent until a save sends one.
 const rulesSchema = z.object({
   text: z.string(),
   hashtags: z.array(z.string()),
   seen: z.array(z.string()),
   version: z.number().int().nonnegative(),
   readFailed: z.boolean(),
-  hours: z.array(hashtagWindow).default([]),
+  hours: z.array(hashtagWindow).min(1).optional(),
   timeZone: z.string().optional(),
 });
 
@@ -174,8 +174,15 @@ const noRules: AccountRules = {
   seen: [],
   version: 0,
   readFailed: false,
-  hours: [],
 };
+
+// The hours and the time zone as the rules item holds them: each absent
+// when there is none.
+const windowsOf = (hours: HashtagWindow[] | undefined) =>
+  hours === undefined || hours.length === 0 ? {} : { hours };
+
+const zoneOf = (timeZone: string | undefined) =>
+  timeZone === undefined ? {} : { timeZone };
 
 // Rules as a save hands them in: the text, the time zone of the browser
 // that saved them, and the hashtags read from it with their hours. Without
@@ -710,8 +717,8 @@ export function createStore(config: {
           ],
           version: current.version + 1,
           readFailed: hashtags === undefined,
-          hours: hashtags === undefined ? current.hours : (hours ?? []),
-          timeZone: timeZone ?? current.timeZone,
+          ...windowsOf(hashtags === undefined ? current.hours : hours),
+          ...zoneOf(timeZone ?? current.timeZone),
         };
         try {
           await write(account, [

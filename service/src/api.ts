@@ -95,7 +95,7 @@ function rulesSaveRefusal(secondsLeft: number): Response {
 // hours when the rules give it any.
 const hashtagsOf = ({ hashtags, seen, hours }: AccountRules) =>
   hashtags.map((name) => {
-    const windows = hours
+    const windows = (hours ?? [])
       .filter(({ hashtag }) => hashtag === name)
       .map(({ days, from, to }) => ({ days, from, to }));
     return {

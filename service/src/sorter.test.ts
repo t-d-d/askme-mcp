@@ -38,7 +38,6 @@ const rules: AccountRules = {
   seen: ["work", "shop"],
   version: 4,
   readFailed: false,
-  hours: [],
 };
 
 // The parts of the store the sorter uses, in memory.
