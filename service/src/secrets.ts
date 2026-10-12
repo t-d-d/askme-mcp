@@ -1,0 +1,40 @@
+// The service's own key for the model, read from Parameter Store, where issue
+// #1 put it as a SecureString. It is read on first use and kept for the life
+// of the function, so it is never in the deployment definition or the
+// function's settings.
+import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
+import { z } from "zod";
+
+const answerSchema = z.object({
+  Parameter: z.object({ Value: z.string().min(1) }),
+});
+
+export function createKeyReader(config: {
+  parameter: string;
+  endpoint?: string | undefined;
+}): () => Promise<string> {
+  const { parameter, endpoint } = config;
+  // In production the client finds its region and credentials in Lambda's
+  // environment. The fake Parameter Store of the tests accepts any.
+  const client = new SSMClient(
+    endpoint === undefined
+      ? {}
+      : {
+          endpoint,
+          region: "us-east-1",
+          credentials: { accessKeyId: "local", secretAccessKey: "local" },
+        },
+  );
+  let key: Promise<string> | undefined;
+  return () => {
+    key ??= client
+      .send(new GetParameterCommand({ Name: parameter, WithDecryption: true }))
+      .then((answer) => answerSchema.parse(answer).Parameter.Value)
+      .catch((error: unknown) => {
+        // Read it again next time, rather than keep the failure.
+        key = undefined;
+        throw error;
+      });
+    return key;
+  };
+}

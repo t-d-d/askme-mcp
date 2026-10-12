@@ -23,7 +23,7 @@ export function Asks() {
       )}
       {data === undefined ? null : data.asks.length > 0 ? (
         <main>
-          <AskList asks={data.asks} now={receivedAt} />
+          <AskList asks={data.asks} hashtags={data.hashtags} now={receivedAt} />
         </main>
       ) : data.everAsked ? (
         <AllClear />

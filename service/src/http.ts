@@ -57,6 +57,16 @@ export function incoming(event: unknown): Incoming | undefined {
   };
 }
 
+// A request's body as JSON, for its caller to parse with its own schema, or
+// undefined when it has none or it is not JSON.
+export async function jsonBody(request: Request): Promise<unknown> {
+  try {
+    return await request.json(); // eslint-disable-line no-restricted-syntax -- this module is where a body is read
+  } catch {
+    return undefined;
+  }
+}
+
 // The Authorization header, if the request has one. API Gateway joins a
 // repeated header with commas, and only the first counts.
 export function authorizationOf(request: Request): string | undefined {

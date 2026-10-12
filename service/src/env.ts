@@ -1,6 +1,7 @@
 // The service's environment, parsed once (ADR 10). This is the only module
 // that reads process.env.
 import { z } from "zod";
+import { openRouterEndpoint } from "./model";
 
 const loopback = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -27,27 +28,49 @@ const issuerSchema = z
   )
   .transform((url) => url.origin);
 
-// The local DynamoDB that the integration tier runs (ADR 9). In production
-// it is unset, and the client finds the region's endpoint itself.
-const databaseEndpointSchema = z
-  .url({ error: "DYNAMODB_ENDPOINT must be an address." })
-  .refine(
-    (value) => URL.canParse(value) && loopback.has(new URL(value).hostname),
-    {
-      error: "DYNAMODB_ENDPOINT may only point to this machine.",
-    },
-  );
+// An address in place of a cloud service's, for the stand-ins the
+// integration tier runs (ADR 9): the local DynamoDB, the model faked with
+// recorded replies, and fakes of Parameter Store and Lambda. In production
+// each is unset, and the real service's address is used.
+const loopbackEndpoint = (name: string) =>
+  z
+    .url({ error: `${name} must be an address.` })
+    .refine(
+      (value) => URL.canParse(value) && loopback.has(new URL(value).hostname),
+      { error: `${name} may only point to this machine.` },
+    );
+
+const named = (name: string, what: string) =>
+  z.string({ error: `${name} must name ${what}.` }).min(1, {
+    error: `${name} must name ${what}.`,
+  });
 
 const envSchema = z.object({
   CLERK_ISSUER: issuerSchema,
-  TABLE_NAME: z.string().min(1, { error: "TABLE_NAME must name the table." }),
-  DYNAMODB_ENDPOINT: databaseEndpointSchema.optional(),
+  TABLE_NAME: named("TABLE_NAME", "the table"),
+  // The function that sorts an ask after it is posted.
+  SORT_FUNCTION: named("SORT_FUNCTION", "the function that sorts asks"),
+  // The Parameter Store name of the service's OpenRouter key, which issue
+  // #1 fixed.
+  MODEL_KEY_PARAMETER: named(
+    "MODEL_KEY_PARAMETER",
+    "the parameter that holds the model's key",
+  ),
+  DYNAMODB_ENDPOINT: loopbackEndpoint("DYNAMODB_ENDPOINT").optional(),
+  MODEL_ENDPOINT: loopbackEndpoint("MODEL_ENDPOINT").optional(),
+  SSM_ENDPOINT: loopbackEndpoint("SSM_ENDPOINT").optional(),
+  LAMBDA_ENDPOINT: loopbackEndpoint("LAMBDA_ENDPOINT").optional(),
 });
 
 export interface Env {
   clerkIssuer: string;
   tableName: string;
+  sortFunction: string;
+  modelKeyParameter: string;
+  modelEndpoint: string;
   databaseEndpoint?: string;
+  ssmEndpoint?: string;
+  lambdaEndpoint?: string;
 }
 
 export function readEnv(
@@ -62,12 +85,21 @@ export function readEnv(
         .join("; ")}`,
     );
   }
-  const { CLERK_ISSUER, TABLE_NAME, DYNAMODB_ENDPOINT } = parsed.data;
+  const env = parsed.data;
   return {
-    clerkIssuer: CLERK_ISSUER,
-    tableName: TABLE_NAME,
-    ...(DYNAMODB_ENDPOINT === undefined
+    clerkIssuer: env.CLERK_ISSUER,
+    tableName: env.TABLE_NAME,
+    sortFunction: env.SORT_FUNCTION,
+    modelKeyParameter: env.MODEL_KEY_PARAMETER,
+    modelEndpoint: env.MODEL_ENDPOINT ?? openRouterEndpoint,
+    ...(env.DYNAMODB_ENDPOINT === undefined
       ? {}
-      : { databaseEndpoint: DYNAMODB_ENDPOINT }),
+      : { databaseEndpoint: env.DYNAMODB_ENDPOINT }),
+    ...(env.SSM_ENDPOINT === undefined
+      ? {}
+      : { ssmEndpoint: env.SSM_ENDPOINT }),
+    ...(env.LAMBDA_ENDPOINT === undefined
+      ? {}
+      : { lambdaEndpoint: env.LAMBDA_ENDPOINT }),
   };
 }

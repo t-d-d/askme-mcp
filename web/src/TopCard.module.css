@@ -15,6 +15,12 @@
   gap: var(--space-8);
 }
 
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
 .pill {
   padding: var(--space-4) var(--space-10);
   border-radius: var(--radius-pill);

@@ -29,11 +29,26 @@
   font-weight: var(--weight-label);
 }
 
-.link {
+.nav {
   display: flex;
   align-items: center;
+  gap: var(--space-20);
+}
+
+/* On a phone, one control opens the rules. */
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap);
+  height: var(--tap);
+  color: var(--ink);
+}
+
+.link {
+  display: none;
+  align-items: center;
   min-height: var(--tap);
-  padding: 0 var(--space-8);
   color: var(--ink);
   font-weight: var(--weight-label);
 }
@@ -43,7 +58,11 @@
     padding: var(--space-22) 0 var(--space-6);
   }
 
+  .icon {
+    display: none;
+  }
+
   .link {
-    padding: 0;
+    display: flex;
   }
 }

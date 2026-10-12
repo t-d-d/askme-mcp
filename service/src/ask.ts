@@ -11,6 +11,8 @@
 import { z } from "zod";
 import { Refused, retryBudget } from "./errors";
 import { guidance } from "./instructions";
+import type { SortJob, SortRequests } from "./jobs";
+import { errorClass, type Logger } from "./log";
 import { askLimit } from "./rate";
 import { dailyAskCap } from "./store/store";
 import type { ToolDefinition } from "./tools";
@@ -95,7 +97,7 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
   ].join(" "),
   input: askInput,
   output: askOutput,
-  async run(input, { caller, log, store }) {
+  async run(input, { caller, log, store, sorts }) {
     const { accountId } = caller;
     const now = new Date();
     // Every call is counted before anything is stored, so an agent that
@@ -127,6 +129,7 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
           log.info("ask-replaced", { accountId, askId: input.replaces });
         }
         log.info("ask-posted", { accountId, askId: posting.id });
+        await handOn(sorts, log, { accountId, askId: posting.id });
         return { id: posting.id, status: "posted" };
       case "matched":
         // The same answer as a new ask's, so the agent cannot tell them
@@ -139,6 +142,24 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
     }
   },
 };
+
+// Hands a new ask to the sorter, which runs after this call has answered,
+// so posting never waits on the model. If Lambda cannot take it, the ask is
+// still posted, and shows as not sorted yet until a poll asks again.
+async function handOn(
+  sorts: SortRequests,
+  log: Logger,
+  job: SortJob,
+): Promise<void> {
+  try {
+    await sorts.request(job);
+  } catch (error) {
+    log.warn("sort-request-failed", {
+      ...job,
+      errorClass: errorClass(error),
+    });
+  }
+}
 
 function capReached(resetsAt: Date): Refused {
   return new Refused(

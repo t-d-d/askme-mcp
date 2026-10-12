@@ -1,5 +1,6 @@
 // How the list reads its asks: the order they come in, and how long each
 // has waited, in the short forms docs/design.md gives.
+import { levels, type Level } from "../../shared/page-api";
 
 const minuteMs = 60_000;
 
@@ -28,5 +29,24 @@ export function longestWaitingFirst<
     (a, b) =>
       Date.parse(a.postedAt) - Date.parse(b.postedAt) ||
       (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+}
+
+// Where each level goes in the list, and an ask not sorted yet after all
+// of them.
+const place = (sort: { level: Level } | null) =>
+  sort === null ? levels.length : levels.indexOf(sort.level);
+
+// Higher level first, then longest waiting (PRD, "Web page"). An ask not
+// sorted yet waits below the sorted ones until it is.
+export function inListOrder<
+  Ask extends {
+    id: string;
+    postedAt: string;
+    sort: { level: Level } | null;
+  },
+>(asks: readonly Ask[]): Ask[] {
+  return longestWaitingFirst(asks).sort(
+    (a, b) => place(a.sort) - place(b.sort),
   );
 }

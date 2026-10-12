@@ -12,6 +12,8 @@ export const routes = {
   "GET /.well-known/oauth-protected-resource/mcp": "public",
   "GET /api/asks": "page",
   "GET /api/connection": "page",
+  "GET /api/rules": "page",
+  "PUT /api/rules": "page",
 } as const satisfies Record<string, "agent" | "page" | "public">;
 
 export type Route = keyof typeof routes;
