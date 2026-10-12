@@ -316,6 +316,18 @@ describe("the rules screen", () => {
     expect(await box.inputValue()).toBe("#work only.");
   });
 
+  it("asks before the tab closes with unsaved text", async () => {
+    view = await openRules(saved);
+    const { page } = view;
+    await page.getByRole("textbox").fill("#work only.");
+    const asked = page.waitForEvent("dialog");
+    await page.close({ runBeforeUnload: true });
+    const dialog = await asked;
+    expect(dialog.type()).toBe("beforeunload");
+    await dialog.dismiss();
+    expect(page.isClosed()).toBe(false);
+  });
+
   it("leaves without asking when nothing changed", async () => {
     view = await openRules(saved);
     const { page } = view;
