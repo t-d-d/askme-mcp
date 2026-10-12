@@ -131,6 +131,13 @@ export const askChangePaths = {
   dismissed: "/api/asks/dismissed",
 } as const;
 
+// Posts sample asks into the account, one from each of three areas, as an
+// agent would, so sorting can be watched with no agent connected (PRD, "Web
+// page"). Each press posts different samples. It takes no body, and answers
+// with no content once they are posted, or with a refusal at the account's
+// rate or its daily cap.
+export const samplesPath = "/api/asks/samples";
+
 // The most characters an ask's id may hold, and the pattern of one: the
 // letters, digits, - and _ askme's ids are made of. The page's card address
 // and the changes it sends both use it.

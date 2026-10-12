@@ -1,12 +1,22 @@
 // The page's API end to end, in process: API Gateway's event, the session
 // token check, and the store on the local DynamoDB.
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  inject,
+  it,
+  vi,
+} from "vitest";
 import { z } from "zod";
 import {
   askChangePaths,
   pagePaths,
   rulesLimit,
+  samplesPath,
   timeZoneLimit,
 } from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
@@ -19,9 +29,16 @@ import { sortRetryAfterMs } from "./src/api";
 import { handler } from "./src/handler";
 import { callerOf } from "./src/identity";
 import { sortRequestTimeoutMs } from "./src/jobs";
-import { rulesSaveLimit } from "./src/rate";
+import { askLimit, rulesSaveLimit } from "./src/rate";
+import { exampleRules } from "./src/rules";
+import { sampleAreas } from "./src/samples";
 import { handler as sorter } from "./src/sorter";
-import { createStore, type NewAsk } from "./src/store/store";
+import {
+  createStore,
+  dailyAskCap,
+  dedupeWindowMinutes,
+  type NewAsk,
+} from "./src/store/store";
 
 let issuer: FakeIssuer;
 beforeAll(async () => {
@@ -96,8 +113,26 @@ const refusalSchema = z.strictObject({
   message: z.string(),
 });
 
+// The hashtags a new account starts with, read from the example rules, each
+// with its colour, and the hours of #work.
+const exampleHashtags = [
+  {
+    name: "work",
+    colour: 0,
+    hours: [
+      {
+        days: ["mon", "tue", "wed", "thu", "fri"],
+        from: "08:00",
+        to: "18:00",
+      },
+    ],
+  },
+  { name: "shop", colour: 1 },
+  { name: "family", colour: 2 },
+];
+
 describe("the list of open asks", () => {
-  it("is empty for a new account, which has never had an ask", async () => {
+  it("is empty for a new account, which has never had an ask, and carries the example rules' hashtags", async () => {
     const response = await get(
       pagePaths.asks,
       await issuer.sessionToken({ claims: { sub: newAccount() } }),
@@ -106,7 +141,7 @@ describe("the list of open asks", () => {
     expect(await response.json()).toEqual({
       version: 0,
       everAsked: false,
-      hashtags: [],
+      hashtags: exampleHashtags,
       formerHashtags: [],
       asks: [],
     });
@@ -207,7 +242,7 @@ describe("the list of open asks", () => {
     expect(await response.json()).toEqual({
       version: 0,
       everAsked: false,
-      hashtags: [],
+      hashtags: exampleHashtags,
       formerHashtags: [],
       asks: [],
     });
@@ -453,15 +488,20 @@ const officeHours = {
 };
 
 describe("the rules", () => {
-  it("are empty for a new account, with no hashtags", async () => {
+  // PRD, "Rules": a new account starts with example rules in the box. They
+  // are read already, so no model is asked, and they name no time zone, so
+  // the page uses its own.
+  it("are the example rules for a new account, with the hashtags read from them", async () => {
+    const calls = fakes.model.calls.length;
     const response = await get(pagePaths.rules, await session(newAccount()));
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await response.json()).toEqual({
-      text: "",
-      hashtags: [],
+      text: exampleRules.text,
+      hashtags: exampleHashtags,
       readFailed: false,
     });
+    expect(fakes.model.calls).toHaveLength(calls);
   });
 
   it("are saved, with the hashtags the model read from them, each with its colour", async () => {
@@ -600,7 +640,7 @@ describe("the rules", () => {
     const response = await saveRules(account, { text: rulesText });
     expect(await response.json()).toEqual({
       text: rulesText,
-      hashtags: [],
+      hashtags: exampleHashtags,
       readFailed: true,
     });
   });
@@ -808,6 +848,7 @@ describe("sorting", () => {
 
   it("lists every ask with no hashtag while the box is empty, asking no model", async () => {
     const account = newAccount();
+    await saveRules(account, { text: "" });
     const id = await post(account);
     const calls = fakes.model.calls.length;
     await runSorts();
@@ -1123,5 +1164,160 @@ describe("saving the rules again", () => {
     expect((await sorted(account)).asks).toEqual([
       { id, sort: { hashtags: ["shop"], level: "low" } },
     ]);
+  });
+});
+
+// Sends sample asks, as the page's "Send sample asks" does.
+const sendSamples = async (account: string) =>
+  invoke(
+    handler,
+    new Request(`${origin}${samplesPath}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${await session(account)}` },
+    }),
+  );
+
+// The area each sample's summary belongs to.
+const sampleArea = new Map(
+  sampleAreas.flatMap(({ area, asks }) =>
+    asks.map(({ summary }) => [summary, area] as const),
+  ),
+);
+
+// The summaries of the account's open asks, as the page reads them.
+async function summaries(account: string): Promise<string[]> {
+  const response = await get(pagePaths.asks, await session(account));
+  return z
+    .object({ asks: z.array(z.object({ summary: z.string() })) })
+    .parse(await response.json())
+    .asks.map(({ summary }) => summary);
+}
+
+// The middle of a minute and of a UTC day, so that the day's and the
+// minute's counts filled here are the ones a press is counted against.
+const noon = new Date("2026-10-11T12:00:30.000Z");
+
+// Stops the clock at a moment, for the service and the token alike.
+const stopClockAt = (moment: Date) => {
+  vi.useFakeTimers({ toFake: ["Date"], now: moment });
+};
+
+describe("sample asks", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("are posted one from each of three areas, with no agent connected, and each is handed to the sort function", async () => {
+    const account = newAccount();
+    const invoked = fakes.lambda.invoked.length;
+    const response = await sendSamples(account);
+    expect(response.status).toBe(204);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const listed = await summaries(account);
+    expect(listed).toHaveLength(3);
+    expect(new Set(listed.map((summary) => sampleArea.get(summary)))).toEqual(
+      new Set(sampleAreas.map(({ area }) => area)),
+    );
+    const { asks } = await list(account);
+    expect(fakes.lambda.invoked.slice(invoked)).toEqual(
+      expect.arrayContaining(asks.map(({ id }) => sortOf(account, id))),
+    );
+    expect(fakes.lambda.invoked.slice(invoked)).toHaveLength(3);
+    // The sorts run here, so no other test's reply goes to them.
+    await runSorts();
+  });
+
+  it("are sorted with the example rules a new account starts with", async () => {
+    const account = newAccount();
+    await runSorts();
+    await sendSamples(account);
+    const calls = fakes.model.calls.length;
+    const reply = {
+      json: { hashtags: ["shop"], level: "high", reason: "A customer waits." },
+    };
+    fakes.model.reply(reply, reply, reply);
+    expect(await runSorts()).toBe(3);
+    const prompts = fakes.model.calls
+      .slice(calls)
+      .map(({ body }) => JSON.stringify(body));
+    expect(prompts).toHaveLength(3);
+    for (const prompt of prompts) {
+      expect(prompt).toContain("#work is my day job.");
+    }
+    expect((await sorted(account)).asks.map(({ sort }) => sort)).toEqual([
+      { hashtags: ["shop"], level: "high" },
+      { hashtags: ["shop"], level: "high" },
+      { hashtags: ["shop"], level: "high" },
+    ]);
+  });
+
+  // ADR 3: an ask the same as one posted in the last ten minutes would be
+  // matched to it, and show nothing new.
+  it("are different on each press, so none is matched to one sent before, until every sample has been sent", async () => {
+    const account = newAccount();
+    const presses = Math.min(...sampleAreas.map(({ asks }) => asks.length));
+    for (let press = 1; press <= presses; press += 1) {
+      expect((await sendSamples(account)).status).toBe(204);
+      const listed = await summaries(account);
+      expect(listed).toHaveLength(3 * press);
+      expect(new Set(listed).size).toBe(listed.length);
+    }
+    const response = await sendSamples(account);
+    expect(response.status).toBe(429);
+    const refusal = refusalSchema.parse(await response.json());
+    expect(refusal.code).toBe("rate_limited");
+    expect(refusal.class).toBe("retry");
+    expect(refusal.message).toContain(
+      `in the last ${String(dedupeWindowMinutes)} minutes`,
+    );
+    expect(await summaries(account)).toHaveLength(3 * presses);
+    await runSorts();
+  });
+
+  it(`are refused at the rate limit with rate_limited, which says how long to wait`, async () => {
+    const account = newAccount();
+    for (let n = 1; n <= askLimit.asks; n += 1) {
+      await store.countAsk(ownerOf(account), noon);
+    }
+    stopClockAt(noon);
+    const response = await sendSamples(account);
+    expect(response.status).toBe(429);
+    const refusal = refusalSchema.parse(await response.json());
+    expect(refusal.code).toBe("rate_limited");
+    expect(refusal.class).toBe("retry");
+    expect(refusal.message).toContain(`${String(askLimit.asks)} asks a minute`);
+    expect(refusal.message).toMatch(
+      /Wait 30 seconds, then send sample asks again\./u,
+    );
+    expect(await summaries(account)).toEqual([]);
+  });
+
+  it("are refused at the daily cap with cap_reached, which says when the cap resets", async () => {
+    const account = newAccount();
+    // The day's asks, one a minute through the morning, so no minute is
+    // over its rate.
+    for (let n = 1; n <= dailyAskCap; n += 1) {
+      await store.postAsk(
+        ownerOf(account),
+        {
+          summary: `Ask ${String(n)}`,
+          area: "Home",
+          spokenDetail: "Yes or no.",
+        },
+        new Date(noon.getTime() - n * 60_000),
+      );
+    }
+    stopClockAt(noon);
+    const response = await sendSamples(account);
+    expect(response.status).toBe(429);
+    const refusal = refusalSchema.parse(await response.json());
+    expect(refusal.code).toBe("cap_reached");
+    expect(refusal.class).toBe("do not retry");
+    expect(refusal.message).toContain(`${String(dailyAskCap)} asks today`);
+    expect(refusal.message).toContain("2026-10-12T00:00:00.000Z");
+    vi.useRealTimers();
+    expect(
+      (await summaries(account)).filter((summary) => sampleArea.has(summary)),
+    ).toEqual([]);
   });
 });

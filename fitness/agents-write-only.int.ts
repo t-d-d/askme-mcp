@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Client } from "@modelcontextprotocol/client";
 import { handler, routes } from "../service/src/handler";
 import { instructions } from "../service/src/instructions";
-import { askChangePaths, pagePaths } from "../shared/page-api";
+import { askChangePaths, pagePaths, samplesPath } from "../shared/page-api";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, eras, origin, type Era } from "../test/mcp";
@@ -264,7 +264,7 @@ describe("fitness: an agent's token reads nothing from the page's API (agents-wr
       issuer.sessionToken({ claims: { aud: "client_test" } }),
     ]);
 
-  it("finds the page's routes, the rules and their hashtags, and the changes to an ask, among them", () => {
+  it("finds the page's routes, the rules and their hashtags, the changes to an ask, and the sample asks, among them", () => {
     expect(pageRoutes).toEqual(
       expect.arrayContaining([
         "GET /api/asks",
@@ -273,6 +273,7 @@ describe("fitness: an agent's token reads nothing from the page's API (agents-wr
         "PUT /api/rules",
         "POST /api/asks/opened",
         "POST /api/asks/dismissed",
+        "POST /api/asks/samples",
       ]),
     );
   });
@@ -332,4 +333,22 @@ describe("fitness: an agent's token reads nothing from the page's API (agents-wr
       expect(await pageOf(sub)).toEqual(before);
     },
   );
+
+  // Sample asks would post into the account, as only the person may ask
+  // for from the page.
+  it("posts no sample asks when an agent's token asks for them", async () => {
+    const sub = newAccount();
+    const before = await pageOf(sub);
+    const response = await invoke(
+      handler,
+      new Request(`${origin}${samplesPath}`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${await issuer.token({ claims: { sub, scope: "asks:create" } })}`,
+        },
+      }),
+    );
+    expect(response.status).toBe(403);
+    expect(await pageOf(sub)).toEqual(before);
+  });
 });

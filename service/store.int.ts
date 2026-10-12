@@ -10,7 +10,7 @@ import {
   rulesSaveLimit,
   sortRetryLimit,
 } from "./src/rate";
-import type { HashtagWindow } from "./src/rules";
+import { exampleRules, type HashtagWindow } from "./src/rules";
 import { keys } from "./src/store/keys";
 import {
   askLifetimeDays,
@@ -729,14 +729,35 @@ describe("the rules", () => {
     to: "18:00",
   };
 
-  it("are empty, with no hashtags, for an account that never saved any", async () => {
-    expect(await store.rules(account())).toEqual({
-      text: "",
-      hashtags: [],
-      seen: [],
+  // A new account starts with example rules in the box (PRD, "Rules"),
+  // already read, so it costs no model call. They are not saved: the
+  // version stays at 0, and nothing is written.
+  it("are the example rules, already read, for an account that never saved any", async () => {
+    const owner = account();
+    expect(await store.rules(owner)).toEqual({
+      text: exampleRules.text,
+      hashtags: ["work", "shop", "family"],
+      seen: ["work", "shop", "family"],
       version: 0,
       readFailed: false,
+      hours: [workHours],
     });
+    expect(await storedItems(endpoint, tableName, owner)).toEqual([]);
+  });
+
+  it("start from the example rules' hashtags, so each keeps its colour after the first save", async () => {
+    const owner = account();
+    const saved = await store.saveRules(
+      owner,
+      { text: "#home, then #work.", hashtags: ["home", "work"] },
+      now,
+    );
+    expect(saved).toMatchObject({
+      hashtags: ["home", "work"],
+      seen: ["work", "shop", "family", "home"],
+      version: 1,
+    });
+    expect(saved.hours).toBeUndefined();
   });
 
   it("keep the text, the hashtags read from it and when they were saved, and raise the version", async () => {
@@ -749,7 +770,7 @@ describe("the rules", () => {
     expect(saved).toEqual({
       text: "#work first, then #shop.",
       hashtags: ["work", "shop"],
-      seen: ["work", "shop"],
+      seen: ["work", "shop", "family"],
       version: 1,
       readFailed: false,
       savedAt: now.toISOString(),
@@ -849,7 +870,7 @@ describe("the rules", () => {
     expect(saved).toEqual({
       text: "#work first, then #family.",
       hashtags: ["work"],
-      seen: ["work"],
+      seen: ["work", "shop", "family"],
       version: 2,
       readFailed: true,
       savedAt: now.toISOString(),
@@ -874,15 +895,23 @@ describe("the rules", () => {
     expect(saved.seen).toEqual(["work", "shop", "family"]);
   });
 
+  // Two hashtags the example rules do not name, so each is new to the
+  // account.
   it("lose no hashtag when two saves arrive together", async () => {
     const owner = account();
     await Promise.all([
-      store.saveRules(owner, { text: "#work", hashtags: ["work"] }, now),
-      store.saveRules(owner, { text: "#shop", hashtags: ["shop"] }, now),
+      store.saveRules(owner, { text: "#garden", hashtags: ["garden"] }, now),
+      store.saveRules(owner, { text: "#travel", hashtags: ["travel"] }, now),
     ]);
     const rules = await store.rules(owner);
     expect(rules.version).toBe(2);
-    expect([...rules.seen].sort()).toEqual(["shop", "work"]);
+    expect([...rules.seen].sort()).toEqual([
+      "family",
+      "garden",
+      "shop",
+      "travel",
+      "work",
+    ]);
   });
 });
 

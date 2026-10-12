@@ -9,7 +9,8 @@ export const pollLimit: Readonly<{ polls: number; windowMinutes: number }> = {
 };
 
 // The ask tool. It slows an agent that floods before it uses up the day's
-// cap. Every call that reaches the store is counted, a repeat included.
+// cap. Every call that reaches the store is counted, a repeat included. The
+// page's sample asks count here too, one for each area a press posts from.
 export const askLimit: Readonly<{ asks: number; windowMinutes: number }> = {
   asks: 30,
   windowMinutes: 1,
