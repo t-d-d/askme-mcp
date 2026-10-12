@@ -287,6 +287,21 @@ describe("Connect your agents, for someone with no agent yet", () => {
     expect(new URL(page.url()).hash).toBe("#asks");
   });
 
+  it("goes back to the list's own entry in the history when it came from the list", async () => {
+    view = await openNewAccount();
+    const { page } = view;
+    const entry = () =>
+      page.evaluate(() => window.navigation.currentEntry?.index);
+    const list = await entry();
+    await page.getByRole("link", { name: "Connect your agents" }).click();
+    await samplesButton(page).click();
+    await page
+      .getByRole("article")
+      .filter({ hasText: "Approve the hotfix for the login page" })
+      .waitFor();
+    await expect.poll(entry).toBe(list);
+  });
+
   it("stays, and says so, when the daily cap is reached", async () => {
     view = await openNewAccount(refusal("cap_reached"), { hash: "#connect" });
     const { page } = view;

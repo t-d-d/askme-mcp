@@ -18,7 +18,8 @@ const historyIndex = (): number | null =>
 // The page is static files with no router (ADR 5), so its screens are
 // named in the address's fragment: #connect, #rules, and anything else for
 // the list, with #ask/<id> opening one ask's card over it. Links between
-// them are real links, and Back works.
+// them are real links, and Back works. "All asks" goes back to the list
+// rather than adding it to the history again (toList.ts).
 //
 // Each screen starts at the top. The list and its cards are one screen,
 // which keeps the list's place itself (useListPlace.ts), so the browser

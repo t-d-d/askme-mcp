@@ -624,13 +624,14 @@ describe("dismissing", () => {
   it("from the open card goes back to the list, with the note", async () => {
     const opened = await open(listOf(both, neither), { clock: true });
     const { page } = opened;
+    const list = page.url();
     await page.getByRole("link", { name: both.summary }).click();
     await page.getByRole("button", { name: "Dismiss" }).click();
     await page.getByRole("button", { name: "Undo" }).waitFor();
     expect(await page.getByRole("article").innerText()).toContain(
       neither.summary,
     );
-    expect(await page.evaluate(() => window.location.hash)).toBe("#asks");
+    await expect.poll(() => page.url()).toBe(list);
     await page.clock.runFor(undoMs + 500);
     await expect
       .poll(() => sentTo(opened, askChangePaths.dismissed))
@@ -942,6 +943,51 @@ describe("going back to the list from a card", () => {
       await goBack[way](opened);
       await opened.page.getByRole("article").waitFor();
       expect(await hasFocus(summaryOf(opened, both.summary))).toBe(true);
+    },
+  );
+
+  // Where the page's entry sits in the history.
+  const entry = (opened: OpenPage) =>
+    opened.page.evaluate(() => window.navigation.currentEntry?.index);
+
+  const closeCard = {
+    "All asks": goBack["All asks"],
+    Dismiss: dismissCard,
+  };
+
+  it.each(["All asks", "Dismiss"] as const)(
+    "with %s goes back to the list's own entry in the history, so Back does not come back to the card",
+    async (way) => {
+      const opened = await open(listOf(both, neither));
+      const list = await entry(opened);
+      await summaryOf(opened, both.summary).click();
+      await opened.page.getByRole("link", { name: "All asks" }).waitFor();
+      await closeCard[way](opened);
+      await opened.page.getByRole("article").waitFor();
+      await expect.poll(() => entry(opened)).toBe(list);
+      await opened.page.goBack();
+      expect(await cardIsOpen(opened)).toBe(false);
+    },
+  );
+
+  it.each(["All asks", "Dismiss"] as const)(
+    "with %s from a card opened straight from its address puts the list in the card's place in the history",
+    async (way) => {
+      view = await openPage(`${inject("pageUrl")}#ask/both`, phone, {
+        session,
+        api: {
+          [pagePaths.asks]: listOf(both, neither),
+          [askChangePaths.dismissed]: new Status(204),
+        },
+      });
+      await view.page.getByRole("heading", { name: both.summary }).waitFor();
+      const card = await entry(view);
+      await closeCard[way](view);
+      await view.page.getByRole("article").waitFor();
+      expect(await view.page.evaluate(() => window.location.hash)).toBe(
+        "#asks",
+      );
+      expect(await entry(view)).toBe(card);
     },
   );
 
