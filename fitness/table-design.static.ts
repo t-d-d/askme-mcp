@@ -219,6 +219,53 @@ describe("fitness: the sort keys rule names every key the key module builds (tab
   });
 });
 
+// A key written by hand, as a string and as a template: a prefix with an id
+// after it, as OPEN#<id>, and a whole key alone, as META.
+const handWritten = (key: string): string[] => [
+  `export const k = { sk: ${JSON.stringify(key)} };\n`,
+  key.endsWith("#")
+    ? `export const k = (id: string) => ({ sk: \`${key}\${id}\` });\n`
+    : `export const k = { sk: \`${key}\` };\n`,
+];
+
+// The keys a key module builds that lint lets a file outside it write by
+// hand, in either form.
+const letThrough = async (text: string): Promise<string[]> => {
+  const found = new Set<string>();
+  for (const key of builtKeys(text)) {
+    for (const code of handWritten(key)) {
+      const rules = await reported(code, servicePath);
+      if (!rules.includes("askme/no-hand-built-key")) found.add(key);
+    }
+  }
+  return [...found];
+};
+
+describe("fitness: lint refuses every key the key module builds, written by hand elsewhere (table-design.md)", () => {
+  beforeAll(async () => {
+    await reported("", servicePath);
+  }, 60_000);
+
+  it("refuses every sort key and prefix the key module builds", async () => {
+    const text = readRepoFile(keysPath);
+    expect(builtKeys(text).length).toBeGreaterThan(0);
+    expect(await letThrough(text)).toEqual([]);
+  });
+
+  it.each([
+    ['const otherPrefix = "OTHER#";\n', "OTHER#"],
+    ["export const other = (id: string) => `OTHER#${id}`;\n", "OTHER#"],
+    ['export const other = { sk: "OTHER" };\n', "OTHER"],
+    ['export const other = { sk: "RULE" };\n', "RULE"],
+    ['export const other = { sk: "METADATA" };\n', "METADATA"],
+    ['export const other = { sk: "OPEN" };\n', "OPEN"],
+  ])("finds a key lint lets through: %s", async (code, key) => {
+    expect(await letThrough(`${readRepoFile(keysPath)}${code}`)).toEqual([
+      key,
+    ]);
+  });
+});
+
 describe("fitness: two functions write (table-design.md)", () => {
   const storePath = "service/src/store/store.ts";
 
