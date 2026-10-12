@@ -509,6 +509,12 @@ describe.each([
     );
   });
 
+  it("opens Cursor's page where this one stays open, and tells it nothing", async () => {
+    const link = view.page.getByRole("link", { name: /Add askme to Cursor/u });
+    expect(await link.getAttribute("target")).toBe("_blank");
+    expect(await link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
   it("carries the demo notice", async () => {
     expect(
       await view.page

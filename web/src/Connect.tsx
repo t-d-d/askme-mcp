@@ -92,7 +92,14 @@ export function Connect() {
             Cursor
           </h2>
           {data !== undefined && (
-            <a className={styles.cursor} href={cursorInstallLink(data.mcpUrl)}>
+            // Cursor's page stays open once it hands the server to Cursor,
+            // so it opens in a new tab and askme stays where it was.
+            <a
+              className={styles.cursor}
+              href={cursorInstallLink(data.mcpUrl)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               Add askme to Cursor
               <span className={styles.site}>cursor.com</span>
             </a>
