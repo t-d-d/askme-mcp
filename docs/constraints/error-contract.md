@@ -33,6 +33,6 @@ refusal, so a vague one causes a loop or a lost ask.
   MCP spec, and means taking over how the SDK routes calls.
 
 Judgment: A failure that fits no code is service_unavailable until
-the ADR changes.
+the ADR changes. An unknown tool name is not such a failure.
 
 History: [ADR 11](../adr/0011-error-contract.md), [ADR 19](../adr/0019-unknown-tool-name.md)

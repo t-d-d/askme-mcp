@@ -1,6 +1,7 @@
 // The error contract through the official MCP client, against a working
-// store (ADR 11). error-contract.int.ts runs against a store that cannot be
-// reached, so these are kept apart from it.
+// store (ADR 11), and the one failure that is not a refusal (ADR 19).
+// error-contract.int.ts runs against a store that cannot be reached, so
+// these are kept apart from it.
 import { randomUUID } from "node:crypto";
 import { ProtocolErrorCode } from "@modelcontextprotocol/client";
 import {
@@ -190,17 +191,12 @@ describe.each(eras)(
         era,
       });
       try {
-        const error: unknown = await agent
-          .callTool({ name: "asks", arguments: ask })
-          .then(
-            (result) => result,
-            (thrown: unknown) => thrown,
-          );
-        const { code, message } = z
-          .object({ code: z.number(), message: z.string() })
-          .parse(error);
-        expect(code).toBe(ProtocolErrorCode.InvalidParams);
-        expect(message).toContain("Tool asks not found");
+        // The call is rejected, so no tool result comes back at all.
+        const answer = agent.callTool({ name: "asks", arguments: ask });
+        await expect(answer).rejects.toMatchObject({
+          code: ProtocolErrorCode.InvalidParams,
+        });
+        await expect(answer).rejects.toThrow("Tool asks not found");
       } finally {
         await agent.close();
       }

@@ -6,7 +6,7 @@ Parent PRD: [PRD](../../PRD.md)
 
 ## Constraint-set delta
 
-- Edits [`docs/constraints/error-contract.md`](../constraints/error-contract.md): a new rule that an unknown tool name is not a refusal and gets the spec's protocol error, a new "Do not" entry against turning it into a tool result, a wider `Relevance:` line, and this record on its `History:` line.
+- Edits [`docs/constraints/error-contract.md`](../constraints/error-contract.md): a new rule that an unknown tool name is not a refusal and gets the spec's protocol error, a new "Do not" entry against turning it into a tool result, a wider `Relevance:` line, a sentence on its `Judgment:` line saying an unknown tool name is never `service_unavailable`, and this record on its `History:` line.
 
 ## Context
 
