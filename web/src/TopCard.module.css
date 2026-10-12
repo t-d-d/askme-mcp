@@ -1,3 +1,7 @@
+/*
+ * The card can be swiped sideways, so the browser keeps only scrolling up
+ * and down, and the card goes back to its place after a short drag.
+ */
 .card {
   display: flex;
   flex-direction: column;
@@ -6,6 +10,17 @@
   padding: var(--space-20) var(--space-inside-card) var(--space-18);
   border-radius: var(--radius-card);
   background: var(--surface);
+  touch-action: pan-y;
+  transition: translate var(--duration-move) ease-out;
+}
+
+.card[data-dragging] {
+  transition: none;
+  user-select: none;
+}
+
+.card[data-opened] {
+  opacity: var(--opacity-opened);
 }
 
 .meta {
@@ -15,40 +30,85 @@
   gap: var(--space-8);
 }
 
-.pills {
+.when {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-6);
-}
-
-.pill {
-  padding: var(--space-4) var(--space-10);
-  border-radius: var(--radius-pill);
-  background: var(--tag-tint);
-  color: var(--tag-ink);
-  font-size: var(--size-meta);
-  line-height: var(--leading-meta);
-  font-weight: var(--weight-label);
-}
-
-.age {
+  flex: none;
+  gap: var(--space-8);
   color: var(--text-3);
   font-size: var(--size-meta);
   line-height: var(--leading-meta);
 }
 
+/* The summary opens the card. It is big enough to tap on one line. */
 .summary {
-  margin: 0;
+  display: block;
+  min-height: var(--tap);
+  color: var(--ink);
   font-size: var(--size-title);
   line-height: var(--leading-title);
   font-weight: var(--weight-strong);
   letter-spacing: var(--tracking-title);
+  text-decoration: none;
   overflow-wrap: anywhere;
 }
 
 /* On a phone the spoken text waits for the open card. */
 .spoken {
   display: none;
+}
+
+.buttons {
+  display: flex;
+  gap: var(--gap-buttons);
+}
+
+/* A strong fill carries white text, which is the surface colour. */
+.main {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  justify-content: center;
+  min-width: 0;
+  min-height: var(--button-height);
+  padding: var(--space-8) var(--space-18);
+  border-radius: var(--radius-button);
+  background: var(--tag-strong);
+  color: var(--surface);
+  text-decoration: none;
+}
+
+.label {
+  font-size: var(--size-row);
+  line-height: var(--leading-row);
+  font-weight: var(--weight-strong);
+}
+
+.site {
+  font-size: var(--size-meta-small);
+  line-height: var(--leading-meta);
+  overflow-wrap: anywhere;
+}
+
+/* Listen and the session: a tint fill with an icon in the ink. */
+.icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--button-height);
+  height: var(--button-height);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-button);
+  background: var(--tag-tint);
+  color: var(--tag-ink);
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
 }
 
 @media (min-width: 768px) {

@@ -1,7 +1,7 @@
 // Loads one answer from the page's API, with the session token, and parses
 // it with the schema both sides share. A failure of any kind throws.
 import type { z } from "zod";
-import { refusalAnswer } from "../../shared/page-api";
+import { refusalAnswer, type AskChange } from "../../shared/page-api";
 
 export async function load<T>(
   path: string,
@@ -31,18 +31,17 @@ export class Refusal extends Error {
   }
 }
 
-// Sends a change to the page's API as JSON, with the session token, and
-// parses the answer. A refusal throws as a Refusal, and any other failure
-// as an error.
-export async function send<T>(
+// Sends a request to the page's API with a JSON body and the session
+// token. A refusal throws as a Refusal, and any other failure as an error.
+async function sendJson(
+  method: "PUT" | "POST",
   path: string,
   body: unknown,
-  schema: z.ZodType<T>,
   getToken: () => Promise<string | null>,
-): Promise<T> {
+): Promise<Response> {
   const token = await getToken();
   const response = await fetch(path, {
-    method: "PUT",
+    method,
     headers: {
       authorization: `Bearer ${token ?? ""}`,
       "content-type": "application/json",
@@ -57,5 +56,29 @@ export async function send<T>(
       ? new Refusal(refusal.data.code, refusal.data.message)
       : new Error(`The API answered ${String(response.status)}.`);
   }
+  return response;
+}
+
+// Sends a change to the page's API as JSON, with the session token, and
+// parses the answer. A refusal throws as a Refusal, and any other failure
+// as an error.
+export async function send<T>(
+  path: string,
+  body: unknown,
+  schema: z.ZodType<T>,
+  getToken: () => Promise<string | null>,
+): Promise<T> {
+  const response = await sendJson("PUT", path, body, getToken);
   return schema.parse(await response.json());
+}
+
+// Tells the page's API what the person did to one ask, by its id. Resolves
+// once the API has taken it. A refusal throws as a Refusal, and any other
+// failure as an error.
+export async function changeAsk(
+  path: string,
+  change: AskChange,
+  getToken: () => Promise<string | null>,
+): Promise<void> {
+  await sendJson("POST", path, change, getToken);
 }

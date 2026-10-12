@@ -5,6 +5,11 @@
   padding-bottom: var(--space-26);
 }
 
+/* Room at the foot for the note after a dismissal, so it covers nothing. */
+.screen[data-noted] {
+  padding-bottom: calc(var(--space-26) + var(--tap) + 2 * var(--space-6));
+}
+
 .note {
   margin: var(--space-6) var(--space-text) 0;
   color: var(--text-3);
