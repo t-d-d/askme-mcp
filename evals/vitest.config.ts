@@ -8,5 +8,8 @@ export default defineConfig({
     root: fileURLToPath(new URL("..", import.meta.url)),
     include: ["evals/*.eval.ts"],
     testTimeout: 30 * 60_000,
+    // The scores are printed from a passing test. Without this, Vitest hides
+    // them when an agent runs it.
+    silent: false,
   },
 });
