@@ -82,6 +82,8 @@ export interface NewAsk {
   actionLink?: string;
   sessionLink?: string;
   replaces?: string;
+  // How many minutes from posting until the ask stops mattering.
+  staleAfterMinutes?: number;
 }
 
 // What sorting decided about an ask, with the version of the rules it read
@@ -118,6 +120,9 @@ const storedAskSchema = z.object({
   // When the person first followed one of the ask's links. Absent until
   // then. The ask stays open (PRD, "The ask").
   openedAt: z.iso.datetime().optional(),
+  // When the ask stops mattering, absent when its agent gave no time. It
+  // stays open after then (PRD, "Web page").
+  lapsesAt: z.iso.datetime().optional(),
 });
 
 export type StoredAsk = Omit<z.output<typeof storedAskSchema>, "expiresAt">;
@@ -619,13 +624,26 @@ export function createStore(config: {
         },
         countingTheDay(account, now),
       ];
+      // The minutes are counted from this post, even for an ask that takes
+      // its posting time from the one it replaces, and only the time they
+      // come to is stored.
+      const { staleAfterMinutes, ...sent } = ask;
+      const lapse =
+        staleAfterMinutes === undefined
+          ? {}
+          : {
+              lapsesAt: new Date(
+                time + staleAfterMinutes * minuteMs,
+              ).toISOString(),
+            };
       const put = (since: Pick<OpenItem, "postedAt" | "expiresAt">) => ({
         Put: {
           TableName,
           Item: {
             ...keys.openAsk(account, id),
             id,
-            ...ask,
+            ...sent,
+            ...lapse,
             ...since,
             storedAt: now.toISOString(),
           },

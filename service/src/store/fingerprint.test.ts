@@ -10,6 +10,7 @@ const ask: Required<NewAsk> = {
   actionLink: "https://github.com/t-d-d/askme-mcp/pull/1",
   sessionLink: "https://claude.ai/code/session_1",
   replaces: "AAAAAAAAAAAAAAAAAAAAAAAA",
+  staleAfterMinutes: 45,
 };
 
 const fields = [
@@ -42,11 +43,19 @@ describe("an ask's fingerprint", () => {
     );
   });
 
-  const { actionLink, sessionLink, replaces, ...required } = ask;
+  it("changes when the minutes until the ask stops mattering change", () => {
+    expect(fingerprint({ ...ask, staleAfterMinutes: 46 })).not.toBe(
+      fingerprint(ask),
+    );
+  });
+
+  const { actionLink, sessionLink, replaces, staleAfterMinutes, ...required } =
+    ask;
   const leftOut: Record<string, NewAsk> = {
-    actionLink: { ...required, sessionLink, replaces },
-    sessionLink: { ...required, actionLink, replaces },
-    replaces: { ...required, actionLink, sessionLink },
+    actionLink: { ...required, sessionLink, replaces, staleAfterMinutes },
+    sessionLink: { ...required, actionLink, replaces, staleAfterMinutes },
+    replaces: { ...required, actionLink, sessionLink, staleAfterMinutes },
+    staleAfterMinutes: { ...required, actionLink, sessionLink, replaces },
   };
 
   it.each(Object.entries(leftOut))(

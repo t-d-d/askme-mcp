@@ -14,18 +14,22 @@ import { guidance } from "./instructions";
 import type { SortJob, SortRequests } from "./jobs";
 import { errorClass, type Logger } from "./log";
 import { askLimit } from "./rate";
-import { dailyAskCap } from "./store/store";
+import { askLifetimeDays, dailyAskCap } from "./store/store";
 import type { ToolDefinition } from "./tools";
 
 // The most characters each field may hold. A summary is one or two lines on
 // a phone. The spoken detail is about a minute of speech. An id is one that
 // ask gave back, in replaces or for resolve.
+//
+// The most minutes an ask may say it has until it stops mattering is the
+// time until it is deleted, a month after it is posted.
 export const limits = {
   summary: 80,
   area: 60,
   spokenDetail: 900,
   link: 2000,
   id: 64,
+  staleAfterMinutes: askLifetimeDays * 24 * 60,
 } as const;
 
 // A field's problem in words a model can act on. It names the limit, never
@@ -47,6 +51,14 @@ const httpsLink = z
   .max(limits.link, {
     error: `is longer than ${String(limits.link)} characters`,
   });
+
+// A whole number of minutes, from one up to the limit. Every way it can be
+// wrong gets the one message, which names the limit.
+const staleMinutes = `must be a whole number of minutes from 1 to ${String(limits.staleAfterMinutes)}`;
+const minutes = z
+  .int({ error: staleMinutes, abort: true })
+  .min(1, { error: staleMinutes })
+  .max(limits.staleAfterMinutes, { error: staleMinutes });
 
 const askInput = z.strictObject({
   summary: text(limits.summary).describe(
@@ -72,6 +84,11 @@ const askInput = z.strictObject({
     .optional()
     .describe(
       "Optional. The id of an earlier ask that this one takes over from. That ask closes, and this one takes its place. An id askme does not know, or one whose ask is already closed, is ignored, and this ask is posted as new.",
+    ),
+  stale_after_minutes: minutes
+    .optional()
+    .describe(
+      `Optional. How many minutes from now until this ask stops mattering, a whole number from 1 to ${String(limits.staleAfterMinutes)}, which is ${String(askLifetimeDays)} days. Set it only when the ask stops mattering at that time, such as a passkey prompt that times out or a delivery slot that goes. Leave it out for a bill that falls due, which matters more as the day comes near. If something changes after the time passes, post a new ask with replaces.`,
     ),
 });
 
@@ -120,6 +137,9 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
           ? {}
           : { sessionLink: input.session_link }),
         ...(input.replaces === undefined ? {} : { replaces: input.replaces }),
+        ...(input.stale_after_minutes === undefined
+          ? {}
+          : { staleAfterMinutes: input.stale_after_minutes }),
       },
       now,
     );

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { captureLogs, lineText } from "../../test/logs";
-import { askTool } from "./ask";
+import { askTool, limits } from "./ask";
 import { Refused, retryBudget } from "./errors";
 import { callerOf } from "./identity";
 import type { SortJob, SortRequests } from "./jobs";
@@ -10,6 +10,7 @@ import { askLimit } from "./rate";
 import {
   dailyAskCap,
   type Counted,
+  type NewAsk,
   type Posting,
   type Store,
 } from "./store/store";
@@ -31,6 +32,7 @@ describe("the ask tool's description of its fields", () => {
         "replaces",
         "session_link",
         "spoken_detail",
+        "stale_after_minutes",
         "summary",
       ].sort(),
     );
@@ -76,14 +78,34 @@ describe("the ask tool's description of its fields", () => {
       "An id askme does not know, or one whose ask is already closed, is ignored",
     );
   });
+
+  it("says when to set stale_after_minutes, when to leave it out, and what to do once it passes", () => {
+    const { description } = advertised.properties.stale_after_minutes ?? {
+      description: "",
+    };
+    expect(description).toContain(
+      "Set it only when the ask stops mattering at that time",
+    );
+    expect(description).toContain("a passkey prompt that times out");
+    expect(description).toContain("a delivery slot that goes");
+    expect(description).toContain("Leave it out for a bill that falls due");
+    expect(description).toContain("post a new ask with replaces");
+  });
 });
 
 // A store that counts every call the same way, and answers every post the
-// same way.
-const storeAnswering = (posting: Posting, counted: Counted): Store => {
+// same way. It keeps each ask it is asked to post.
+const storeAnswering = (
+  posting: Posting,
+  counted: Counted,
+  sent: NewAsk[] = [],
+): Store => {
   const unused = () => Promise.reject(new Error("Not used here."));
   return {
-    postAsk: () => Promise.resolve(posting),
+    postAsk: (_, ask) => {
+      sent.push(ask);
+      return Promise.resolve(posting);
+    },
     countAsk: () => Promise.resolve(counted),
     resolveAsk: unused,
     markOpened: unused,
@@ -247,5 +269,46 @@ describe("handing an ask to the sorter", () => {
       sorts,
     );
     expect(handed).toEqual([]);
+  });
+});
+
+describe("the ask tool's stale_after_minutes", () => {
+  const most = limits.staleAfterMinutes;
+  const refusal = `must be a whole number of minutes from 1 to ${String(most)}`;
+  const parse = (minutes: unknown) =>
+    askTool.input.safeParse({ ...input, stale_after_minutes: minutes });
+
+  it("allows at most 30 days, as an ask is deleted a month after it is posted", () => {
+    expect(most).toBe(30 * 24 * 60);
+  });
+
+  it.each([1, 45, most])("takes %d minutes", (minutes) => {
+    expect(parse(minutes).data?.stale_after_minutes).toBe(minutes);
+  });
+
+  it.each([0, -5, 1.5, most + 1, 1e20, "30", null])(
+    "refuses %j once, naming the limit",
+    (minutes) => {
+      expect(parse(minutes).error?.issues).toEqual([
+        expect.objectContaining({
+          path: ["stale_after_minutes"],
+          message: refusal,
+        }),
+      ]);
+    },
+  );
+
+  it("hands the store the minutes as the agent sent them, and none when left out", async () => {
+    const sent: NewAsk[] = [];
+    for (const args of [{ ...input, stale_after_minutes: 45 }, input]) {
+      await askTool.run(args, {
+        caller,
+        log: createLogger(caller.requestId),
+        store: storeAnswering(posted, { counted: true }, sent),
+        sorts: sorter().sorts,
+      });
+    }
+    expect(sent[0]).toMatchObject({ staleAfterMinutes: 45 });
+    expect(sent[1]).not.toHaveProperty("staleAfterMinutes");
   });
 });

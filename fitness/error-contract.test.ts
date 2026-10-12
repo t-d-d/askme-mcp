@@ -120,6 +120,36 @@ describe("fitness: limits agree (error-contract.md)", () => {
     },
   );
 
+  it("gives ask's stale_after_minutes the same limit in its schema, its description and its refusal", async () => {
+    const limit = limits.staleAfterMinutes;
+    const { tools } = await client.listTools();
+    const property = z
+      .object({
+        description: z.string(),
+        minimum: z.number(),
+        maximum: z.number(),
+      })
+      .parse(
+        tools.find((tool) => tool.name === "ask")?.inputSchema.properties
+          ?.stale_after_minutes,
+      );
+    expect(property.minimum).toBe(1);
+    expect(property.maximum).toBe(limit);
+    expect(property.description).toContain(`from 1 to ${String(limit)}`);
+    for (const minutes of [0, limit + 1]) {
+      const refusal = refusalOf(
+        await client.callTool({
+          name: "ask",
+          arguments: { ...valid.ask, stale_after_minutes: minutes },
+        }),
+      );
+      expect(refusal.code).toBe("invalid_input");
+      expect(refusal.message).toContain(
+        `stale_after_minutes: must be a whole number of minutes from 1 to ${String(limit)}`,
+      );
+    }
+  });
+
   it("takes every limit in a description from the schema's own constants", async () => {
     const { tools } = await client.listTools();
     const properties = tools.flatMap((tool) =>
