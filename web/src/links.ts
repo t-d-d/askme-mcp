@@ -19,10 +19,10 @@ const shapes = [
 ] as const;
 
 // What the main button says for an action link: what it is, when askme
-// recognises its shape, and otherwise the site it goes to.
+// recognises its shape, and otherwise only "Open", since the button's
+// second line already names the site.
 export function actionLabel(link: string): string {
-  const site = siteOf(link);
-  if (site === "github.com") {
+  if (siteOf(link) === "github.com") {
     const [owner, repo, kind, number] = new URL(link).pathname
       .split("/")
       .slice(1);
@@ -39,7 +39,7 @@ export function actionLabel(link: string): string {
       return shape.label;
     }
   }
-  return `Go to ${site}`;
+  return "Open";
 }
 
 export interface Destination {

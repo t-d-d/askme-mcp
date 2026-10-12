@@ -28,6 +28,7 @@ const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 const pullRequest = "https://github.com/t-d-d/askme-mcp/pull/12";
 const issue = "https://github.com/t-d-d/askme-mcp/issues/7";
 const ticket = "https://linear.app/askme/issue/ASK-3";
+const googleDoc = "https://docs.google.com/document/d/1AbC/edit";
 const sessionLink = "https://claude.ai/code/session_01AbC";
 
 const ask = (
@@ -72,6 +73,12 @@ const issueOnly = ask("issue", "Close the old issue?", 15 * minute, {
   actionLink: issue,
 });
 const neither = ask("neither", "Read the newsletter draft?", 10 * minute);
+const googleDocAndSession = ask(
+  "document",
+  "Sign off the launch notes?",
+  40 * minute,
+  { actionLink: googleDoc, sessionLink },
+);
 
 let view: OpenPage | undefined;
 afterEach(async () => {
@@ -200,7 +207,7 @@ describe("the top card's buttons", () => {
 
   it.each([
     [issueOnly, "Issue", "github.com"],
-    [ticketOnly, "Go to linear.app", "linear.app"],
+    [ticketOnly, "Open", "linear.app"],
   ])("say what the link is from its shape alone", async (only, label, site) => {
     const { page } = await open(listOf(only));
     const main = page
@@ -210,27 +217,33 @@ describe("the top card's buttons", () => {
   });
 
   // Listen and the session beside it leave the main button at its narrowest.
-  it("keep a pull request's label on one line on a narrow phone, beside both icon buttons", async () => {
-    const { page } = await open(listOf(both), {
-      screen: { width: 360, height: phone.height },
-    });
-    const card = page.getByRole("article");
-    await card.getByRole("button", { name: "Listen" }).waitFor();
-    await card
-      .getByRole("link", { name: /^Reply in the session on claude\.ai/u })
-      .waitFor();
-    const lines = await card
-      .locator(`a[href="${pullRequest}"] span`)
-      .first()
-      .evaluate(async (label) => {
-        await document.fonts.ready;
-        const range = document.createRange();
-        range.selectNodeContents(label);
-        const rects = [...range.getClientRects()];
-        return new Set(rects.map(({ top }) => Math.round(top))).size;
+  it.each([
+    ["a pull request's", both, pullRequest],
+    ["any other link's", googleDocAndSession, googleDoc],
+  ])(
+    "keep %s label on one line on a narrow phone, beside both icon buttons",
+    async (_, top, link) => {
+      const { page } = await open(listOf(top), {
+        screen: { width: 360, height: phone.height },
       });
-    expect(lines).toBe(1);
-  });
+      const card = page.getByRole("article");
+      await card.getByRole("button", { name: "Listen" }).waitFor();
+      await card
+        .getByRole("link", { name: /^Reply in the session on claude\.ai/u })
+        .waitFor();
+      const lines = await card
+        .locator(`a[href="${link}"] span`)
+        .first()
+        .evaluate(async (label) => {
+          await document.fonts.ready;
+          const range = document.createRange();
+          range.selectNodeContents(label);
+          const rects = [...range.getClientRects()];
+          return new Set(rects.map(({ top }) => Math.round(top))).size;
+        });
+      expect(lines).toBe(1);
+    },
+  );
 
   it("say in each link's name that it opens a new tab, and show nothing new", async () => {
     const { page } = await open(listOf(both));
