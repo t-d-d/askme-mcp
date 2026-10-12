@@ -30,14 +30,15 @@ const visible = (name: string): string =>
     (letter) => `\\u{${(letter.codePointAt(0) ?? 0).toString(16)}}`,
   );
 
-// A Mac's disk compares names by case folding. Folding joins ς and σ, ſ and
-// s, and ß and ss, which toLowerCase keeps apart. JavaScript has no case
-// folding. Lower case, then upper, then lower again joins the same letters
-// as Unicode's folding, with one exception. It turns the Turkish dotless
-// ı (\u0131) into i, and Unicode's folding keeps the two apart. This
-// matched Python's str.casefold(), which reads Unicode's own table, on every
-// character Unicode 15.1 assigns. Unicode's caseless match normalizes a name
-// before and after folding it.
+// A Mac's disk compares names by case folding. Unicode's case folding joins ς
+// and σ, ſ and s, and ß and ss, which toLowerCase keeps apart, and a Mac may
+// not join every one of them. JavaScript has no case folding. Lower case,
+// then upper, then lower again joins the same letters as Unicode's folding,
+// with one exception. It turns the Turkish dotless ı (\u0131) into i, and
+// Unicode's folding keeps the two apart. This matched Python's
+// str.casefold(), which reads Unicode's own table, on every character Unicode
+// 15.1 assigns. Unicode's caseless match normalizes a name before and after
+// folding it.
 const fold = (name: string): string =>
   name
     .normalize("NFD")
@@ -50,7 +51,7 @@ const fold = (name: string): string =>
 // listed by its spellings.
 export function clashes(paths: readonly string[]): string[][] {
   const spellings = new Map<string, Set<string>>();
-  for (const name of paths.flatMap(names)) {
+  for (const name of new Set(paths.flatMap(names))) {
     const key = fold(name);
     spellings.set(key, (spellings.get(key) ?? new Set()).add(name));
   }
