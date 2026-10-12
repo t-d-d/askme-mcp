@@ -3,9 +3,16 @@
 import { describe, expect, it } from "vitest";
 import { askTool } from "../service/src/ask";
 import { parseReading } from "../service/src/rules";
-import { attackKinds, cases, evalRules, type HostileCase } from "./cases";
+import {
+  attackKinds,
+  cases,
+  evalRules,
+  type HostileCase,
+  type TimingCase,
+} from "./cases";
 
 const core = cases.filter((one) => one.group === "core");
+const timing = cases.filter((one): one is TimingCase => one.group === "timing");
 const hostile = cases.filter(
   (one): one is HostileCase => one.group === "hostile",
 );
@@ -69,28 +76,46 @@ describe("the core eval set", () => {
     expect(ask?.spokenDetail).toMatch(/MacBook/u);
     expect(ask?.spokenDetail).toMatch(/tab called/u);
     expect(evalRules.text).toMatch(/#admin is my own accounts/u);
-    expect(expected).toEqual({ hashtags: [["shop"]], level: "high" });
+    expect(expected).toEqual({ hashtags: [["shop"]], level: "normal" });
   });
 
-  it("holds waits that run out without saying so, and a passkey ask that can wait", () => {
+  it("holds waits that run out within minutes at the level of what not acting costs, and a passkey ask that can wait (#101)", () => {
     const named = (name: string) => cases.find((one) => one.name === name);
+    // The page puts an ask that lapses within the hour first (PRD, "Web
+    // page"). Its level says only what it costs if the person never acts.
     for (const name of [
       "the passkey ask",
       "a sign-in code for the school's payment site",
     ]) {
-      const one = named(name);
-      expect(one?.expected.level, name).toBe("high");
-      // The prompt has to know such a wait runs out. The ask does not say.
-      for (const text of [one?.ask.summary, one?.ask.spokenDetail]) {
-        expect(text, name).not.toMatch(
-          /expir|time[sd]?[ -]?out|r[au]n[s]? out|minute|valid for/iu,
-        );
-      }
+      expect(named(name)?.expected.level, name).toBe("normal");
     }
     expect(named("a passkey to set up when it suits")?.expected.level).toBe(
       "low",
     );
   });
+
+  it("has rules that say nothing about when an ask is due, since the level ignores time (#101)", () => {
+    expect(evalRules.text).not.toMatch(/\bdue\b|next week|later|soon/iu);
+  });
+});
+
+describe("the timing group (#101)", () => {
+  it("holds a few twins, across at least two areas", () => {
+    expect(timing.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(timing.map((one) => one.area)).size).toBeGreaterThan(1);
+  });
+
+  it.each(timing.map((one) => [one.name, one] as const))(
+    "expects what its core twin expects, with only the time changed: %s",
+    (_, { twinOf, area, ask, expected }) => {
+      const twin = core.find((one) => one.name === twinOf);
+      expect(twin, twinOf).toBeDefined();
+      expect(area).toBe(twin?.area);
+      expect(ask.area).toBe(twin?.ask.area);
+      expect(ask.summary).not.toBe(twin?.ask.summary);
+      expect(expected).toEqual(twin?.expected);
+    },
+  );
 });
 
 describe("fitness: the eval set keeps a hostile group (untrusted-ask-text.md)", () => {
