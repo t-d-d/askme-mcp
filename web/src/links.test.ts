@@ -37,24 +37,24 @@ describe("what the main button says for an action link", () => {
   });
 
   it.each([
-    ["https://github.com/t-d-d/askme-mcp/pulls", "Go to github.com"],
-    ["https://github.com/t-d-d/askme-mcp/pull/new", "Go to github.com"],
-    ["https://github.com/t-d-d/askme-mcp/issues", "Go to github.com"],
-    ["https://github.com/t-d-d/pull/12", "Go to github.com"],
-    ["https://gist.github.com/a/b/pull/1", "Go to gist.github.com"],
-    [
-      "https://github.com.example.net/a/b/pull/1",
-      "Go to github.com.example.net",
-    ],
-    ["https://linear.app/team/issue/ABC-1", "Go to linear.app"],
-  ])("names the site for any other link, such as %s", (link, label) => {
-    expect(actionLabel(link)).toBe(label);
-  });
+    "https://github.com/t-d-d/askme-mcp/pulls",
+    "https://github.com/t-d-d/askme-mcp/pull/new",
+    "https://github.com/t-d-d/askme-mcp/issues",
+    "https://github.com/t-d-d/pull/12",
+    "https://gist.github.com/a/b/pull/1",
+    "https://github.com.example.net/a/b/pull/1",
+    "https://linear.app/team/issue/ABC-1",
+  ])(
+    "is Open for any other link, such as %s, since the second line names the site",
+    (link) => {
+      expect(actionLabel(link)).toBe("Open");
+    },
+  );
 
   it("never uses words from the link itself", () => {
     expect(
       actionLabel("https://example.com/Approve%20now?label=Pull+request"),
-    ).toBe("Go to example.com");
+    ).toBe("Open");
   });
 });
 

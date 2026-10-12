@@ -26,11 +26,11 @@ How the styles are written in code is a separate decision: [ADR 14](adr/0014-sty
 | --- | --- | --- |
 | ![The rules screen](design/screens/rules.png) | ![Connect your agents](design/screens/connect.png) | ![The signed-out page](design/screens/signed-out.png) |
 
-The sorting line sits under the tabs, below the held and lapsed lines when they show.
+The sorting line sits under the tabs, below the held and lapsed lines when they show. On All clear it sits at the foot, under them when they show.
 
-| While sorting | Sorting stopped |
-| --- | --- |
-| ![The list while asks are being sorted](design/screens/list-sorting.png) | ![The list when some asks couldn't be sorted](design/screens/list-stopped.png) |
+| While sorting | Sorting stopped | All clear, sorting stopped | All clear, limit reached |
+| --- | --- | --- | --- |
+| ![The list while asks are being sorted](design/screens/list-sorting.png) | ![The list when some asks couldn't be sorted](design/screens/list-stopped.png) | ![All clear when some held and lapsed asks couldn't be sorted](design/screens/all-clear-stopped.png) | ![All clear with no asks open and the daily sorting limit reached](design/screens/all-clear-limit.png) |
 
 At desktop width the first ask sits on the left with its spoken text, and the rest of the list on the right.
 
@@ -168,12 +168,13 @@ Saving the rules sorts every open ask again, and an ask can be left behind. One 
 - Otherwise, while any asks are being sorted: "Sorting 40 asks with your rules".
 - Otherwise, when sorting stopped for some asks: "3 asks couldn't be sorted. Saving your rules tries again."
 - Only one of these shows, in that order. With none of them, the line is not there.
+- It also shows on the All clear screen, at the foot, under the held and lapsed lines, or alone when neither shows. The limit state shows there even when no asks are open.
 
 ### The top card
 
 The first ask in the list. White, with its hashtag pills, how long it has waited, the summary in large type, and a row of buttons.
 
-- **Main button.** Strong fill. Two lines: what the link is, then the site it leads to. It opens the action link, or the session link when there is no action link.
+- **Main button.** Strong fill. Two lines: its label, then the site it leads to. It opens the action link, or the session link when there is no action link.
 - **Listen.** Tint fill, a speaker icon.
 - **Session.** Tint fill, a speech-bubble icon. Shown only when the ask has both links.
 - Tapping the summary opens the card.
@@ -186,12 +187,14 @@ askme knows only the link's address, so the label comes from its shape.
 | --- | --- |
 | A GitHub pull request | Pull request |
 | A GitHub issue | Issue |
-| Any other action link | Go to, then the site's name |
+| Any other action link | Open |
 | The session link | Reply in the session |
 
 The second line is always the site's name, such as github.com. The list of recognised shapes can grow. It never uses words the agent supplied.
 
 A recognised shape's label names what the link opens, with no verb. The button only ever opens a page, so a word such as "See" adds nothing, and the shorter label stays on one line beside the Listen and session buttons.
+
+Any other link gets "Open". It is a verb because askme has nothing to name. It cannot say what the link is, and the second line already names the site. One short word stays on one line however long the site's name is.
 
 ### List rows
 
@@ -226,8 +229,8 @@ Shown when nothing is waiting and the account has had at least one ask.
 
 - "All clear." at 146px. On a screen narrower than 517px, such as a phone held upright, it takes two lines. On a screen 517px wide or more, such as at desktop width, it fits on one line inside the side padding.
 - On a screen narrower than 354px, "clear." does not fit at 146px inside the 22px side padding. There the headline shrinks with the screen, so "clear." keeps 22px on each side. At 320px wide it is 130px.
-- The headline and the two lines under it sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the first line at the foot, the held line or the lapsed line. On a screen too short for that, 26px stays above them.
-- They stay where they are while a note shows at the foot of the screen. The held and lapsed lines move up out of the note's way. On a screen too short for that, they move up too, or the screen scrolls further, until 26px stays between the last line and the held line, the lapsed line or the note.
+- The headline and the two lines under it sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the first line at the foot: the held line, the lapsed line or the sorting line. On a screen too short for that, 26px stays above them.
+- They stay where they are while a note shows at the foot of the screen. The held, lapsed and sorting lines move up out of the note's way. On a screen too short for that, they move up too, or the screen scrolls further, until 26px stays between the last line and the held line, the lapsed line, the sorting line or the note.
 - The two lines under the headline balance their line breaks, so a line that wraps never leaves a word or two on their own.
 - A fixed line in ink: "Your agents are getting on with it."
 - A second line in `--text-2` that changes on each visit:
@@ -237,7 +240,7 @@ Shown when nothing is waiting and the account has had at least one ask.
   - Look out of the window.
   - Finish that cup of tea.
   - Nothing to see here. Lovely.
-- No buttons. The held line sits at the foot when asks are held, and the lapsed line under it when asks have lapsed.
+- No buttons. The held line sits at the foot when asks are held, the lapsed line under it when asks have lapsed, and the sorting line under them when it shows.
 
 ### New account
 
