@@ -3,6 +3,7 @@ import { callerOf, type AccountId } from "./identity";
 import {
   levels,
   parseSortReply,
+  reasonAsked,
   reasonLimit,
   sortingPrompt,
   type SortingAsk,
@@ -112,6 +113,13 @@ describe("the sorting prompt", () => {
     });
   });
 
+  it("asks for a reason well inside the limit, since the model runs past what it is asked", () => {
+    const { system } = sortingPrompt(rules, ask);
+    expect(reasonAsked).toBeLessThan(reasonLimit);
+    expect(system).toContain(`at most ${String(reasonAsked)} characters`);
+    expect(system).not.toContain(String(reasonLimit));
+  });
+
   it("asks for a level and a reason alone when the rules name no hashtag", () => {
     const { schema } = sortingPrompt({ ...rules, hashtags: [] }, ask);
     expect(schema).toEqual({
@@ -153,6 +161,14 @@ describe("a sorting reply", () => {
         hashtags,
       ),
     ).toEqual({ hashtags: [], level: "low", reason: "Routine." });
+  });
+
+  it("is taken with a reason longer than the prompt asks for, up to the limit", () => {
+    const reason = "x".repeat(reasonLimit);
+    expect(reason.length).toBeGreaterThan(reasonAsked);
+    expect(
+      parseSortReply({ hashtags: [], level: "low", reason }, hashtags),
+    ).toEqual({ hashtags: [], level: "low", reason });
   });
 
   it("is taken with no hashtags field when the rules name none", () => {

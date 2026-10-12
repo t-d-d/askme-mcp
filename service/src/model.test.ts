@@ -70,7 +70,9 @@ const model = (
 describe("a call to the model", () => {
   // No temperature: with require_parameters, OpenRouter refuses the call when
   // no endpoint takes it, and none for anthropic/claude-haiku-5.5 does.
-  it("sends one chat completion with the schema, no tools, no temperature, and providers that keep no prompts", async () => {
+  // Reasoning off: the provider counts thinking against max_tokens, so a
+  // model that thinks first can be cut off before its reply (issue #57).
+  it("sends one chat completion with the schema, no tools, no temperature, reasoning off, and providers that keep no prompts", async () => {
     const fake = fakeFetch(() => completion('{"level":"high"}'));
     await model(fake.fetch).reply(request);
     expect(fake.sent).toHaveLength(1);
@@ -93,6 +95,7 @@ describe("a call to the model", () => {
         zdr: true,
         require_parameters: true,
       },
+      reasoning: { enabled: false },
       max_tokens: 200,
     });
   });
