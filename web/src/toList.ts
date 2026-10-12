@@ -1,31 +1,35 @@
 import type { MouseEvent } from "react";
 import { listHref, stepsBackToList } from "./screen";
 
-// The entries before this page's own in the history, oldest first, where
-// the browser can say.
-function earlierEntries(): (string | null)[] | null {
-  if (!("navigation" in window)) return null;
+// The entries before the one shown in the history, oldest first: none
+// where the browser cannot say.
+function earlierEntries(): NavigationHistoryEntry[] {
+  if (!("navigation" in window)) return [];
   const index = window.navigation.currentEntry?.index ?? -1;
-  if (index < 0) return null;
-  return window.navigation
-    .entries()
-    .slice(0, index)
-    .map(({ url }) => url);
+  return index < 0 ? [] : window.navigation.entries().slice(0, index);
 }
 
 // Takes the person to the list from a card or another screen, as "All asks"
 // and Dismiss do. When the list is a few of this page's own entries back in
-// the history, the page goes back to it, so the history keeps one entry for
-// the list however often the person comes and goes, and Back from it does
-// not open what they left. Otherwise, as for a card opened straight from its
-// address, the list takes the place of the entry shown. A browser that
-// cannot say what is behind gets the same.
+// the history, the page goes back to that entry, so the history keeps one
+// entry for the list however often the person comes and goes, and Back
+// from it does not open what they left. It goes to the entry itself rather
+// than a number of steps back, so a second click before the first lands
+// goes no further. An entry from an earlier load of the page ends the
+// search, so going back never loads the page again. With no list to go
+// back to, as for a card opened straight from its address, or in a browser
+// that cannot say what is behind, the list takes the place of the entry
+// shown. On the list already, it does nothing.
 export function backToList(): void {
   const earlier = earlierEntries();
-  const steps =
-    earlier === null ? null : stepsBackToList(window.location.href, earlier);
-  if (steps === null) window.location.replace(listHref);
-  else window.history.go(-steps);
+  const steps = stepsBackToList(
+    window.location.href,
+    earlier.map(({ url, sameDocument }) => (sameDocument ? url : null)),
+  );
+  if (steps === 0) return;
+  const target = steps === null ? undefined : earlier[earlier.length - steps];
+  if (target === undefined) window.location.replace(listHref);
+  else window.navigation.traverseTo(target.key);
 }
 
 // Whether a click opens a link somewhere else, such as in a new tab, and so

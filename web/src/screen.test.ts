@@ -47,6 +47,8 @@ describe("the way back to the list", () => {
       [at(""), at("#ask/a1"), at("#asks"), at("#rules")],
       at("#connect"),
     ],
+    [0, "the list is shown already", [at(""), at("#rules")], at("#asks")],
+    [0, "the list is shown already with nothing behind", [], at("")],
   ])("is %i steps back when %s", (steps, _, earlier, here) => {
     expect(stepsBackToList(here, earlier)).toBe(steps);
   });

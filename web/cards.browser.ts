@@ -970,6 +970,59 @@ describe("going back to the list from a card", () => {
     },
   );
 
+  it("with All asks clicked twice at once goes back to the list only once", async () => {
+    const opened = await open(listOf(both, neither));
+    const { page } = opened;
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    // A card, then the list again as an entry of its own, so the card is
+    // behind the list.
+    await summaryOf(opened, both.summary).click();
+    await page.getByRole("link", { name: "All asks" }).waitFor();
+    await page.evaluate(() => {
+      window.location.hash = "#asks";
+    });
+    await page.getByRole("article").waitFor();
+    const list = await entry(opened);
+    await summaryOf(opened, both.summary).click();
+    const back = page.getByRole("link", { name: "All asks" });
+    await back.waitFor();
+    await back.evaluate((link: HTMLElement) => {
+      link.click();
+      link.click();
+    });
+    await page.getByRole("article").waitFor();
+    // Long enough for a second trip back to land, if one was queued.
+    await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(resolve, 300);
+        }),
+    );
+    expect(await entry(opened)).toBe(list);
+    expect(await cardIsOpen(opened)).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
+  it("with All asks, in a browser that cannot say what is behind, puts the list in the card's place in the history", async () => {
+    const opened = await open(listOf(both, neither));
+    const { page } = opened;
+    await page.addInitScript(() => {
+      Reflect.deleteProperty(Window.prototype, "navigation");
+      Reflect.deleteProperty(window, "navigation");
+    });
+    await page.reload();
+    await page.getByRole("article").waitFor();
+    expect(await page.evaluate(() => "navigation" in window)).toBe(false);
+    const entries = await page.evaluate(() => window.history.length);
+    await summaryOf(opened, both.summary).click();
+    await goBack["All asks"](opened);
+    await page.getByRole("article").waitFor();
+    expect(
+      await page.evaluate(() => [window.location.hash, window.history.length]),
+    ).toEqual(["#asks", entries + 1]);
+  });
+
   it.each(["All asks", "Dismiss"] as const)(
     "with %s from a card opened straight from its address puts the list in the card's place in the history",
     async (way) => {

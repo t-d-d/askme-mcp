@@ -31,12 +31,14 @@ const showsList = (hash: string): boolean =>
 // list, given the address shown and those of the entries before it, oldest
 // first, with null for one the browser cannot read. Only this page's own
 // entries count, so the search ends at the first that is not one, and at
-// the first it cannot read. Null when there is no list to go back to.
+// the first it cannot read. None when the list is shown already, and null
+// when there is no list to go back to.
 export function stepsBackToList(
   here: string,
   earlier: readonly (string | null)[],
 ): number | null {
   const page = new URL(here);
+  if (showsList(page.hash)) return 0;
   for (let steps = 1; steps <= earlier.length; steps += 1) {
     const address = earlier[earlier.length - steps];
     if (address === null || address === undefined) return null;
