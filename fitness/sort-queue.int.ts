@@ -24,7 +24,7 @@ import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, type Captured } from "../test/logs";
 import { connect, origin } from "../test/mcp";
-import { setModelCalls } from "../test/model-cap";
+import { setModelCalls, startAtNoon } from "../test/model-cap";
 
 const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
@@ -424,6 +424,7 @@ describe("fitness: an unchanged save calls no model (sort-queue.md)", () => {
   });
 
   it("is refused with cap_reached while the cap is spent, and saves and queues nothing", async () => {
+    startAtNoon();
     const sub = newAccount();
     const owner = accountId(sub);
     await saveRead(sub, "#work first.", ["work"]);
@@ -445,6 +446,7 @@ describe("fitness: an unchanged save calls no model (sort-queue.md)", () => {
   });
 
   it("still queues the asks behind the rules while the cap is spent when the text is empty", async () => {
+    startAtNoon();
     const sub = newAccount();
     expect((await saveRules(sub, "")).status).toBe(200);
     const behind = await postEarlier(

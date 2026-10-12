@@ -22,7 +22,12 @@ import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, type Captured } from "../test/logs";
 import { connect, origin } from "../test/mcp";
-import { modelCallsMade, nextReset, setModelCalls } from "../test/model-cap";
+import {
+  modelCallsMade,
+  nextReset,
+  setModelCalls,
+  startAtNoon,
+} from "../test/model-cap";
 
 let issuer: FakeIssuer;
 beforeAll(async () => {
@@ -34,9 +39,11 @@ afterAll(async () => {
   await issuer.close();
 });
 
-// Each test starts with an empty queue, whatever an earlier one left.
+// Each test starts with an empty queue, whatever an earlier one left, and
+// at noon UTC, far from the end of the day the cap counts in.
 beforeEach(() => {
   fakes.queue.purge();
+  startAtNoon();
 });
 
 let capture: { lines: Captured[]; restore(): void };

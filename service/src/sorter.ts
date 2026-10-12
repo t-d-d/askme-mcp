@@ -83,7 +83,6 @@ export async function sortAsk(
   }
   let sort: Sort | undefined;
   let failure = "reply-rejected";
-  let tried = false;
   if (rules.text.trim() === "") {
     sort = emptyRulesSort;
   } else {
@@ -111,12 +110,14 @@ export async function sortAsk(
         failure = "reply-rejected";
       } catch (error) {
         if (error instanceof CapReached) {
-          return tried ? { capped: true, failed: failure } : { capped: true };
+          // A try before this one failed, and will not be tried again.
+          return tries > 0
+            ? { capped: true, failed: failure }
+            : { capped: true };
         }
         if (!(error instanceof ModelFailed)) throw error;
         failure = error.reason;
       }
-      tried = true;
     }
   }
   if (sort === undefined) return { failed: failure };
