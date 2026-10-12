@@ -205,11 +205,11 @@ Swiping a row or the top card dismisses it. A note with "Undo" shows for a few s
 
 Shown when nothing is waiting and the account has had at least one ask.
 
-- "All clear." at 146px, on two lines.
+- "All clear." at 146px. On a screen narrower than 517px, such as a phone held upright, it takes two lines. On a screen 517px wide or more, such as at desktop width, it fits on one line inside the side padding.
 - On a screen narrower than 354px, "clear." does not fit at 146px inside the 22px side padding. There the headline shrinks with the screen, so "clear." keeps 22px on each side. At 320px wide it is 130px.
-- The headline and its two lines sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the held line. On a screen too short for that, 26px stays above them.
+- The headline and the two lines under it sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the held line. On a screen too short for that, 26px stays above them.
 - They stay where they are while a note shows at the foot of the screen. The held line moves up out of the note's way. On a screen too short for that, they move up too, or the screen scrolls further, until 26px stays between the last line and the held line or the note.
-- Both lines balance their line breaks, so a line that wraps never leaves a word or two on their own.
+- The two lines under the headline balance their line breaks, so a line that wraps never leaves a word or two on their own.
 - A fixed line in ink: "Your agents are getting on with it."
 - A second line in `--text-2` that changes on each visit:
   - Go and put the kettle on.
@@ -236,7 +236,7 @@ Shown when the account has never had an ask. A white card says "Your agents can 
 
 ### Connect your agents
 
-The server address in a read-only box with a Copy button, steps for Claude as a numbered list, a button for Cursor, and "Send sample asks" for someone with no agent yet. The demo notice is at the foot.
+The server address in a read-only box with a Copy button, steps for Claude as a numbered list, a button for Cursor, and "Send sample asks" for someone with no agent yet. The demo notice is at the foot. The header has only "All asks", which goes back. There is no Rules link.
 
 ### Signed out
 
