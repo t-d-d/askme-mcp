@@ -9,7 +9,10 @@ that lags behind the table.
 ## Rules
 
 - Sort keys: META, RULES, OPEN#<id>, CLOSED#<id>,
-  DEDUPE#<fingerprint>, USAGE#<date>, POLL#<window>.
+  DEDUPE#<fingerprint>, USAGE#<date>, and one prefix for each rate
+  counter, followed by its window: POLL#<window> for polls,
+  RATE#<window> for asks, SAVE#<window> for saving the rules and
+  SORT#<window> for asking again for an unsorted ask.
 - The account id in a key comes from the verified token only.
 - One store module is the only code that reads or writes the table.
 - Every change to asks or rules goes through one function, which
