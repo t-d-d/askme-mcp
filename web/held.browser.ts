@@ -5,6 +5,7 @@ import { afterEach, describe, expect, inject, it } from "vitest";
 import {
   askChangePaths,
   pagePaths,
+  weekdays,
   type AsksAnswer,
   type Hashtag,
   type Level,
@@ -19,6 +20,7 @@ import {
 import { pollMs } from "./src/poll";
 
 type Page = OpenPage["page"];
+type Locator = ReturnType<Page["locator"]>;
 
 const phone = { width: 390, height: 844 };
 const session = "test-session-token";
@@ -109,6 +111,10 @@ const tab = (page: Page, name: string) =>
   page
     .getByRole("navigation", { name: "Hashtags" })
     .getByRole("button", { name, exact: true });
+
+// Whether a control has the keyboard's focus.
+const focused = (control: Locator) =>
+  control.evaluate((element) => element === document.activeElement);
 
 // The text of whatever comes straight after the tabs.
 const underTheTabs = (page: Page) =>
@@ -224,6 +230,62 @@ describe("holding asks back until their hours", () => {
     await page.getByRole("navigation", { name: "Hashtags" }).waitFor();
     expect(await underTheTabs(page)).toBe("Showing 2 held asksHide them");
     expect(await summaries(page)).toHaveLength(2);
+  });
+
+  it("keeps focus on its control when Show them at the foot of All clear brings the tabs back", async () => {
+    view = await open(listOf(asksAt(evening).slice(0, 2)), evening);
+    const { page } = view;
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+    await page.getByRole("button", { name: "Show them" }).focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("navigation", { name: "Hashtags" }).waitFor();
+    expect(await focused(page.getByRole("button", { name: "Hide them" }))).toBe(
+      true,
+    );
+  });
+
+  it("keeps focus on its control when Hide them under the tabs makes the list all clear", async () => {
+    view = await open(listOf(asksAt(evening).slice(0, 2)), evening);
+    const { page } = view;
+    await page.getByRole("button", { name: "Show them" }).click();
+    await page.getByRole("navigation", { name: "Hashtags" }).waitFor();
+    await page.getByRole("button", { name: "Hide them" }).focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+    expect(await focused(page.getByRole("button", { name: "Show them" }))).toBe(
+      true,
+    );
+  });
+
+  it("leaves focus where it is when the line comes back after going with focus", async () => {
+    // Tuesday, a minute before work's hours open in London.
+    const early = new Date("2026-10-13T06:59:00Z");
+    const list = listOf(asksAt(early));
+    let answer = list;
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: early,
+      api: {
+        [pagePaths.asks]: new Answering((url) => answerPoll(url, answer)),
+      },
+    });
+    const { page } = view;
+    await page.getByRole("button", { name: "Show them" }).focus();
+    await page.clock.fastForward(minute + pollMs);
+    await page.getByText(/held/u).waitFor({ state: "detached" });
+    await tab(page, "#shop").focus();
+    // The family's hours become the evening's, so its ask is held.
+    const evenings = { days: [...weekdays], from: "18:00", to: "23:00" };
+    answer = {
+      ...list,
+      version: list.version + 1,
+      hashtags: hashtags.map((hashtag) =>
+        hashtag.name === "family" ? { ...hashtag, hours: [evenings] } : hashtag,
+      ),
+    };
+    await page.clock.fastForward(pollMs);
+    await page.getByText("1 held until its hours").waitFor();
+    expect(await focused(tab(page, "#shop"))).toBe(true);
   });
 
   it("lets an ask go when its hours open, with no reload", async () => {
