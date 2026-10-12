@@ -36,4 +36,42 @@ describe("the file-name check", () => {
       ["web/src/Vite-env", "web/src/vite-env"],
     ]);
   });
+
+  it("finds two files whose names differ only in the case of the extension", () => {
+    expect(clashes(["docs/a.MD", "docs/a.md"])).toEqual([
+      ["docs/a.MD", "docs/a.md"],
+    ]);
+  });
+
+  it("finds a folder whose name has a dot beside a file of that name in another case", () => {
+    expect(clashes(["docs/a.md/notes.md", "docs/A.md"])).toEqual([
+      ["docs/a.md", "docs/A.md"],
+    ]);
+  });
+
+  it("lists two files once when their names clash with and without their extensions", () => {
+    expect(clashes(["docs/A.md", "docs/a.md"])).toEqual([["docs/A", "docs/a"]]);
+  });
+
+  it("lists two files by their whole names when folders or files of their names without extensions also clash", () => {
+    expect(
+      clashes(["docs/A.md", "docs/a.md", "docs/A/x.md", "docs/a/y.md"]),
+    ).toEqual([
+      ["docs/A.md", "docs/a.md"],
+      ["docs/A", "docs/a"],
+    ]);
+    expect(clashes(["docs/A.md", "docs/a.md", "docs/a"])).toEqual([
+      ["docs/A.md", "docs/a.md"],
+      ["docs/A", "docs/a"],
+    ]);
+  });
+
+  it("lists two folders whose names have a dot, though files beside them clash without their extensions", () => {
+    expect(
+      clashes(["docs/v1.2/a.md", "docs/V1.2/b.md", "docs/v1.ts", "docs/V1.ts"]),
+    ).toEqual([
+      ["docs/v1.2", "docs/V1.2"],
+      ["docs/v1", "docs/V1"],
+    ]);
+  });
 });

@@ -8,19 +8,28 @@
 // disks may not match in every letter.
 import { extname } from "node:path";
 
-// A file's name as an import writes it, without its extension, and the name
-// of each folder above it, so web/src/Asks.tsx gives web, web/src and
-// web/src/Asks. A declaration file's ".d.ts" is all extension, so an import
-// of "./vite-env" names web/src/vite-env.d.ts.
+// The name of each folder above a file, its whole name as the disk holds it,
+// and its name as an import writes it, without its extension. So
+// web/src/Asks.tsx gives web, web/src, web/src/Asks.tsx and web/src/Asks. A
+// declaration file's ".d.ts" is all extension, so an import of "./vite-env"
+// names web/src/vite-env.d.ts.
 const declaration = /\.d\.[cm]?ts$/u;
 const withoutExtension = (path: string): string =>
   declaration.test(path)
     ? path.replace(declaration, "")
     : path.slice(0, path.length - extname(path).length);
-const names = (path: string): string[] => {
-  const parts = withoutExtension(path).split("/");
+const entries = (path: string): string[] => {
+  const parts = path.split("/");
   return parts.map((_, end) => parts.slice(0, end + 1).join("/"));
 };
+const names = (path: string): string[] => [
+  ...entries(path),
+  withoutExtension(path),
+];
+
+// A group of names as one string, whatever order its names come in.
+const together = (group: Iterable<string>): string =>
+  JSON.stringify([...group].sort());
 
 // Two spellings of é print alike, so a clash shows each character outside
 // ASCII as its code point: caf\u{e9}, then cafe\u{301}.
@@ -55,7 +64,23 @@ export function clashes(paths: readonly string[]): string[][] {
     const key = fold(name);
     spellings.set(key, (spellings.get(key) ?? new Set()).add(name));
   }
-  return [...spellings.values()]
-    .filter((spelt) => spelt.size > 1)
+  const groups = [...spellings.values()].filter((spelt) => spelt.size > 1);
+  // A.md beside a.md clashes twice, as A.md and a.md, and as A and a. A
+  // group of files is left out when their names without extensions make up
+  // another group, and no folder or file on the disk has one of those names.
+  // The other group then says the same thing.
+  const files = new Set(paths);
+  const onDisk = new Set(paths.flatMap(entries));
+  const listed = new Set(groups.map(together));
+  const repeats = (spelt: Set<string>): boolean => {
+    const bare = [...spelt].map(withoutExtension);
+    return (
+      [...spelt].every((name) => files.has(name)) &&
+      listed.has(together(bare)) &&
+      !bare.some((name) => onDisk.has(name))
+    );
+  };
+  return groups
+    .filter((spelt) => !repeats(spelt))
     .map((spelt) => [...spelt].map(visible));
 }
