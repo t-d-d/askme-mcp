@@ -30,6 +30,12 @@ At desktop width the first ask sits on the left with its spoken text, and the re
 
 ![The list at desktop width](design/screens/list-desktop.png)
 
+With one ask waiting, the list keeps its place and says nothing else is waiting. At desktop width the card is as wide as it is beside a longer list.
+
+| One ask on a phone | One ask at desktop width |
+| --- | --- |
+| ![The list on a phone with one ask](design/screens/list-one.png) | ![The list at desktop width with one ask](design/screens/list-desktop-one.png) |
+
 ## Colour
 
 ### Neutral
@@ -167,7 +173,7 @@ Every ask after the first. A summary of up to two lines, then one line with the 
 | Opened | The whole row at 55% opacity, with "Opened" after the age. It sinks below unopened asks at its level. |
 | Not sorted yet | A "Not sorted yet" pill in `--neutral-tint` where the hashtag would be |
 
-Above the rows, one small heading counts them: "4 more waiting".
+Above the rows, one small heading counts them: "4 more waiting". When the top ask is the only one, the heading says "Nothing else waiting" and has no rows under it, on a phone and at desktop width. On a hashtag's tab it counts that tab's asks.
 
 ### The open card
 
