@@ -4,7 +4,10 @@
 // a note that says so.
 //
 // One dismissal waits at a time. Dismissing another sends the waiting one
-// at once, and so does leaving the list or closing the page.
+// at once, and so does leaving the list or closing the page. If an earlier
+// dismissal fails while one waits, the note that says so shows first, and
+// the waiting one's time stops. When that note goes, the note with Undo
+// comes back for its full time.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { askChangePaths } from "../../shared/page-api";
 import { useAuth } from "./auth";
@@ -40,8 +43,13 @@ export function useDismissing(): Dismissing {
   }, [getToken]);
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [note, setNote] = useState<DismissNote | null>(null);
-  // The dismissal waiting for its note to go, and the note's timer.
-  const waiting = useRef<{ id: string; timer: number } | null>(null);
+  // The dismissal waiting for its note to go, what sends it then, and the
+  // note's timer.
+  const waiting = useRef<{
+    id: string;
+    due: () => void;
+    timer: number;
+  } | null>(null);
   const failedTimer = useRef<number | undefined>(undefined);
 
   // Sends a dismissal. An ask the API no longer has is gone either way.
@@ -55,9 +63,19 @@ export function useDismissing(): Dismissing {
       if (error instanceof Refusal && error.code === "not_found") return;
       setDismissed((ids) => without(ids, id));
       setNote("failed");
+      // A dismissal still waiting stops its time while this note shows, and
+      // its note with Undo comes back when this one goes.
+      const held = waiting.current;
+      if (held !== null) window.clearTimeout(held.timer);
       window.clearTimeout(failedTimer.current);
       failedTimer.current = window.setTimeout(() => {
-        setNote((shown) => (shown === "failed" ? null : shown));
+        const pending = waiting.current;
+        if (pending === null) {
+          setNote(null);
+          return;
+        }
+        setNote("dismissed");
+        pending.timer = window.setTimeout(pending.due, undoMs);
       }, undoMs);
     }
   }, []);
@@ -77,15 +95,16 @@ export function useDismissing(): Dismissing {
   const dismiss = useCallback(
     (id: string) => {
       sendWaiting();
+      // This note takes the place of one that an earlier dismissal failed.
+      window.clearTimeout(failedTimer.current);
       setDismissed((ids) => new Set(ids).add(id));
       setNote("dismissed");
-      const timer = window.setTimeout(() => {
+      const due = () => {
         waiting.current = null;
-        // A note that an earlier dismissal failed keeps its own time.
-        setNote((shown) => (shown === "dismissed" ? null : shown));
+        setNote(null);
         void send(id);
-      }, undoMs);
-      waiting.current = { id, timer };
+      };
+      waiting.current = { id, due, timer: window.setTimeout(due, undoMs) };
     },
     [send, sendWaiting],
   );
