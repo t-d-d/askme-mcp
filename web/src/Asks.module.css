@@ -10,6 +10,18 @@
   padding-bottom: calc(var(--space-foot) + var(--space-note));
 }
 
+/*
+ * A link scrolled into view as a card closes shows its focus outline, and
+ * while the note shows, sits clear of it (useListPlace.ts).
+ */
+.screen a {
+  scroll-margin: calc(2 * var(--focus-width));
+}
+
+.screen[data-noted] a {
+  scroll-margin-bottom: calc(2 * var(--focus-width) + var(--space-note));
+}
+
 /* The tabs, and the held line under them. */
 .bar {
   display: flex;
