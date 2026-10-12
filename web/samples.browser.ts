@@ -225,38 +225,40 @@ describe("a new account", () => {
   // The cap resets at the next midnight UTC: that evening west of UTC, the
   // next morning east of it.
   it.each([
-    ["Europe/London", "01:00"],
-    ["America/New_York", "20:00"],
+    [
+      "the daily cap",
+      "cap_reached",
+      "Europe/London",
+      "You've reached today's limit. It resets at 01:00.",
+    ],
+    [
+      "the daily cap",
+      "cap_reached",
+      "America/New_York",
+      "You've reached today's limit. It resets at 20:00.",
+    ],
+    [
+      "the rate limit",
+      "rate_limited",
+      "Europe/London",
+      "Slow down a little. Try again in a few seconds.",
+    ],
   ])(
-    "says when the daily cap is reached, and when it resets in %s",
-    async (timeZone, time) => {
-      view = await openNewAccount(refusal("cap_reached"), {
+    "says when %s is reached, and when to try again, in %s",
+    async (_, code, timeZone, words) => {
+      view = await openNewAccount(refusal(code), {
         clock: new Date("2026-10-12T15:00:00Z"),
         timeZone,
       });
       const { page } = view;
       await samplesButton(page).click();
-      const note = page.getByRole("status").filter({ hasText: "limit" });
+      const note = page.getByRole("status").filter({ hasText: /\S/u });
       await note.waitFor();
-      expect(await note.innerText()).toBe(
-        `You've reached today's limit. It resets at ${time}.`,
-      );
+      expect(await note.innerText()).toBe(words);
       expect(await samplesButton(page).isEnabled()).toBe(true);
       expect(await scrollsSideways(page)).toBe(false);
     },
   );
-
-  it("says when the rate limit is reached, and when to try again", async () => {
-    view = await openNewAccount(refusal("rate_limited"));
-    const { page } = view;
-    await samplesButton(page).click();
-    await page
-      .getByRole("status")
-      .filter({ hasText: "Slow down a little. Try again in a few seconds." })
-      .waitFor();
-    expect(await samplesButton(page).isEnabled()).toBe(true);
-    expect(await scrollsSideways(page)).toBe(false);
-  });
 
   // A limit reached part way keeps the asks posted before it, so the list
   // is asked for again even when the press is refused.
