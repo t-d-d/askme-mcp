@@ -13,7 +13,7 @@ import { NewAccount } from "./NewAccount";
 import { OpenCard } from "./OpenCard";
 import { hashtagColours } from "./palette";
 import { browserSpeech } from "./speech";
-import { Tabs } from "./Tabs";
+import { Tabs, type TabsHandle } from "./Tabs";
 import { useAsks } from "./useAsks";
 import { useDismissing } from "./useDismissing";
 import { useListPlace } from "./useListPlace";
@@ -40,10 +40,12 @@ import { inListOrder } from "./waiting";
 // the last poll. The held line under the tabs counts the tab's held asks
 // and shows them, or hides them again. With every ask held and hidden the
 // list is all clear, and the line sits at its foot. If its control has focus
-// as the line moves, the control in its new place takes it. Once nothing is
-// held, held asks are hidden again when they are next held. A held ask
-// dismissed here is still held until askme drops it, so Undo brings it back
-// shown. A former hashtag has no hours, so it holds nothing back.
+// as the line moves, the control in its new place takes it. If the line goes
+// with none in its place, the selected tab takes focus, or with no tabs, as
+// the list is all clear, the All clear headline. Once nothing is held, held
+// asks are hidden again when they are next held. A held ask dismissed here
+// is still held until askme drops it, so Undo brings it back shown. A former
+// hashtag has no hours, so it holds nothing back.
 //
 // An ask the person has opened shows as opened, and one they have dismissed
 // leaves the list, before the next poll says so.
@@ -73,13 +75,9 @@ export function Asks({ card }: { card: string | null }) {
       if (control === document.activeElement) heldHadFocus.current = true;
     };
   }, []);
-  // A control that goes with no other to take its place hands focus to none
-  // that comes later.
-  useLayoutEffect(() => {
-    heldHadFocus.current = false;
-  });
   const headline = useRef<HTMLHeadingElement>(null);
   const tabsHadFocus = useRef(false);
+  const tabs = useRef<TabsHandle>(null);
   const tabsGoneWithFocus = useCallback(() => {
     tabsHadFocus.current = true;
   }, []);
@@ -144,10 +142,18 @@ export function Asks({ card }: { card: string | null }) {
   );
   const noted = note !== null;
   // The tabs also go when a card opens, so this moves focus only onto All
-  // clear, and only in the render the tabs went in.
+  // clear, and only in the render the tabs went in. A held line's control
+  // that goes with no other to take its place hands focus on in the same
+  // way, or to the selected tab while there are tabs, and to none that comes
+  // later. With a card open there is neither, so focus is left alone.
   useLayoutEffect(() => {
-    if (allClear && tabsHadFocus.current) headline.current?.focus();
+    if (allClear && (tabsHadFocus.current || heldHadFocus.current)) {
+      headline.current?.focus();
+    } else if (heldHadFocus.current) {
+      tabs.current?.focusSelected();
+    }
     tabsHadFocus.current = false;
+    heldHadFocus.current = false;
   });
 
   // The note stays in one place in the tree, whichever screen shows, so a
@@ -177,6 +183,7 @@ export function Asks({ card }: { card: string | null }) {
                 selected={tab}
                 onSelect={choose}
                 onGoneWithFocus={tabsGoneWithFocus}
+                ref={tabs}
               />
               {heldHere > 0 && heldLine(false)}
             </div>

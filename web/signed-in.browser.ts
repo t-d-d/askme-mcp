@@ -7,6 +7,7 @@ import {
   type ConnectionAnswer,
 } from "../shared/page-api";
 import {
+  allClearGaps,
   Answering,
   answerPoll,
   computedColour,
@@ -84,6 +85,22 @@ const scrollsSideways = (page: OpenPage["page"], width: number) =>
   page
     .evaluate(() => document.documentElement.scrollWidth)
     .then((scrollWidth) => scrollWidth > width);
+
+// The width of each line a paragraph takes, and of the paragraph.
+const lineWidths = (page: OpenPage["page"], text: string) =>
+  page.evaluate(async (text) => {
+    await document.fonts.ready;
+    const paragraph = [...document.querySelectorAll("p")].find(
+      (p) => p.textContent === text,
+    );
+    if (paragraph === undefined) return { lines: [], width: 0 };
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    return {
+      lines: [...range.getClientRects()].map(({ width }) => width),
+      width: paragraph.getBoundingClientRect().width,
+    };
+  }, text);
 
 describe.each([
   ["a phone", phone],
@@ -283,6 +300,61 @@ describe("nothing waiting", () => {
       expect(shown.filter(Boolean)).toHaveLength(1);
       expect(await page.getByText("Your agents can ask here.").count()).toBe(0);
       expect(await scrollsSideways(page, phone.width)).toBe(false);
+    } finally {
+      await view.close();
+    }
+  });
+
+  // A third of the way down: the space above is half the space below.
+  it.each([
+    ["390 by 844", phone],
+    ["360 by 690", { width: 360, height: 690 }],
+  ])(
+    "sits a third of the way down the free space on a %s screen",
+    async (_, viewport) => {
+      const view = await open(empty(true), viewport);
+      try {
+        const { page } = view;
+        await page.getByRole("heading", { name: "All clear." }).waitFor();
+        const { above, below } = await allClearGaps(page);
+        expect(Math.abs(above - below / 2)).toBeLessThanOrEqual(4);
+      } finally {
+        await view.close();
+      }
+    },
+  );
+
+  it.each([360, 375])(
+    "breaks its first line into two even lines at %ipx wide",
+    async (width) => {
+      const view = await open(empty(true), { width, height: 844 });
+      try {
+        const { page } = view;
+        await page.getByRole("heading", { name: "All clear." }).waitFor();
+        const { lines, width: whole } = await lineWidths(
+          page,
+          "Your agents are getting on with it.",
+        );
+        expect(lines).toHaveLength(2);
+        for (const line of lines) {
+          expect(line).toBeGreaterThanOrEqual(whole / 3);
+        }
+      } finally {
+        await view.close();
+      }
+    },
+  );
+
+  it("keeps its first line whole at 390px wide", async () => {
+    const view = await open(empty(true));
+    try {
+      const { page } = view;
+      await page.getByRole("heading", { name: "All clear." }).waitFor();
+      const { lines } = await lineWidths(
+        page,
+        "Your agents are getting on with it.",
+      );
+      expect(lines).toHaveLength(1);
     } finally {
       await view.close();
     }
