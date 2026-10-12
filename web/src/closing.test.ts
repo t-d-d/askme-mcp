@@ -10,6 +10,9 @@ describe("the ask whose link takes focus as its card closes", () => {
     ["new asks came in above it", ["x", "a", "y", "b", "c", "d"]],
     ["an ask above it left", ["b", "c", "d"]],
     ["an ask below it left", ["a", "b", "d"]],
+    ["an ask from below it rose above it", ["c", "a", "b", "d"]],
+    ["an ask from above it sank below it", ["b", "c", "d", "a"]],
+    ["asks around it swapped places", ["a", "b", "d", "c"]],
   ])("is its own when %s", (_, order) => {
     expect(focusOnClosing("b", stood, order)).toBe("b");
   });

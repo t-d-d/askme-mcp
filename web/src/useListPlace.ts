@@ -5,7 +5,7 @@
 // ask has left the list or moved in it, focus goes to the ask that came after
 // it, or with none left, to the last ask in the list (closing.ts). If that
 // link is not wholly on the screen, the page scrolls only as far as it takes
-// to show it and its outline, clear of the note after a dismissal
+// to show it and its outline, clear of the note while one shows
 // (Asks.module.css).
 //
 // A card opened straight from its address did not open over the list, so
@@ -78,7 +78,7 @@ export function useListPlace(
           : list.current?.querySelector<HTMLElement>(
               `a[href="${cardHref(id)}"]`,
             );
-      if (link !== null && link !== undefined) {
+      if (link) {
         link.focus({ preventScroll: true });
         showWhole(link);
       }
@@ -90,8 +90,8 @@ export function useListPlace(
 }
 
 // Scrolls the page only as far as it takes to show the whole of a link and
-// the room its scroll margins keep: its focus outline, and the note after a
-// dismissal (Asks.module.css). The browser's own nearest scrolling leaves a
+// the room its scroll margins keep: its focus outline, and the note while
+// one shows (Asks.module.css). The browser's own nearest scrolling leaves a
 // link on the screen where it is, though the room around it is not.
 function showWhole(link: HTMLElement) {
   const { top, bottom } = link.getBoundingClientRect();

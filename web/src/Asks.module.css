@@ -12,7 +12,7 @@
 
 /*
  * A link scrolled into view as a card closes shows its focus outline, and
- * after a dismissal, sits clear of the note (useListPlace.ts).
+ * while the note shows, sits clear of it (useListPlace.ts).
  */
 .screen a {
   scroll-margin: calc(2 * var(--focus-width));
