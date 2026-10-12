@@ -118,20 +118,24 @@ async function retryUnsorted(
         now.getTime() - Date.parse(ask.postedAt) >= sortRetryAfterMs,
     )
     .slice(0, sortRetriesPerPoll);
-  for (const ask of stale) {
-    const counted = await store.countSortRetry(account, now);
-    if (!counted.counted) return;
-    try {
-      await sorts.request({ accountId: account, askId: ask.id });
-      log.info("sort-retried", { accountId: account, askId: ask.id });
-    } catch (error) {
-      log.warn("sort-request-failed", {
-        accountId: account,
-        askId: ask.id,
-        errorClass: errorClass(error),
-      });
-    }
-  }
+  // Asked for together, so a slow Lambda holds the poll up once, not once
+  // for each ask.
+  await Promise.all(
+    stale.map(async (ask) => {
+      const counted = await store.countSortRetry(account, now);
+      if (!counted.counted) return;
+      try {
+        await sorts.request({ accountId: account, askId: ask.id });
+        log.info("sort-retried", { accountId: account, askId: ask.id });
+      } catch (error) {
+        log.warn("sort-request-failed", {
+          accountId: account,
+          askId: ask.id,
+          errorClass: errorClass(error),
+        });
+      }
+    }),
+  );
 }
 
 // The account's open asks, unless nothing changed since the version the

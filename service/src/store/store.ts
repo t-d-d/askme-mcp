@@ -23,6 +23,7 @@ import {
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
+import { awsClientConfig } from "../aws";
 import type { AccountId } from "../identity";
 import {
   askLimit,
@@ -304,17 +305,7 @@ export function createStore(config: {
   endpoint?: string | undefined;
 }): Store {
   const { tableName: TableName, endpoint } = config;
-  // In production the client finds its region and credentials in Lambda's
-  // environment. The local DynamoDB of the tests accepts any.
-  const client = new DynamoDBClient(
-    endpoint === undefined
-      ? {}
-      : {
-          endpoint,
-          region: "us-east-1",
-          credentials: { accessKeyId: "local", secretAccessKey: "local" },
-        },
-  );
+  const client = new DynamoDBClient(awsClientConfig(endpoint));
   const db = DynamoDBDocumentClient.from(client, {
     marshallOptions: { removeUndefinedValues: true },
   });

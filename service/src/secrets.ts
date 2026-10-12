@@ -4,6 +4,7 @@
 // function's settings.
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { z } from "zod";
+import { awsClientConfig } from "./aws";
 
 const answerSchema = z.object({
   Parameter: z.object({ Value: z.string().min(1) }),
@@ -14,17 +15,7 @@ export function createKeyReader(config: {
   endpoint?: string | undefined;
 }): () => Promise<string> {
   const { parameter, endpoint } = config;
-  // In production the client finds its region and credentials in Lambda's
-  // environment. The fake Parameter Store of the tests accepts any.
-  const client = new SSMClient(
-    endpoint === undefined
-      ? {}
-      : {
-          endpoint,
-          region: "us-east-1",
-          credentials: { accessKeyId: "local", secretAccessKey: "local" },
-        },
-  );
+  const client = new SSMClient(awsClientConfig(endpoint));
   let key: Promise<string> | undefined;
   return () => {
     key ??= client

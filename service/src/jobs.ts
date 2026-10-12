@@ -4,6 +4,7 @@
 // posting never waits on the model.
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { z } from "zod";
+import { awsClientConfig } from "./aws";
 import type { AccountId } from "./identity";
 
 // What the sort function is given: the account the token check gave, and
@@ -35,18 +36,10 @@ export function createSortRequests(config: {
     maxAttempts: 2,
     requestHandler: { connectionTimeout: 1000, requestTimeout: 2000 },
   };
-  // In production the client finds its region and credentials in Lambda's
-  // environment. The fake Lambda of the tests accepts any.
-  const client = new LambdaClient(
-    endpoint === undefined
-      ? shared
-      : {
-          ...shared,
-          endpoint,
-          region: "us-east-1",
-          credentials: { accessKeyId: "local", secretAccessKey: "local" },
-        },
-  );
+  const client = new LambdaClient({
+    ...shared,
+    ...awsClientConfig(endpoint),
+  });
   return {
     async request(job) {
       const answer = await client.send(
