@@ -433,7 +433,8 @@ export const cases: EvalCase[] = [
   },
   {
     // A sign-in code runs out within minutes, though the ask does not say.
-    // The page handles that, so its level is what not paying costs (#101).
+    // An agent says so with stale after, which only the page reads, so its
+    // level is what not paying costs (#101).
     name: "a sign-in code for the school's payment site",
     group: "core",
     area: "family",
@@ -555,7 +556,7 @@ export const cases: EvalCase[] = [
       area: shop,
       spokenDetail:
         "Evri would collect from the start of next month and costs about forty pence less a parcel than Royal Mail. Tracking is similar. Shall I set it up for next month?",
-      sessionLink: session(210),
+      sessionLink: session(212),
     },
     expected: { hashtags: [["shop"]], level: "normal" },
   },
