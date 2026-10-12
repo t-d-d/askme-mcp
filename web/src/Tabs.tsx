@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useImperativeHandle, useRef, type Ref } from "react";
 import type { Hashtag } from "../../shared/page-api";
 import { everything, type Tab } from "./tab";
 import { colourOf, tagColour } from "./palette";
@@ -15,17 +15,37 @@ import styles from "./Tabs.module.css";
 // The tabs all go at once when the list goes all clear, Everything with
 // them. If one has focus then, onGoneWithFocus is called, so the page can
 // put focus somewhere that stays. It must stay the same between renders.
+//
+// Through the ref, the page can move focus to the selected tab.
+export interface TabsHandle {
+  focusSelected: () => void;
+}
+
 export function Tabs({
   hashtags,
   selected,
   onSelect,
   onGoneWithFocus,
+  ref,
 }: {
   hashtags: readonly Hashtag[];
   selected: Tab;
   onSelect: (tab: Tab) => void;
   onGoneWithFocus: () => void;
+  ref?: Ref<TabsHandle>;
 }) {
+  const nav = useRef<HTMLElement>(null);
+  useImperativeHandle(
+    ref,
+    () => ({
+      focusSelected: () => {
+        nav.current
+          ?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')
+          ?.focus();
+      },
+    }),
+    [],
+  );
   const everythingTab = useRef<HTMLButtonElement>(null);
   const keepFocus = useCallback(
     (control: HTMLButtonElement) => () => {
@@ -34,8 +54,11 @@ export function Tabs({
     [],
   );
   const handOn = useCallback(
-    (tabs: HTMLElement) => () => {
-      if (tabs.contains(document.activeElement)) onGoneWithFocus();
+    (tabs: HTMLElement) => {
+      nav.current = tabs;
+      return () => {
+        if (tabs.contains(document.activeElement)) onGoneWithFocus();
+      };
     },
     [onGoneWithFocus],
   );

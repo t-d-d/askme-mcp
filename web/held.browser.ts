@@ -100,6 +100,25 @@ const open = (list: AsksAnswer, time: Date) =>
     },
   });
 
+// The list, polled as the service answers, with a way for the test to
+// change what the service answers from then on.
+const openChanging = async (list: AsksAnswer, time: Date) => {
+  let answer = list;
+  const opened = await openPage(inject("pageUrl"), phone, {
+    session,
+    clock: time,
+    api: {
+      [pagePaths.asks]: new Answering((url) => answerPoll(url, answer)),
+    },
+  });
+  return {
+    opened,
+    answerWith: (next: AsksAnswer) => {
+      answer = next;
+    },
+  };
+};
+
 const summaries = async (page: Page) => [
   ...(await page.getByRole("article").allInnerTexts()),
   ...(await page.getByRole("listitem").allInnerTexts()),
@@ -280,18 +299,75 @@ describe("holding asks back until their hours", () => {
     );
   });
 
+  it("moves focus to the selected tab when it goes at a poll with focus, and the tabs stay", async () => {
+    // Tuesday, a minute before work's hours open in London.
+    const early = new Date("2026-10-13T06:59:00Z");
+    view = await open(listOf(asksAt(early)), early);
+    const { page } = view;
+    await tab(page, "#shop").click();
+    await page.getByText("1 held until its hours").waitFor();
+    const show = page.getByRole("button", { name: "Show them" });
+    await show.focus();
+    expect(await focused(show)).toBe(true);
+    await page.clock.fastForward(minute + pollMs);
+    await page.getByText(/held/u).waitFor({ state: "detached" });
+    expect(await focused(tab(page, "#shop"))).toBe(true);
+  });
+
+  it("moves focus to Everything when it goes at a poll with focus at the foot of All clear, and the tabs come back", async () => {
+    // Tuesday, a minute before work's hours open in London.
+    const early = new Date("2026-10-13T06:59:00Z");
+    view = await open(listOf(asksAt(early).slice(0, 2)), early);
+    const { page } = view;
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+    await page.getByRole("button", { name: "Show them" }).focus();
+    await page.clock.fastForward(minute + pollMs);
+    await page.getByRole("navigation", { name: "Hashtags" }).waitFor();
+    expect(await page.getByText(/held/u).count()).toBe(0);
+    expect(await focused(tab(page, "Everything"))).toBe(true);
+  });
+
+  it("moves focus to All clear when it goes at a poll with focus at the foot of All clear", async () => {
+    const list = listOf(asksAt(evening).slice(0, 2));
+    const changing = await openChanging(list, evening);
+    view = changing.opened;
+    const { page } = view;
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+    await page.getByRole("button", { name: "Show them" }).focus();
+    // askme drops both held asks, so the list stays all clear.
+    changing.answerWith({ ...list, version: list.version + 1, asks: [] });
+    await page.clock.fastForward(pollMs);
+    await page.getByText(/held/u).waitFor({ state: "detached" });
+    expect(
+      await focused(page.getByRole("heading", { name: "All clear." })),
+    ).toBe(true);
+  });
+
+  it("moves focus to All clear when it goes at a poll with focus under the tabs, and the tabs go", async () => {
+    const list = listOf(asksAt(evening).slice(0, 2));
+    const changing = await openChanging(list, evening);
+    view = changing.opened;
+    const { page } = view;
+    await page.getByRole("button", { name: "Show them" }).click();
+    await page.getByRole("navigation", { name: "Hashtags" }).waitFor();
+    await page.getByRole("button", { name: "Hide them" }).focus();
+    // askme drops both held asks, so the list goes all clear.
+    changing.answerWith({ ...list, version: list.version + 1, asks: [] });
+    await page.clock.fastForward(pollMs);
+    await page
+      .getByRole("navigation", { name: "Hashtags" })
+      .waitFor({ state: "detached" });
+    expect(
+      await focused(page.getByRole("heading", { name: "All clear." })),
+    ).toBe(true);
+  });
+
   it("leaves focus where it is when the line comes back after going with focus", async () => {
     // Tuesday, a minute before work's hours open in London.
     const early = new Date("2026-10-13T06:59:00Z");
     const list = listOf(asksAt(early));
-    let answer = list;
-    view = await openPage(inject("pageUrl"), phone, {
-      session,
-      clock: early,
-      api: {
-        [pagePaths.asks]: new Answering((url) => answerPoll(url, answer)),
-      },
-    });
+    const changing = await openChanging(list, early);
+    view = changing.opened;
     const { page } = view;
     await page.getByRole("button", { name: "Show them" }).focus();
     await page.clock.fastForward(minute + pollMs);
@@ -299,13 +375,13 @@ describe("holding asks back until their hours", () => {
     await tab(page, "#shop").focus();
     // The family's hours become the evening's, so its ask is held.
     const evenings = { days: [...weekdays], from: "18:00", to: "23:00" };
-    answer = {
+    changing.answerWith({
       ...list,
       version: list.version + 1,
       hashtags: hashtags.map((hashtag) =>
         hashtag.name === "family" ? { ...hashtag, hours: [evenings] } : hashtag,
       ),
-    };
+    });
     await page.clock.fastForward(pollMs);
     await page.getByText("1 held until its hours").waitFor();
     expect(await focused(tab(page, "#shop"))).toBe(true);
