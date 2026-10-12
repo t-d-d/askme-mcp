@@ -21,6 +21,7 @@ import {
 } from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
 import { fakes, testModelKey } from "../test/fakes";
+import { runSorts } from "../test/sorts";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, lineText } from "../test/logs";
@@ -749,16 +750,6 @@ async function sorted(account: string) {
     })
     .parse(await response.json());
 }
-
-// Delivers the jobs queued so far, as Lambda would, then lets go of any
-// whose sort failed, so none comes round again in a later test.
-const runSorts = async () => {
-  const runs = await fakes.queue.deliver((event) =>
-    sorter(event, { awsRequestId: "sort-1" }),
-  );
-  fakes.queue.purge();
-  return runs;
-};
 
 // The account's id as the token check gives it, for the store.
 const ownerOf = (account: string) =>

@@ -7,9 +7,9 @@ import { callerOf, type AccountId } from "../service/src/identity";
 import { keys } from "../service/src/store/keys";
 import { askLifetimeDays, createStore } from "../service/src/store/store";
 import { askChangePaths, pagePaths } from "../shared/page-api";
-import { handler as sorter } from "../service/src/sorter";
 import { storedItems } from "../test/dynamodb";
 import { fakes } from "../test/fakes";
+import { runSorts } from "../test/sorts";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, origin, refusalOf } from "../test/mcp";
@@ -107,16 +107,6 @@ const changeAsk = async (sub: string, path: string, id: string) =>
       body: JSON.stringify({ id }),
     }),
   );
-
-// Delivers the jobs queued so far, as Lambda would, then lets go of any
-// whose sort failed, so none comes round again in a later test.
-const runSorts = async () => {
-  const runs = await fakes.queue.deliver((event) =>
-    sorter(event, { awsRequestId: "sort-1" }),
-  );
-  fakes.queue.purge();
-  return runs;
-};
 
 describe("fitness: every change raises the version (table-design.md)", () => {
   it("raises it on posting", async () => {

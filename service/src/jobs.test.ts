@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { callerOf, type AccountId } from "./identity";
-import { jobMessage, sortJobSchema } from "./jobs";
+import { createSortRequests, jobMessage, sortJobSchema } from "./jobs";
 
 const accountId = (sub: string): AccountId =>
   callerOf({
@@ -56,5 +56,18 @@ describe("a sort job's message", () => {
     );
     expect(groupId).toMatch(sqsId);
     expect(deduplicationId).toMatch(sqsId);
+  });
+});
+
+describe("queueing sorts", () => {
+  it("gives an ask it cannot make a job of as not taken, and does not throw", async () => {
+    // The ask's id fails the job's schema before any call is made, so no
+    // queue is reached.
+    const sorts = createSortRequests({
+      queueUrl: "http://127.0.0.1:9/000000000000/askme-sort.fifo",
+    });
+    expect(await sorts.queue(owner, ["not an id!"], savedAt)).toEqual([
+      { askId: "not an id!", errorClass: "ZodError" },
+    ]);
   });
 });

@@ -49,6 +49,11 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
     data !== undefined &&
     sortingState(listed.data?.asks ?? [], listed.polledAt).stopped > 0;
   const ready = changed || stopped;
+  // The note for a save of unchanged text stands until a poll that came
+  // back after the save finds asks stopped again, and the button wakes.
+  const resorted =
+    resorting &&
+    !(stopped && !save.isPending && listed.receivedAt > save.submittedAt);
 
   // Leaving with unsaved text asks first. The screens ask when Back or a
   // typed address changes the fragment, and the browser asks before the tab
@@ -166,7 +171,7 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
             error={save.error}
             changed={changed}
             stopped={stopped}
-            resorting={resorting}
+            resorting={resorted}
             readFailed={data?.readFailed ?? false}
             saved={data !== undefined && (data.text !== "" || save.isSuccess)}
             onRetry={saveText}

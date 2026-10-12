@@ -246,6 +246,35 @@ describe("the rules screen", () => {
     expect(await page.getByText("Reading your rules.").count()).toBe(0);
   });
 
+  it("drops the note that asks are being sorted again once a later poll finds some stopped", async () => {
+    // Stopped, then being sorted after the save, then stopped again.
+    let answer = behind(-60_000);
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      email,
+      timeZone: "Europe/London",
+      api: {
+        [pagePaths.rules]: rulesApi(saved, () => {
+          answer = behind(60_000);
+          return saved;
+        }),
+        [pagePaths.asks]: new Answering(() => answer),
+      },
+    });
+    const { page } = view;
+    const save = page.getByRole("button", { name: "Save rules" });
+    await expect.poll(() => save.isEnabled()).toBe(true);
+    await save.click();
+    await page.getByText("Sorting your asks again.").waitFor();
+    await expect.poll(() => save.isDisabled()).toBe(true);
+    answer = behind(-60_000);
+    await page
+      .getByText("Saved.", { exact: true })
+      .waitFor({ timeout: 15_000 });
+    expect(await save.isEnabled()).toBe(true);
+    expect(await page.getByText("Sorting your asks again.").count()).toBe(0);
+  });
+
   it("keeps Save rules neutral while asks are still being sorted", async () => {
     view = await openRules(saved, phone, "Europe/London", behind(60_000));
     const { page } = view;

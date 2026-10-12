@@ -193,9 +193,10 @@ const windowsOf = (hours: HashtagWindow[] | undefined) =>
 
 // The rules of an account that has never saved any: the example rules,
 // already read (PRD, "Rules"). Their hashtags are seen, so each keeps its
-// colour once the person saves their own. They are never written, so the
-// version stays at 0 until the first save, and they name no time zone, so
-// the page uses its own.
+// colour once the person saves their own. They are not stored until a save,
+// and a save of them unchanged stores them at version 0 (ADR 22), so the
+// version stays at 0 until the first save that reads rules. They name no
+// time zone until a save sends one, so the page uses its own.
 const firstRules: AccountRules = {
   text: exampleRules.text,
   hashtags: [...exampleRules.reading.hashtags],

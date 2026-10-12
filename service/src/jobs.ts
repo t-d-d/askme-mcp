@@ -92,22 +92,24 @@ export function createSortRequests(config: {
     askIds: readonly string[],
     at: Date,
   ): Promise<Untaken[]> {
-    const entries: SendMessageBatchRequestEntry[] = askIds.map(
-      (askId, place) => {
-        const { groupId, deduplicationId, text } = jobMessage(
-          account,
-          askId,
-          at,
-        );
-        return {
-          Id: String(place),
-          MessageBody: text,
-          MessageGroupId: groupId,
-          MessageDeduplicationId: deduplicationId,
-        };
-      },
-    );
     try {
+      // Built inside the try, so a job that fails its schema is reported as
+      // not taken, like any other, and queueing never throws.
+      const entries: SendMessageBatchRequestEntry[] = askIds.map(
+        (askId, place) => {
+          const { groupId, deduplicationId, text } = jobMessage(
+            account,
+            askId,
+            at,
+          );
+          return {
+            Id: String(place),
+            MessageBody: text,
+            MessageGroupId: groupId,
+            MessageDeduplicationId: deduplicationId,
+          };
+        },
+      );
       // The caller still waits for the call, because Lambda freezes work
       // left running after a handler returns. A call that hangs is cut
       // short instead, so posting is never held up by it either.
