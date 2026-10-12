@@ -404,6 +404,13 @@ type AskChangeKind = "opened" | "dismissed";
 // changes nothing and succeeds, and so does a change to an ask its agent
 // has closed meanwhile. An id the account has no ask for, another
 // account's included, is refused as not_found.
+//
+// Neither change has a rate limit, as the owner decided in issue #96. Only
+// an ask's first opening and its dismissal write, so these calls raise the
+// version at most twice for each ask, and the daily cap limits the asks.
+// Any other call reads at most two items and writes nothing. A counter would
+// add a write to every call, a refused one included, so a flood would cost
+// more with a limit than without one.
 async function changeAsk(
   kind: AskChangeKind,
   request: Request,
