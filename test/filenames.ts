@@ -8,19 +8,27 @@
 // disks may not match in every letter.
 import { extname } from "node:path";
 
-// A file's name as an import writes it, without its extension, and the name
-// of each folder above it, so web/src/Asks.tsx gives web, web/src and
-// web/src/Asks. A declaration file's ".d.ts" is all extension, so an import
-// of "./vite-env" names web/src/vite-env.d.ts.
+// The name of each folder above a file, its whole name as the disk holds it,
+// and its name as an import writes it, without its extension. So
+// web/src/Asks.tsx gives web, web/src, web/src/Asks.tsx and web/src/Asks. A
+// declaration file's ".d.ts" is all extension, so an import of "./vite-env"
+// names web/src/vite-env.d.ts.
 const declaration = /\.d\.[cm]?ts$/u;
 const withoutExtension = (path: string): string =>
   declaration.test(path)
     ? path.replace(declaration, "")
     : path.slice(0, path.length - extname(path).length);
 const names = (path: string): string[] => {
-  const parts = withoutExtension(path).split("/");
-  return parts.map((_, end) => parts.slice(0, end + 1).join("/"));
+  const parts = path.split("/");
+  return [
+    ...parts.map((_, end) => parts.slice(0, end + 1).join("/")),
+    withoutExtension(path),
+  ];
 };
+
+// A group of names as one string, whatever order its names come in.
+const together = (group: Iterable<string>): string =>
+  JSON.stringify([...group].sort());
 
 // Two spellings of é print alike, so a clash shows each character outside
 // ASCII as its code point: caf\u{e9}, then cafe\u{301}.
@@ -55,7 +63,20 @@ export function clashes(paths: readonly string[]): string[][] {
     const key = fold(name);
     spellings.set(key, (spellings.get(key) ?? new Set()).add(name));
   }
-  return [...spellings.values()]
-    .filter((spelt) => spelt.size > 1)
+  const groups = [...spellings.values()].filter((spelt) => spelt.size > 1);
+  // A.md beside a.md clashes twice, as A.md and a.md, and as A and a. A
+  // group of files whose names without their extensions make up another
+  // group says nothing that group does not, so it is left out.
+  const files = new Set(paths);
+  const listed = new Set(groups.map(together));
+  return groups
+    .filter((spelt) => {
+      const bare = together(
+        [...spelt].map((name) =>
+          files.has(name) ? withoutExtension(name) : name,
+        ),
+      );
+      return bare === together(spelt) || !listed.has(bare);
+    })
     .map((spelt) => [...spelt].map(visible));
 }
