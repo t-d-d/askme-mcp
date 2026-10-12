@@ -37,8 +37,9 @@ import { useOpening } from "./useOpening";
 // the last poll. The held line under the tabs counts the tab's held asks
 // and shows them, or hides them again. With every ask held and hidden the
 // list is all clear, and the line sits at its foot. Once nothing is held,
-// held asks are hidden again when they are next held. A former hashtag has
-// no hours, so it holds nothing back.
+// held asks are hidden again when they are next held. A held ask dismissed
+// here is still held until askme drops it, so Undo brings it back shown. A
+// former hashtag has no hours, so it holds nothing back.
 //
 // An ask the person has opened shows as opened, and one they have dismissed
 // leaves the list, before the next poll says so.
@@ -64,11 +65,27 @@ export function Asks({ card }: { card: string | null }) {
   // Every hashtag an ask may carry, the former ones included, for colour.
   const coloured =
     data === undefined ? [] : [...hashtags, ...data.formerHashtags];
-  const held = heldAsks(asks, hashtags, data?.timeZone, polledAt);
+  // Counted over the list as polled, so an ask dismissed here still counts
+  // until askme drops it, and Undo brings it back as it was.
+  const held = useMemo(
+    () =>
+      heldAsks(
+        data?.asks ?? [],
+        data?.hashtags ?? [],
+        data?.timeZone,
+        polledAt,
+      ),
+    [data, polledAt],
+  );
   if (showingHeld && held.size === 0) showHeld(false);
   const waiting = (list: readonly PageAsk[]) =>
     showingHeld ? list : list.filter(({ id }) => !held.has(id));
-  const allClear = data?.everAsked === true && waiting(asks).length === 0;
+  const open = card === null ? undefined : asks.find(({ id }) => id === card);
+  // An open card keeps the list's tab, though every ask behind it is held.
+  const allClear =
+    open === undefined &&
+    data?.everAsked === true &&
+    waiting(asks).length === 0;
   const tab =
     !allClear && hashtags.some(({ name }) => name === chosen)
       ? chosen
@@ -88,7 +105,6 @@ export function Asks({ card }: { card: string | null }) {
     />
   );
   const noted = note !== null;
-  const open = card === null ? undefined : asks.find(({ id }) => id === card);
 
   // The note stays in one place in the tree, whichever screen shows, so a
   // screen reader hears a note that comes as the card closes.

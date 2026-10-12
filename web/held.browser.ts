@@ -3,6 +3,7 @@
 // test knows which hours are open.
 import { afterEach, describe, expect, inject, it } from "vitest";
 import {
+  askChangePaths,
   pagePaths,
   type AsksAnswer,
   type Hashtag,
@@ -263,5 +264,50 @@ describe("holding asks back until their hours", () => {
       .filter({ hasText: "Merge the fix for checkout rounding?" })
       .waitFor();
     expect(await page.getByText(/held/u).count()).toBe(0);
+  });
+});
+
+describe("holding, with cards opened and dismissed", () => {
+  it("brings a dismissed held ask back shown with Undo, though it was the only one held", async () => {
+    // Only the export question is held.
+    const list = listOf(asksAt(evening).slice(1));
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: evening,
+      api: {
+        [pagePaths.asks]: new Answering((url) => answerPoll(url, list)),
+        [askChangePaths.dismissed]: new Status(204),
+      },
+    });
+    const { page } = view;
+    const held = "Which date format should the export use?";
+    await page.getByRole("button", { name: "Show them" }).click();
+    await page.getByText("Showing 1 held ask").waitFor();
+    await page.getByRole("link", { name: held }).click();
+    await page.getByRole("button", { name: "Dismiss" }).click();
+    await page.getByRole("button", { name: "Undo" }).click();
+    await page.getByText("Showing 1 held ask").waitFor();
+    expect(await shows(page, held)).toBe(true);
+  });
+
+  it("keeps the tab's colour on an open card when its hours close and every ask is held", async () => {
+    // Monday, two minutes before work's hours close in London.
+    const late = new Date("2026-10-12T16:58:00Z");
+    view = await open(listOf(asksAt(late).slice(0, 2)), late);
+    const { page, apiCalls } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#work").click();
+    await page
+      .getByRole("link", { name: "Merge the fix for checkout rounding?" })
+      .click();
+    const card = page
+      .locator("div[style]")
+      .filter({ has: page.getByRole("link", { name: "All asks" }) });
+    const before = await card.getAttribute("style");
+    const polls = apiCalls.length;
+    await page.clock.fastForward(3 * minute + pollMs);
+    await expect.poll(() => apiCalls.length).toBeGreaterThan(polls);
+    await page.clock.runFor(100);
+    expect(await card.getAttribute("style")).toBe(before);
   });
 });
