@@ -7,9 +7,12 @@ import { readRepoFile } from "../test/repo";
 
 const source = readRepoFile("evals/run.eval.ts");
 
-// What each mention of a field in the eval is given.
+// What each mention of a field in the eval is given: the whole value, up to
+// its comma or the end of its line, so `sortMaxTokens * 2` is not read as
+// `sortMaxTokens`. A field counts only at the start of a line, so a comment
+// that names one is not read as sending it.
 const given = (pattern: RegExp) =>
-  [...source.matchAll(pattern)].map(([, value]) => value);
+  [...source.matchAll(pattern)].map(([, value = ""]) => value.trim());
 
 // The names the eval imports from the sorter.
 const fromSorter = () =>
@@ -27,10 +30,10 @@ describe("the eval calls the model as the sorter does", () => {
   });
 
   it("sends the sorter's token cap, and no number of its own", () => {
-    expect(given(/\bmaxTokens:\s*([^,\s]+)/gu)).toEqual(["sortMaxTokens"]);
+    expect(given(/^ *maxTokens: *([^,\n]+)/gmu)).toEqual(["sortMaxTokens"]);
   });
 
   it("sends the sorter's timeout, and no number of its own", () => {
-    expect(given(/\btimeoutMs:\s*([^,\s]+)/gu)).toEqual(["sortTimeoutMs"]);
+    expect(given(/^ *timeoutMs: *([^,\n]+)/gmu)).toEqual(["sortTimeoutMs"]);
   });
 });
