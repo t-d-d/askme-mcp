@@ -26,11 +26,11 @@ How the styles are written in code is a separate decision: [ADR 14](adr/0014-sty
 | --- | --- | --- |
 | ![The rules screen](design/screens/rules.png) | ![Connect your agents](design/screens/connect.png) | ![The signed-out page](design/screens/signed-out.png) |
 
-The sorting line sits under the tabs, below the held and lapsed lines when they show. On All clear it sits at the foot, under them.
+The sorting line sits under the tabs, below the held and lapsed lines when they show. On All clear it sits at the foot, under them when they show.
 
-| While sorting | Sorting stopped | All clear, sorting stopped |
-| --- | --- | --- |
-| ![The list while asks are being sorted](design/screens/list-sorting.png) | ![The list when some asks couldn't be sorted](design/screens/list-stopped.png) | ![All clear when some held and lapsed asks couldn't be sorted](design/screens/all-clear-stopped.png) |
+| While sorting | Sorting stopped | All clear, sorting stopped | All clear, limit reached |
+| --- | --- | --- | --- |
+| ![The list while asks are being sorted](design/screens/list-sorting.png) | ![The list when some asks couldn't be sorted](design/screens/list-stopped.png) | ![All clear when some held and lapsed asks couldn't be sorted](design/screens/all-clear-stopped.png) | ![All clear with no asks open and the daily sorting limit reached](design/screens/all-clear-limit.png) |
 
 At desktop width the first ask sits on the left with its spoken text, and the rest of the list on the right.
 
