@@ -86,7 +86,7 @@ One family: Bricolage Grotesque, the variable font, served from the site itself.
 
 | Use | Size | Line height | Weight | Letter spacing |
 | --- | --- | --- | --- | --- |
-| "All clear." | 146px | 0.86 | 700 | -0.04em |
+| "All clear." | 146px, or less on a screen narrower than 354px | 0.86 | 700 | -0.04em |
 | Signed-out headline | 42px | 1.02 | 700 | -0.035em |
 | Top ask at desktop width | 48px | 1.04 | 650 | -0.03em |
 | Top ask, screen titles | 31px | 1.1 | 650 | -0.025em |
@@ -197,6 +197,7 @@ Swiping a row or the top card dismisses it. A note with "Undo" shows for a few s
 Shown when nothing is waiting and the account has had at least one ask.
 
 - "All clear." at 146px, on two lines.
+- On a screen narrower than 354px, "clear." does not fit at 146px inside the 22px side padding. There the headline shrinks with the screen, so "clear." keeps 22px on each side. At 320px wide it is 130px.
 - The headline and its two lines sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the held line. On a screen too short for that, 26px stays above them.
 - They stay where they are while a note shows at the foot of the screen. The held line moves up out of the note's way. On a screen too short for that, they move up too, or the screen scrolls further, until 26px stays between the last line and the held line or the note.
 - Both lines balance their line breaks, so a line that wraps never leaves a word or two on their own.

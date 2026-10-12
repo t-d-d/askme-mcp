@@ -18,7 +18,10 @@
   /* Type: one family, bundled with the site */
   --font: "Bricolage Grotesque Variable", sans-serif;
 
-  --size-all-clear: 146px;
+  /* "clear." is 2.1 times as wide as its type. On a screen too narrow for
+     it at 146px, the headline shrinks with the screen, so the word keeps
+     the side padding inside a card, with a pixel or two to spare. */
+  --size-all-clear: min(146px, (100vw - 2 * var(--space-inside-card)) / 2.12);
   --size-headline: 42px;
   --size-top-ask-wide: 48px;
   --size-title: 31px;
