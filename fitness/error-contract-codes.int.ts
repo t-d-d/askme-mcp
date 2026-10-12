@@ -2,6 +2,7 @@
 // store (ADR 11). error-contract.int.ts runs against a store that cannot be
 // reached, so these are kept apart from it.
 import { randomUUID } from "node:crypto";
+import { ProtocolErrorCode } from "@modelcontextprotocol/client";
 import {
   afterAll,
   afterEach,
@@ -24,7 +25,7 @@ import {
   type FakeIssuer,
   type TokenOptions,
 } from "../test/identity";
-import { connect, refusalOf } from "../test/mcp";
+import { connect, eras, refusalOf } from "../test/mcp";
 
 const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
@@ -177,6 +178,35 @@ describe("fitness: every code arrives as a tool result (error-contract.md)", () 
     20_000,
   );
 });
+
+// A tool name askme does not have is not a refusal. The SDK answers it with
+// the protocol error the MCP spec asks for, before any tool runs (ADR 19).
+describe.each(eras)(
+  "fitness: an unknown tool name gets the spec's protocol error (error-contract.md), %s handshake",
+  (era) => {
+    it("answers a call to a tool askme does not have with JSON-RPC error -32602, naming the tool", async () => {
+      const agent = await connect(handler, {
+        token: await issuer.token({ claims: { sub: newAccount() } }),
+        era,
+      });
+      try {
+        const error: unknown = await agent
+          .callTool({ name: "asks", arguments: ask })
+          .then(
+            (result) => result,
+            (thrown: unknown) => thrown,
+          );
+        const { code, message } = z
+          .object({ code: z.number(), message: z.string() })
+          .parse(error);
+        expect(code).toBe(ProtocolErrorCode.InvalidParams);
+        expect(message).toContain("Tool asks not found");
+      } finally {
+        await agent.close();
+      }
+    });
+  },
+);
 
 const posted = z.object({
   structuredContent: z.object({ id: z.string(), status: z.literal("posted") }),
