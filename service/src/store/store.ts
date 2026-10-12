@@ -148,14 +148,17 @@ const dedupeSchema = z.object({
 // The account's rules: the text the person wrote, the hashtags read from
 // it in the order the rules give them, and every hashtag the account has
 // had, in the order each first appeared, which keeps each one's colour
-// (docs/design.md). The version goes up on every save. When the last save
-// could not be read, the hashtags are the ones read before it.
+// (docs/design.md). The version goes up on every save, and savedAt says
+// when the last save was. When the last save could not be read, the
+// hashtags are the ones read before it.
 const rulesSchema = z.object({
   text: z.string(),
   hashtags: z.array(z.string()),
   seen: z.array(z.string()),
   version: z.number().int().nonnegative(),
   readFailed: z.boolean(),
+  // Absent until the rules are first saved.
+  savedAt: z.iso.datetime().optional(),
 });
 
 export type AccountRules = z.output<typeof rulesSchema>;
@@ -697,17 +700,14 @@ export function createStore(config: {
           ],
           version: current.version + 1,
           readFailed: hashtags === undefined,
+          savedAt: now.toISOString(),
         };
         try {
           await write(account, [
             {
               Put: {
                 TableName,
-                Item: {
-                  ...keys.rules(account),
-                  ...next,
-                  savedAt: now.toISOString(),
-                },
+                Item: { ...keys.rules(account), ...next },
                 ConditionExpression:
                   current.version === 0
                     ? "attribute_not_exists(sk)"

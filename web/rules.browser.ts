@@ -34,6 +34,7 @@ const list: AsksAnswer = {
   version: 1,
   everAsked: true,
   hashtags: [],
+  formerHashtags: [],
   asks: [],
 };
 
@@ -189,6 +190,15 @@ describe("the rules screen", () => {
     await page
       .getByText("Slow down a little. Try again in a few seconds.")
       .waitFor();
+  });
+
+  it("says that saving re-sorts every open ask", async () => {
+    view = await openRules(saved);
+    const read = view.page.getByRole("region", {
+      name: "askme read this from your rules",
+    });
+    await read.getByRole("listitem").first().waitFor();
+    expect(await read.innerText()).toContain("Saving re-sorts every open ask.");
   });
 
   it("says there are no hashtags when the box is empty", async () => {

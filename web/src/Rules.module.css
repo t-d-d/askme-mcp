@@ -168,6 +168,13 @@
   line-height: var(--leading-note);
 }
 
+.footnote {
+  margin: var(--space-10) 0 0;
+  color: var(--text-3);
+  font-size: var(--size-meta-small);
+  line-height: var(--leading-note);
+}
+
 @media (min-width: 768px) {
   .screen {
     width: 90%;

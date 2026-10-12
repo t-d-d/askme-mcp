@@ -15,8 +15,9 @@ export const askLimit: Readonly<{ asks: number; windowMinutes: number }> = {
   windowMinutes: 1,
 };
 
-// Saving the rules. Each save reads the rules with a model call, so a page
-// pressed over and over is slowed before it spends much.
+// Saving the rules. Each save reads the rules with a model call, and sorts
+// every open ask again with one each, so a page pressed over and over is
+// slowed before it spends much.
 export const rulesSaveLimit: Readonly<{
   saves: number;
   windowMinutes: number;

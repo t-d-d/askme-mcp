@@ -17,6 +17,10 @@ import { useAsks } from "./useAsks";
 // is all clear and the tabs go, so a hashtag that comes back, or the next
 // ask, finds the page on Everything. A hashtag's tab with nothing waiting is
 // all clear, under the tabs.
+//
+// After the rules change, an ask keeps its old hashtags until it is sorted
+// again. A hashtag the rules no longer name has no tab, but keeps its
+// colour on the asks that still carry it.
 export function Asks() {
   const { data, receivedAt, failed } = useAsks();
   const [chosen, choose] = useState<Tab>(everything);
@@ -43,7 +47,7 @@ export function Asks() {
         <main>
           <AskList
             asks={shown}
-            hashtags={data.hashtags}
+            hashtags={[...data.hashtags, ...data.formerHashtags]}
             tab={tab}
             now={receivedAt}
           />
