@@ -51,6 +51,26 @@ const completionSchema = z.object({
     .min(1),
 });
 
+// The key, unless the call's time limit runs out first. A key that cannot be
+// read is askme's own failure, not the model's, so it is thrown as it came.
+async function keyWithin(
+  key: Promise<string | undefined>,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  let timedOut: () => void = () => undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timedOut = () => {
+      reject(new ModelFailed("timeout"));
+    };
+    signal.addEventListener("abort", timedOut, { once: true });
+  });
+  try {
+    return await Promise.race([key, expired]);
+  } finally {
+    signal.removeEventListener("abort", timedOut);
+  }
+}
+
 export function createModel(config: {
   endpoint: string;
   model: string;
@@ -62,7 +82,10 @@ export function createModel(config: {
   const send = config.fetch ?? fetch;
   return {
     async reply(request) {
-      const key = await config.key();
+      // One time limit covers reading the key as well as the call, so a slow
+      // read leaves the call less time and never adds to it.
+      const signal = AbortSignal.timeout(request.timeoutMs);
+      const key = await keyWithin(config.key(), signal);
       let answer: Response;
       let body: unknown;
       try {
@@ -93,7 +116,7 @@ export function createModel(config: {
             },
             max_tokens: request.maxTokens,
           }),
-          signal: AbortSignal.timeout(request.timeoutMs),
+          signal,
         });
         if (!answer.ok)
           throw new ModelFailed(`status-${String(answer.status)}`);

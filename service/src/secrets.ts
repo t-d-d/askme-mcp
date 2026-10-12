@@ -6,6 +6,11 @@ import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { z } from "zod";
 import { awsClientConfig } from "./aws";
 
+// How long one read of the key may take in all, retries included. A read
+// that runs out is not kept, so the next call asks again rather than wait
+// on a Parameter Store that never answered.
+export const keyReadTimeoutMs = 2000;
+
 const answerSchema = z.object({
   Parameter: z.object({ Value: z.string().min(1) }),
 });
@@ -19,7 +24,10 @@ export function createKeyReader(config: {
   let key: Promise<string> | undefined;
   return () => {
     key ??= client
-      .send(new GetParameterCommand({ Name: parameter, WithDecryption: true }))
+      .send(
+        new GetParameterCommand({ Name: parameter, WithDecryption: true }),
+        { abortSignal: AbortSignal.timeout(keyReadTimeoutMs) },
+      )
       .then((answer) => answerSchema.parse(answer).Parameter.Value)
       .catch((error: unknown) => {
         // Read it again next time, rather than keep the failure.

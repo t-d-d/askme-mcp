@@ -14,6 +14,11 @@ export const sortJobSchema = z.strictObject({
   askId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/u),
 });
 
+// How long handing one ask on may take in all, retries included. Lambda
+// answers an asynchronous invoke at once, so this is reached only when its
+// API hangs, and then a post or a poll waits no longer than this.
+export const sortRequestTimeoutMs = 1000;
+
 export interface SortJob {
   accountId: AccountId;
   askId: string;
@@ -30,24 +35,23 @@ export function createSortRequests(config: {
   endpoint?: string | undefined;
 }): SortRequests {
   const { functionName, endpoint } = config;
-  // Lambda answers an asynchronous invoke at once. A call that hangs is cut
-  // short, so posting is never held up by it either.
-  const shared = {
-    maxAttempts: 2,
-    requestHandler: { connectionTimeout: 1000, requestTimeout: 2000 },
-  };
+  // A failure Lambda answers at once is tried again, within the time limit.
   const client = new LambdaClient({
-    ...shared,
+    maxAttempts: 2,
     ...awsClientConfig(endpoint),
   });
   return {
     async request(job) {
+      // The caller still waits for the call, because Lambda freezes work
+      // left running after a handler returns. A call that hangs is cut short
+      // instead, so posting is never held up by it either.
       const answer = await client.send(
         new InvokeCommand({
           FunctionName: functionName,
           InvocationType: "Event",
           Payload: new TextEncoder().encode(JSON.stringify(job)),
         }),
+        { abortSignal: AbortSignal.timeout(sortRequestTimeoutMs) },
       );
       if (answer.StatusCode !== 202) {
         throw new Error("Lambda did not queue the sort.");

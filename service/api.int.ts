@@ -13,6 +13,7 @@ import { connect, origin } from "../test/mcp";
 import { sortRetryAfterMs } from "./src/api";
 import { handler } from "./src/handler";
 import { callerOf } from "./src/identity";
+import { sortRequestTimeoutMs } from "./src/jobs";
 import { rulesSaveLimit } from "./src/rate";
 import { handler as sorter } from "./src/sorter";
 import { createStore } from "./src/store/store";
@@ -478,6 +479,20 @@ describe("sorting", () => {
       expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
     } finally {
       fakes.lambda.failing = false;
+    }
+  });
+
+  it(`posts the ask within ${String(sortRequestTimeoutMs)}ms when Lambda does not answer, and it waits unsorted`, async () => {
+    const account = newAccount();
+    fakes.lambda.hanging = true;
+    try {
+      const started = Date.now();
+      const id = await post(account);
+      // The rest of the post, on loopback, takes well under a second.
+      expect(Date.now() - started).toBeLessThan(sortRequestTimeoutMs + 1000);
+      expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
+    } finally {
+      fakes.lambda.hanging = false;
     }
   });
 

@@ -166,3 +166,80 @@ describe("a call to the model", () => {
     );
   });
 });
+
+describe("the model's key, read for a call", () => {
+  // A key that takes this long to read, as from a slow Parameter Store.
+  const keyAfter = (ms: number) => () =>
+    new Promise<string>((resolve) => {
+      setTimeout(() => {
+        resolve("k");
+      }, ms);
+    });
+
+  // A model that answers after this long, unless the call is cut short.
+  const answersAfter =
+    (ms: number) => async (_: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          resolve(completion('{"level":"high"}'));
+        }, ms);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          const reason: unknown = init.signal?.reason;
+          reject(reason instanceof Error ? reason : new Error("aborted"));
+        });
+      });
+
+  const failureOf = (call: Promise<unknown>) =>
+    call.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+  const reasonOf = (failure: unknown) =>
+    z.object({ reason: z.string() }).parse(failure).reason;
+
+  it("counts against the call's time limit, and nothing is sent once that has run out", async () => {
+    const fake = fakeFetch(() => completion('{"level":"high"}'));
+    const failure = await failureOf(
+      createModel({
+        endpoint: "http://127.0.0.1:9/api/v1",
+        model: "anthropic/claude-haiku-5.5",
+        key: keyAfter(200),
+        fetch: fake.fetch,
+      }).reply({ ...request, timeoutMs: 20 }),
+    );
+    expect(failure).toBeInstanceOf(ModelFailed);
+    expect(reasonOf(failure)).toBe("timeout");
+    expect(fake.sent).toEqual([]);
+  });
+
+  it("leaves the call only what is left of its time limit", async () => {
+    // Each alone fits in 300ms. Together they take 350ms.
+    const failure = await failureOf(
+      createModel({
+        endpoint: "http://127.0.0.1:9/api/v1",
+        model: "anthropic/claude-haiku-5.5",
+        key: keyAfter(200),
+        fetch: answersAfter(150),
+      }).reply({ ...request, timeoutMs: 300 }),
+    );
+    expect(failure).toBeInstanceOf(ModelFailed);
+    expect(reasonOf(failure)).toBe("timeout");
+  });
+
+  it("is askme's own failure when it cannot be read, thrown as it came", async () => {
+    const fake = fakeFetch(() => completion('{"level":"high"}'));
+    const unreadable = new Error("The key could not be read.");
+    const failure = await failureOf(
+      createModel({
+        endpoint: "http://127.0.0.1:9/api/v1",
+        model: "anthropic/claude-haiku-5.5",
+        key: () => Promise.reject(unreadable),
+        fetch: fake.fetch,
+      }).reply(request),
+    );
+    expect(failure).toBe(unreadable);
+    expect(fake.sent).toEqual([]);
+  });
+});
