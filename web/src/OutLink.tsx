@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { NewTabLink } from "./NewTabLink";
 
 // A link to where the work is, or back to the agent's session. It opens in
 // a new tab, so the list stays as it was, and tells the new page nothing
@@ -19,11 +20,9 @@ export function OutLink({
   children: ReactNode;
 }) {
   return (
-    <a
+    <NewTabLink
       className={className}
       href={href}
-      target="_blank"
-      rel="noopener noreferrer"
       aria-label={label}
       draggable={false}
       onClick={onFollowed}
@@ -32,6 +31,6 @@ export function OutLink({
       }}
     >
       {children}
-    </a>
+    </NewTabLink>
   );
 }

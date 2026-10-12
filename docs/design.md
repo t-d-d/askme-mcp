@@ -211,11 +211,11 @@ Swiping a row or the top card dismisses it. A note with "Undo" shows for a few s
 
 Shown when nothing is waiting and the account has had at least one ask.
 
-- "All clear." at 146px, on two lines.
+- "All clear." at 146px. On a screen narrower than 517px, such as a phone held upright, it takes two lines. On a screen 517px wide or more, such as at desktop width, it fits on one line inside the side padding.
 - On a screen narrower than 354px, "clear." does not fit at 146px inside the 22px side padding. There the headline shrinks with the screen, so "clear." keeps 22px on each side. At 320px wide it is 130px.
-- The headline and its two lines sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the held line. On a screen too short for that, 26px stays above them.
+- The headline and the two lines under it sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the held line. On a screen too short for that, 26px stays above them.
 - They stay where they are while a note shows at the foot of the screen. The held line moves up out of the note's way. On a screen too short for that, they move up too, or the screen scrolls further, until 26px stays between the last line and the held line or the note.
-- Both lines balance their line breaks, so a line that wraps never leaves a word or two on their own.
+- The two lines under the headline balance their line breaks, so a line that wraps never leaves a word or two on their own.
 - A fixed line in ink: "Your agents are getting on with it."
 - A second line in `--text-2` that changes on each visit:
   - Go and put the kettle on.
@@ -242,7 +242,7 @@ Shown when the account has never had an ask. A white card says "Your agents can 
 
 ### Connect your agents
 
-The server address in a read-only box with a Copy button, steps for Claude as a numbered list, a button for Cursor, and "Send sample asks" for someone with no agent yet. The demo notice is at the foot.
+The server address in a read-only box with a Copy button, steps for Claude as a numbered list, a button for Cursor, and "Send sample asks" for someone with no agent yet. The demo notice is at the foot. The header has only "All asks", which goes back. There is no Rules link.
 
 ### Signed out
 
@@ -255,11 +255,12 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 - A button names its action: "Save rules", "Show them", "Send sample asks".
 - An action keeps its name. The tab says Everything, so nothing else calls it "All".
 - Times are short: "Just now", "4 min", "1 h", "2 d". The top card says "Waiting 4 min".
+- A time of day is on the 24-hour clock, in the person's time zone, as in "It resets at 01:00".
 
 | Moment | Words |
 | --- | --- |
 | A poll fails | Not connected. Trying again. |
-| The daily cap is reached | You've reached today's limit. It resets tomorrow. |
+| The daily cap is reached | You've reached today's limit. It resets at 01:00. |
 | Too many presses | Slow down a little. Try again in a few seconds. |
 | Reading the rules fails | askme couldn't read your rules just now. Your text is saved. Try again. |
 | A dismissal fails | That didn't go through. The ask is back. |
@@ -281,6 +282,7 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 - When the list goes all clear while a tab has focus, the tabs go and focus moves to the "All clear." headline, so a screen reader says what happened. The headline is not a control, so it draws no outline, and Tab never stops on it.
 - When a card closes, the list is back where it was, and focus goes to the row or top card that opened the card. If that ask has left the list or moved in it, focus goes to the ask that came after it, or with none left, to the last ask in the list. If the ask that takes focus is not wholly on the screen, the page scrolls only as far as it takes to show it and its outline, clear of the note.
 - A button is a `button`, and a link is an `a` with an address. An icon-only control has a spoken label.
+- A link that opens a new tab says so to a screen reader. Its spoken name ends with "(opens in a new tab)", and the screen does not show these words. These links are the card's buttons to the work and to the agent's session, and "Add askme to Cursor".
 - Nothing you can tap is smaller than 44px by 44px.
 
 ## Later
