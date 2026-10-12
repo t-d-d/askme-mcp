@@ -236,7 +236,7 @@ Shown when the account has never had an ask. A white card says "Your agents can 
 
 ### Connect your agents
 
-The server address in a read-only box with a Copy button, steps for Claude as a numbered list, a button for Cursor, and "Send sample asks" for someone with no agent yet. The demo notice is at the foot.
+The server address in a read-only box with a Copy button, steps for Claude as a numbered list, a button for Cursor, and "Send sample asks" for someone with no agent yet. The demo notice is at the foot. The header has only "All asks", which goes back. There is no Rules link.
 
 ### Signed out
 
