@@ -14,6 +14,7 @@
     "test:live": "vitest run --project live",
     "conformance": "vitest run --project conformance",
     "eval": "NODE_USE_ENV_PROXY=1 vitest run --config evals/vitest.config.ts",
+    "eval:candidates": "EVAL_CANDIDATES=1 npm run eval",
     "build": "vite build web"
   },
   "devDependencies": {

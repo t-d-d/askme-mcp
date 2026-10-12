@@ -3,7 +3,7 @@
 // describing the service's call. The eval runs only with `npm run eval`, so
 // this reads its source.
 import { describe, expect, it } from "vitest";
-import { readRepoFile } from "../test/repo";
+import { readRepoFile, scripts } from "../test/repo";
 
 const source = readRepoFile("evals/run.eval.ts");
 
@@ -35,5 +35,17 @@ describe("the eval calls the model as the sorter does", () => {
 
   it("sends the sorter's timeout, and no number of its own", () => {
     expect(given(/^ *timeoutMs: *([^,\n]+)/gmu)).toEqual(["sortTimeoutMs"]);
+  });
+});
+
+describe("the eval across the candidates", () => {
+  it("has a command of its own, which runs the eval with every candidate", () => {
+    expect(scripts()["eval:candidates"]).toBe("EVAL_CANDIDATES=1 npm run eval");
+  });
+
+  it("reads the candidates from their list", () => {
+    expect(source).toMatch(
+      /^import \{ candidates \} from "\.\/candidates";$/mu,
+    );
   });
 });
