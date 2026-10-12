@@ -11,9 +11,9 @@ that lags behind the table.
 - Sort keys: META, RULES, OPEN#<id>, CLOSED#<id>,
   DEDUPE#<fingerprint>, USAGE#<date>, and one prefix for each rate
   counter, followed by its window: POLL#<window> for polls,
-  RATE#<window> for asks, SAVE#<window> for saving the rules and
+  RATE#<window> for asks, SAVE#<window> for saving the rules,
   SORT#<window> for asking again for an ask not yet sorted with the
-  rules in force.
+  rules in force, and MODEL#<window> for model calls.
 - The account id in a key comes from the verified token only.
 - One store module is the only code that reads or writes the table.
 - Every change to asks or rules goes through one function, which
@@ -46,4 +46,4 @@ that lags behind the table.
 Judgment: A need to read across accounts is a new ADR, not an
 index.
 
-History: [ADR 13](../adr/0013-table-design.md), [ADR 18](../adr/0018-rate-counter.md)
+History: [ADR 13](../adr/0013-table-design.md), [ADR 18](../adr/0018-rate-counter.md), [ADR 21](../adr/0021-model-call-cap.md)
