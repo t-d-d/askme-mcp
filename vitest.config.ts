@@ -3,7 +3,8 @@ import { tierPattern, tiers } from "./test/tiers.ts";
 
 // What each tier starts before its tests: the browser tier serves the built
 // page, and the integration tier runs a local DynamoDB (ADR 9), and for
-// each test file the stand-ins for the model, Parameter Store and Lambda.
+// each test file the stand-ins for the model, Parameter Store and the sort
+// queue.
 const globalSetup: Record<string, string[]> = {
   browser: ["test/page-server.ts"],
   int: ["test/dynamodb.ts"],

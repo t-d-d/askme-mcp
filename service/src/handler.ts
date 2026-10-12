@@ -80,7 +80,7 @@ interface Services {
   // Checks the page's session token.
   verifySession: (token: string) => Promise<AccountId>;
   store: Store;
-  // Hands a stored ask to the sort function.
+  // Queues a stored ask's sort.
   sorts: SortRequests;
   // Reads the rules when they are saved.
   model: Model;
@@ -102,8 +102,8 @@ function ready(): Services {
         endpoint: env.databaseEndpoint,
       }),
       sorts: createSortRequests({
-        functionName: env.sortFunction,
-        endpoint: env.lambdaEndpoint,
+        queueUrl: env.sortQueue,
+        endpoint: env.queueEndpoint,
       }),
       model: createModel({
         endpoint: env.modelEndpoint,

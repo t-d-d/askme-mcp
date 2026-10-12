@@ -26,6 +26,12 @@ How the styles are written in code is a separate decision: [ADR 14](adr/0014-sty
 | --- | --- | --- |
 | ![The rules screen](design/screens/rules.png) | ![Connect your agents](design/screens/connect.png) | ![The signed-out page](design/screens/signed-out.png) |
 
+The sorting line sits under the tabs, below the held and lapsed lines when they show.
+
+| While sorting | Sorting stopped |
+| --- | --- |
+| ![The list while asks are being sorted](design/screens/list-sorting.png) | ![The list when some asks couldn't be sorted](design/screens/list-stopped.png) |
+
 At desktop width the first ask sits on the left with its spoken text, and the rest of the list on the right.
 
 ![The list at desktop width](design/screens/list-desktop.png)

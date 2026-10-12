@@ -61,18 +61,36 @@ const list: AsksAnswer = {
   asks: [],
 };
 
+// The open list with one ask behind the rules, whose sorting stops or
+// stopped a while from now.
+const behind = (offset: number): AsksAnswer => ({
+  ...list,
+  asks: [
+    {
+      id: "a",
+      summary: "Renew the shop's domain?",
+      spokenDetail: "The domain lapses on Friday.",
+      postedAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+      opened: false,
+      sortingUntil: new Date(Date.now() + offset).toISOString(),
+      sort: null,
+    },
+  ],
+});
+
 // The rules screen, with the rules answered by the given answer and saved
-// by the given one.
+// by the given one, and the open asks by the list given.
 async function openRules(
   rules: RulesAnswer | Answering,
   viewport = phone,
   timeZone = "Europe/London",
+  asks: AsksAnswer = list,
 ): Promise<OpenPage> {
   const view = await openPage(`${inject("pageUrl")}#rules`, viewport, {
     session,
     email,
     timeZone,
-    api: { [pagePaths.rules]: rules, [pagePaths.asks]: list },
+    api: { [pagePaths.rules]: rules, [pagePaths.asks]: asks },
   });
   await view.page
     .getByRole("heading", { name: "Your rules", exact: true })
@@ -196,6 +214,80 @@ describe("the rules screen", () => {
     ).toBe(await computedColour(page, "var(--ink)"));
   });
 
+  it("makes Save rules ink while asks couldn't be sorted, and saves the same text, saying it sorts them again", async () => {
+    const bodies: (string | null)[] = [];
+    view = await openRules(
+      rulesApi(saved, async (body) => {
+        bodies.push(body);
+        await sleep(500);
+        return saved;
+      }),
+      phone,
+      "Europe/London",
+      behind(-60_000),
+    );
+    const { page } = view;
+    const save = page.getByRole("button", { name: "Save rules" });
+    await expect.poll(() => save.isEnabled()).toBe(true);
+    expect(
+      await save.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      ),
+    ).toBe(await computedColour(page, "var(--ink)"));
+    // The button is awake, so the note does not say it waits for a change.
+    expect(await page.getByText("Saved.", { exact: true }).isVisible()).toBe(
+      true,
+    );
+    await save.click();
+    await page.getByText("Sorting your asks again.").waitFor();
+    expect(bodies).toEqual([
+      JSON.stringify({ text, timeZone: await browserZone(page) }),
+    ]);
+    expect(await page.getByText("Reading your rules.").count()).toBe(0);
+  });
+
+  it("drops the note that asks are being sorted again once a later poll finds some stopped", async () => {
+    // Stopped, then being sorted after the save, then stopped again.
+    let answer = behind(-60_000);
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      email,
+      timeZone: "Europe/London",
+      api: {
+        [pagePaths.rules]: rulesApi(saved, () => {
+          answer = behind(60_000);
+          return saved;
+        }),
+        [pagePaths.asks]: new Answering(() => answer),
+      },
+    });
+    const { page } = view;
+    const save = page.getByRole("button", { name: "Save rules" });
+    await expect.poll(() => save.isEnabled()).toBe(true);
+    await save.click();
+    await page.getByText("Sorting your asks again.").waitFor();
+    await expect.poll(() => save.isDisabled()).toBe(true);
+    answer = behind(-60_000);
+    await page
+      .getByText("Saved.", { exact: true })
+      .waitFor({ timeout: 15_000 });
+    expect(await save.isEnabled()).toBe(true);
+    expect(await page.getByText("Sorting your asks again.").count()).toBe(0);
+  });
+
+  it("keeps Save rules neutral while asks are still being sorted", async () => {
+    view = await openRules(saved, phone, "Europe/London", behind(60_000));
+    const { page } = view;
+    await page.getByText("Saved.", { exact: false }).waitFor();
+    // The list has loaded, and says the ask is still being sorted.
+    await expect
+      .poll(() => view?.apiCalls.some(({ path }) => path === pagePaths.asks))
+      .toBe(true);
+    expect(
+      await page.getByRole("button", { name: "Save rules" }).isDisabled(),
+    ).toBe(true);
+  });
+
   it("saves the text, says it is reading the rules, then shows the hashtags read", async () => {
     const bodies: (string | null)[] = [];
     view = await openRules(
@@ -274,16 +366,18 @@ describe("the rules screen", () => {
       .waitFor();
   });
 
-  it("says that saving re-sorts every open ask", async () => {
+  it("says that saving changed rules re-sorts every open ask, and saving them unchanged sorts again any that couldn't be sorted", async () => {
     view = await openRules(saved);
     const read = view.page.getByRole("region", {
       name: "askme read this from your rules",
     });
     await read.getByRole("listitem").first().waitFor();
-    expect(await read.innerText()).toContain("Saving re-sorts every open ask.");
+    expect(await read.innerText()).toContain(
+      "Saving changed rules re-sorts every open ask, and saving them unchanged sorts again any that couldn't be sorted.",
+    );
   });
 
-  it("says that saving re-sorts every open ask while the rules load", async () => {
+  it("says what saving sorts while the rules load", async () => {
     view = await openPage(`${inject("pageUrl")}#rules`, phone, {
       session,
       api: {
@@ -299,7 +393,11 @@ describe("the rules screen", () => {
       .getByRole("heading", { name: "Your rules", exact: true })
       .waitFor();
     expect(
-      await page.getByText("Saving re-sorts every open ask.").isVisible(),
+      await page
+        .getByText("Saving changed rules re-sorts every open ask", {
+          exact: false,
+        })
+        .isVisible(),
     ).toBe(true);
     expect(await page.getByText("Hours use").count()).toBe(0);
   });
@@ -484,7 +582,9 @@ describe("signing out", () => {
     expect(await account.isVisible()).toBe(true);
     expect(await signOut.isVisible()).toBe(true);
     const footnote = await page
-      .getByText("Saving re-sorts every open ask.")
+      .getByText("Saving changed rules re-sorts every open ask", {
+        exact: false,
+      })
       .boundingBox();
     const [named, button] = await Promise.all([
       account.boundingBox(),

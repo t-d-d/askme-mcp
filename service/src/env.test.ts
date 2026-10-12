@@ -4,7 +4,8 @@ import { readEnv } from "./env";
 const issuer = "https://example.clerk.accounts.dev";
 const table = {
   TABLE_NAME: "askme-prod-Table-ABC123",
-  SORT_FUNCTION: "askme-prod-sort",
+  SORT_QUEUE:
+    "https://sqs.us-east-1.amazonaws.com/123456789012/askme-sort.fifo",
   MODEL_KEY_PARAMETER: "/askme/openrouter/api-key",
 };
 
@@ -13,7 +14,7 @@ describe("the environment", () => {
     expect(readEnv({ CLERK_ISSUER: `${issuer}/`, ...table })).toEqual({
       clerkIssuer: issuer,
       tableName: table.TABLE_NAME,
-      sortFunction: table.SORT_FUNCTION,
+      sortQueue: table.SORT_QUEUE,
       modelKeyParameter: table.MODEL_KEY_PARAMETER,
       modelEndpoint: "https://openrouter.ai/api/v1",
     });
@@ -77,35 +78,54 @@ describe("the environment", () => {
     }
   });
 
-  it("refuses a missing sort function or key parameter, naming the variable", () => {
-    for (const name of ["SORT_FUNCTION", "MODEL_KEY_PARAMETER"] as const) {
+  it("refuses a missing sort queue or key parameter, naming the variable", () => {
+    for (const name of ["SORT_QUEUE", "MODEL_KEY_PARAMETER"] as const) {
       const source: Record<string, string> = { CLERK_ISSUER: issuer, ...table };
       source[name] = "";
       expect(() => readEnv(source), name).toThrow(new RegExp(name, "u"));
     }
   });
 
-  it("reads the model, parameter and function endpoints on loopback, for the fakes in tests", () => {
+  it("reads the sort queue's address on loopback over plain http, for the fake queue in tests, and only there", () => {
+    expect(
+      readEnv({
+        CLERK_ISSUER: issuer,
+        ...table,
+        SORT_QUEUE: "http://127.0.0.1:4500/000000000000/askme-sort.fifo",
+      }).sortQueue,
+    ).toBe("http://127.0.0.1:4500/000000000000/askme-sort.fifo");
+    for (const value of [
+      "http://sqs.us-east-1.amazonaws.com/123456789012/askme-sort.fifo",
+      "askme-sort.fifo",
+    ]) {
+      expect(
+        () => readEnv({ CLERK_ISSUER: issuer, ...table, SORT_QUEUE: value }),
+        value,
+      ).toThrow(/SORT_QUEUE/u);
+    }
+  });
+
+  it("reads the model, parameter and queue endpoints on loopback, for the fakes in tests", () => {
     expect(
       readEnv({
         CLERK_ISSUER: issuer,
         ...table,
         MODEL_ENDPOINT: "http://127.0.0.1:4200/api/v1",
         SSM_ENDPOINT: "http://127.0.0.1:4300",
-        LAMBDA_ENDPOINT: "http://localhost:4400",
+        SQS_ENDPOINT: "http://localhost:4400",
       }),
     ).toMatchObject({
       modelEndpoint: "http://127.0.0.1:4200/api/v1",
       ssmEndpoint: "http://127.0.0.1:4300",
-      lambdaEndpoint: "http://localhost:4400",
+      queueEndpoint: "http://localhost:4400",
     });
   });
 
-  it("refuses a model, parameter or function endpoint anywhere but loopback", () => {
+  it("refuses a model, parameter or queue endpoint anywhere but loopback", () => {
     for (const name of [
       "MODEL_ENDPOINT",
       "SSM_ENDPOINT",
-      "LAMBDA_ENDPOINT",
+      "SQS_ENDPOINT",
     ] as const) {
       for (const value of ["https://openrouter.ai/api/v1", "not a url"]) {
         expect(

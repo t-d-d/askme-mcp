@@ -18,7 +18,7 @@ import {
 import { pageRefusal } from "./errors";
 import { authorizationOf, jsonBody } from "./http";
 import { AgentToken, TokenRejected, type AccountId } from "./identity";
-import type { SortRequests } from "./jobs";
+import { queueSorts, sortingMs, type SortRequests } from "./jobs";
 import { errorClass, type Logger } from "./log";
 import type { Model } from "./model";
 import { askLimit, pollLimit, rulesSaveLimit } from "./rate";
@@ -38,22 +38,13 @@ export interface PageContext {
   origin: string;
   verify: (token: string) => Promise<AccountId>;
   store: Store;
-  // Hands asks to the sort function: every open ask when the rules are
-  // saved, and any a poll finds still waiting for a sort.
+  // Queues asks' sorts: the open asks when the rules are saved, and each
+  // sample ask. A poll queues none (ADR 22).
   sorts: SortRequests;
   // Reads the rules when they are saved.
   model: Model;
   log: Logger;
 }
-
-// How long after an ask was last handed to the sort function it may wait
-// for a sort before a poll asks again. A sort takes seconds, so this is
-// long enough that a poll does not ask again while the first sort is still
-// running.
-export const sortRetryAfterMs = 60_000;
-
-// The most asks one poll asks again for, so a poll is never held up long.
-const sortRetriesPerPoll = 3;
 
 const noStore = { "cache-control": "no-store" };
 
@@ -168,85 +159,48 @@ const rulesView = (rules: AccountRules) =>
     timeZone: rules.timeZone,
   });
 
-// Hands one ask to the sort function, and says whether Lambda took it. When
-// it did not, the ask keeps what it has, unsorted or its old sort, and a
-// later poll asks again.
-async function handOn(
-  account: AccountId,
-  askId: string,
-  { sorts, log }: PageContext,
-): Promise<boolean> {
-  try {
-    await sorts.request({ accountId: account, askId });
-    return true;
-  } catch (error) {
-    log.warn("sort-request-failed", {
-      accountId: account,
-      askId,
-      errorClass: errorClass(error),
-    });
-    return false;
-  }
-}
+// Whether an ask is behind the rules in force: not sorted yet, or sorted
+// with rules saved before.
+const behind = (ask: StoredAsk, rules: AccountRules) =>
+  ask.sort === undefined || ask.sort.rulesVersion < rules.version;
 
-// When an ask was last handed to the sort function: when it was stored, or
-// when the rules were last saved, which hands on every open ask. Not when
-// it was posted: a replacing ask keeps the posting time of the one it
-// replaces, so it would be asked for again while its first sort runs.
-const handedOnAt = (ask: StoredAsk, { savedAt }: AccountRules) =>
-  Math.max(
+// When an ask behind the rules turns from sorting to stopped (ADR 22): half
+// an hour after the later of when it was stored and the last save, either
+// of which queued it. Not when it was posted: a replacing ask keeps the
+// posting time of the ask it replaces. Nothing is written when the time
+// passes, so the page works the state out from it. An ask sorted with the
+// rules in force has none.
+function sortingUntil(ask: StoredAsk, rules: AccountRules) {
+  if (!behind(ask, rules)) return undefined;
+  const queued = Math.max(
     Date.parse(ask.storedAt),
-    savedAt === undefined ? 0 : Date.parse(savedAt),
+    rules.savedAt === undefined ? 0 : Date.parse(rules.savedAt),
   );
-
-// Asks the sort function again for asks still not sorted with the rules in
-// force a while after they were last handed to it, as when sorting failed
-// (PRD, "Back end"). That is an ask not sorted yet, or one sorted with
-// rules saved before. Each one counts against the account's limit, so
-// polling cannot spend the model's budget.
-async function sortAgain(
-  account: AccountId,
-  asks: StoredAsk[],
-  rules: AccountRules,
-  now: Date,
-  context: PageContext,
-): Promise<void> {
-  const { store, log } = context;
-  const waiting = asks
-    .filter(
-      (ask) =>
-        (ask.sort === undefined || ask.sort.rulesVersion < rules.version) &&
-        now.getTime() - handedOnAt(ask, rules) >= sortRetryAfterMs,
-    )
-    .slice(0, sortRetriesPerPoll);
-  // Asked for together, so a slow Lambda holds the poll up once, not once
-  // for each ask.
-  await Promise.all(
-    waiting.map(async (ask) => {
-      const counted = await store.countSortRetry(account, now);
-      if (!counted.counted) return;
-      if (await handOn(account, ask.id, context)) {
-        log.info("sort-retried", { accountId: account, askId: ask.id });
-      }
-    }),
-  );
+  return new Date(queued + sortingMs).toISOString();
 }
 
-// Hands every open ask to the sort function, to be sorted with the rules
-// just saved (PRD, "Rules"). Each keeps its old sort, and so its old
-// hashtags, until the new one is stored. A failure here is askme's own,
-// such as the table failing, so it alerts. The rules are saved all the
-// same, and a poll asks again for the asks a while later.
-async function sortAllAgain(
+// Queues a sort of the open asks after the rules are saved (PRD, "Rules"):
+// every one when the rules were read again, or only the asks behind them
+// when the text was saved unchanged. Each ask keeps its old sort, and so
+// its old hashtags, until the new one is stored. A failure here is askme's
+// own, such as the table failing, so it alerts. The rules are saved all the
+// same, and the asks show as stopped once their time is up.
+async function sortAfterSave(
   account: AccountId,
+  rules: AccountRules,
+  every: boolean,
   now: Date,
   context: PageContext,
 ): Promise<void> {
   try {
     const { asks } = await context.store.openAsks(account, now);
-    // Handed on together, so the save waits for Lambda once, not once for
-    // each ask.
-    await Promise.all(asks.map((ask) => handOn(account, ask.id, context)));
+    const queued = every ? asks : asks.filter((ask) => behind(ask, rules));
+    await queueSorts(
+      context,
+      account,
+      queued.map(({ id }) => id),
+      now,
+    );
   } catch (error) {
     context.log.error("request-failed", { errorClass: errorClass(error) });
   }
@@ -254,7 +208,9 @@ async function sortAllAgain(
 
 // The account's open asks, unless nothing changed since the version the
 // poll carried. A poll with a bad version is refused before the table is
-// touched. Every other poll counts against the account's limit first.
+// touched. Every other poll counts against the account's limit first. A
+// poll only reads: it never queues a sort (ADR 22). It gives each ask behind
+// the rules the time it turns stopped instead.
 async function poll(
   request: Request,
   account: AccountId,
@@ -281,7 +237,6 @@ async function poll(
   if ("unchanged" in found) return answer(asksUnchanged.parse(found));
   const { version, everAsked, asks } = found;
   const rules = await store.rules(account);
-  await sortAgain(account, asks, rules, now, context);
   return answer(
     asksAnswer.parse({
       version,
@@ -298,6 +253,7 @@ async function poll(
         postedAt: ask.postedAt,
         lapsesAt: ask.lapsesAt,
         opened: ask.openedAt !== undefined,
+        sortingUntil: sortingUntil(ask, rules),
         sort:
           ask.sort === undefined
             ? null
@@ -316,6 +272,12 @@ async function poll(
 // read them, the text is still saved and the old hashtags and hours stay,
 // and the answer says so, so the page can offer to try again. Either way,
 // every open ask is then sorted again.
+//
+// A save of the text the rules already hold, whose last reading succeeded,
+// reads nothing and leaves the rules version alone (ADR 22). It records
+// when it was made, and queues only the asks still behind the rules, such
+// as those whose sorting stopped. "Try again" after a failed reading sends
+// the same text, and reads it again, as any other save does.
 async function saveRules(
   request: Request,
   account: AccountId,
@@ -337,6 +299,12 @@ async function saveRules(
     return rulesSaveRefusal(counted.secondsLeft);
   }
   const { text, timeZone } = input.data;
+  const resaved = await store.resaveRules(account, { text, timeZone }, now);
+  if (resaved !== undefined) {
+    log.info("rules-resaved", { accountId: account });
+    await sortAfterSave(account, resaved, false, now, context);
+    return answer(rulesView(resaved));
+  }
   let read: Awaited<ReturnType<typeof readRules>>;
   try {
     read = await readRules(text, model);
@@ -360,12 +328,12 @@ async function saveRules(
     now,
   );
   if (!("failed" in read)) log.info("rules-saved", { accountId: account });
-  await sortAllAgain(account, now, context);
+  await sortAfterSave(account, saved, true, now, context);
   return answer(rulesView(saved));
 }
 
 // Posts one sample ask from each of three areas, as an agent would, and
-// hands each to the sort function, so sorting can be watched with no agent
+// queues each one's sort, so sorting can be watched with no agent
 // connected (PRD, "Web page"). Each counts against the account's rate and
 // its daily cap. A limit reached part way keeps the asks posted before it,
 // and the refusal says which limit it was.
@@ -374,13 +342,12 @@ async function postSamples(
   context: PageContext,
 ): Promise<Response> {
   const { store, log } = context;
-  const { posted, refused } = await sendSamples(account, store, new Date());
+  const now = new Date();
+  const { posted, refused } = await sendSamples(account, store, now);
   for (const askId of posted) {
     log.info("sample-posted", { accountId: account, askId });
   }
-  // Handed on together, so the press waits for Lambda once, not once for
-  // each ask.
-  await Promise.all(posted.map((askId) => handOn(account, askId, context)));
+  await queueSorts(context, account, posted, now);
   if (refused === undefined) {
     if (posted.length > 0) {
       return new Response(null, { status: 204, headers: noStore });

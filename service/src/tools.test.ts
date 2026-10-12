@@ -33,15 +33,15 @@ const store: Store = {
   countAsk: unused,
   rules: unused,
   saveRules: unused,
+  resaveRules: unused,
   countRulesSave: unused,
   askToSort: unused,
   recordSort: unused,
-  countSortRetry: unused,
   close: () => undefined,
 };
 
-// A sorter this tool never reaches.
-const sorts: SortRequests = { request: unused };
+// A queue this tool never reaches.
+const sorts: SortRequests = { queue: unused };
 
 // A tool whose answer passes its type but not its schema, as a bug in a
 // later store read might give.

@@ -20,12 +20,19 @@ const definition = () =>
     }),
   );
 
+// The events that give a function a route, on an HTTP API or a REST API. The
+// sort function's queue trigger is not one: only askme can send to it
+// (sort-queue.md).
+type Fn = ReturnType<typeof definition>["functions"][string];
+const routeEvents = (fn: Fn) =>
+  (fn.events ?? []).filter((event) => "httpApi" in event || "http" in event);
+
 describe("fitness: every route checks a token (identity.md)", () => {
   // The integration tier calls each route the service knows. A route
   // declared here but unknown to the service would never be called there.
   it("deploys exactly the routes the service knows", () => {
     const deployed = Object.values(definition().functions).flatMap((fn) =>
-      (fn.events ?? []).map((event) => event.httpApi),
+      routeEvents(fn).map((event) => event.httpApi),
     );
     expect(deployed.every((route) => typeof route === "string")).toBe(true);
     expect([...deployed].sort()).toEqual(Object.keys(routes).sort());
@@ -33,7 +40,7 @@ describe("fitness: every route checks a token (identity.md)", () => {
 
   it("sends every route to the one handler that checks tokens", () => {
     const handlers = Object.values(definition().functions)
-      .filter((fn) => (fn.events ?? []).length > 0)
+      .filter((fn) => routeEvents(fn).length > 0)
       .map((fn) => fn.handler);
     expect(handlers).toEqual(["service/src/handler.handler"]);
   });

@@ -4,12 +4,7 @@ import { afterAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 import { storedItems } from "../test/dynamodb";
 import { callerOf, type AccountId } from "./src/identity";
-import {
-  askLimit,
-  pollLimit,
-  rulesSaveLimit,
-  sortRetryLimit,
-} from "./src/rate";
+import { askLimit, pollLimit, rulesSaveLimit } from "./src/rate";
 import { exampleRules, type HashtagWindow } from "./src/rules";
 import { keys } from "./src/store/keys";
 import {
@@ -973,6 +968,90 @@ describe("the rules", () => {
   });
 });
 
+describe("a save of unchanged rules", () => {
+  const before = new Date("2026-10-11T09:30:00.000Z");
+  const now = new Date("2026-10-11T10:00:00.000Z");
+
+  it("records when it was made and the time zone, and leaves the rules version alone", async () => {
+    const owner = account();
+    const saved = await store.saveRules(
+      owner,
+      { text: "#work first.", timeZone: "Asia/Tokyo", hashtags: ["work"] },
+      before,
+    );
+    const resaved = await store.resaveRules(
+      owner,
+      { text: "#work first.", timeZone: "Europe/London" },
+      now,
+    );
+    expect(resaved).toEqual({
+      ...saved,
+      savedAt: now.toISOString(),
+      timeZone: "Europe/London",
+    });
+    expect(await store.rules(owner)).toEqual(resaved);
+    // The account's version still rises, so the page learns of the save.
+    expect(await versionOf(owner)).toBe(2);
+  });
+
+  it("keeps the time zone saved before when it gives none", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      { text: "#work first.", timeZone: "Asia/Tokyo", hashtags: ["work"] },
+      before,
+    );
+    const resaved = await store.resaveRules(
+      owner,
+      { text: "#work first." },
+      now,
+    );
+    expect(resaved?.timeZone).toBe("Asia/Tokyo");
+  });
+
+  it("records a save of the example rules for an account that never saved any, and a later save still lands", async () => {
+    const owner = account();
+    const resaved = await store.resaveRules(
+      owner,
+      { text: exampleRules.text },
+      now,
+    );
+    expect(resaved).toMatchObject({
+      text: exampleRules.text,
+      version: 0,
+      savedAt: now.toISOString(),
+    });
+    expect(await store.rules(owner)).toEqual(resaved);
+    const saved = await store.saveRules(
+      owner,
+      { text: "#home first.", hashtags: ["home"] },
+      now,
+    );
+    expect(saved.version).toBe(1);
+    expect(saved.seen).toEqual(["work", "shop", "family", "home"]);
+  });
+
+  it("saves nothing when the rules no longer hold that text, or their last reading failed", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      { text: "#work first.", hashtags: ["work"] },
+      before,
+    );
+    const items = await storedItems(endpoint, tableName, owner);
+    expect(
+      await store.resaveRules(owner, { text: "#home first." }, now),
+    ).toBeUndefined();
+    await store.saveRules(owner, { text: "#work first." }, before);
+    const failed = await storedItems(endpoint, tableName, owner);
+    expect(failed).not.toEqual(items);
+    expect(
+      await store.resaveRules(owner, { text: "#work first." }, now),
+    ).toBeUndefined();
+    expect(await storedItems(endpoint, tableName, owner)).toEqual(failed);
+  });
+});
+
 describe("a sort result", () => {
   const now = new Date("2026-10-11T09:30:00.000Z");
   const sort = {
@@ -1067,12 +1146,6 @@ describe.each([
     rulesSaveLimit.saves,
     "countRulesSave",
     "rulesSaveCount",
-  ],
-  [
-    "retrying a sort",
-    sortRetryLimit.retries,
-    "countSortRetry",
-    "sortRetryCount",
   ],
 ] as const)("the rate counter for %s", (_, limit, method, key) => {
   const minute = new Date("2026-10-11T09:30:10.000Z");
