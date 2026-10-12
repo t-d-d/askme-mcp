@@ -1,5 +1,12 @@
 import { createSocket } from "node:dgram";
-import { lookup, lookupService, resolve, Resolver } from "node:dns";
+import {
+  lookup,
+  lookupService,
+  resolve,
+  Resolver,
+  type LookupAddress,
+  type LookupOptions,
+} from "node:dns";
 import {
   lookup as lookupAsync,
   resolve4 as resolve4Async,
@@ -96,6 +103,30 @@ describe("fitness: the gate is offline (test-tiers.md)", () => {
     expect(address).toMatch(/^(127\.|::1$)/u);
   });
 
+  it("answers a lookup of localhost itself, so neither the hosts file nor a DNS server is asked", async () => {
+    const asked = standInForGetaddrinfo();
+    try {
+      expect(await lookupByCallback("localhost", { family: 6 })).toBe("::1");
+      expect(
+        await lookupByCallback("localhost", { family: "IPv6", all: true }),
+      ).toEqual([{ address: "::1", family: 6 }]);
+      expect(await lookupAsync("localhost", 6)).toEqual({
+        address: "::1",
+        family: 6,
+      });
+      expect(await lookupAsync("localhost", 4)).toEqual({
+        address: "127.0.0.1",
+        family: 4,
+      });
+      expect(await lookupAsync("LocalHost", { all: true })).toEqual([
+        { address: "127.0.0.1", family: 4 },
+      ]);
+    } finally {
+      asked.restore();
+    }
+    expect(asked.names).toEqual([]);
+  });
+
   it("refuses a datagram to an address that is not loopback", () => {
     const socket = createSocket("udp4");
     try {
@@ -128,6 +159,51 @@ describe("fitness: the gate is offline (test-tiers.md)", () => {
     }
   });
 });
+
+// The callback form of lookup, which also takes a family by name.
+function lookupByCallback(
+  name: string,
+  options: LookupOptions,
+): Promise<string | LookupAddress[]> {
+  return new Promise((resolve, reject) => {
+    lookup(name, options, (error, address) => {
+      if (error) reject(error);
+      else resolve(address);
+    });
+  });
+}
+
+// A lookup reads the hosts file and asks a DNS server through one function,
+// getaddrinfo in Node's resolver binding, for the callback and promise forms
+// alike. Node exposes no other way to see a lookup leave the process. The
+// stand-in records the name and fails the lookup, so a test that uses it
+// sends no query even when the guard lets one through.
+function standInForGetaddrinfo(): { names: string[]; restore: () => void } {
+  const binding: unknown = Reflect.get(process, "binding");
+  if (typeof binding !== "function") {
+    throw new Error("This Node has no process.binding.");
+  }
+  const resolver: unknown = Reflect.apply(binding, process, ["cares_wrap"]);
+  if (typeof resolver !== "object" || resolver === null) {
+    throw new Error("This Node has no resolver binding.");
+  }
+  const getaddrinfo: unknown = Reflect.get(resolver, "getaddrinfo");
+  if (typeof getaddrinfo !== "function") {
+    throw new Error("The resolver binding has no getaddrinfo.");
+  }
+  const names: string[] = [];
+  Reflect.set(resolver, "getaddrinfo", (...args: unknown[]): never => {
+    const [, name] = args;
+    names.push(String(name));
+    throw new Error(`The lookup of ${String(name)} reached getaddrinfo.`);
+  });
+  return {
+    names,
+    restore: () => {
+      Reflect.set(resolver, "getaddrinfo", getaddrinfo);
+    },
+  };
+}
 
 function portOf(address: string | AddressInfo | null): AddressInfo {
   if (address === null || typeof address === "string") {
