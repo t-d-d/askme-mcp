@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
 import { pagePaths, rulesLimit } from "../shared/page-api";
-import { storedItems, storeItem } from "../test/dynamodb";
+import { storedItems } from "../test/dynamodb";
 import { fakes, testModelKey } from "../test/fakes";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
@@ -16,8 +16,7 @@ import { callerOf } from "./src/identity";
 import { sortRequestTimeoutMs } from "./src/jobs";
 import { rulesSaveLimit } from "./src/rate";
 import { handler as sorter } from "./src/sorter";
-import { keys } from "./src/store/keys";
-import { askLifetimeDays, createStore, type NewAsk } from "./src/store/store";
+import { createStore, type NewAsk } from "./src/store/store";
 
 let issuer: FakeIssuer;
 beforeAll(async () => {
@@ -433,6 +432,15 @@ const ownerOf = (account: string) =>
     extra: { accountId: account, requestId: "r" },
   }).accountId;
 
+// The store, for writing past the service.
+const store = createStore({
+  tableName: inject("tableName"),
+  endpoint: inject("databaseEndpoint"),
+});
+afterAll(() => {
+  store.close();
+});
+
 // Posts an ask straight to the store at a time in the past, so it is not
 // handed to the sort function, as when its sort failed back then. Gives its
 // id.
@@ -441,17 +449,9 @@ async function postEarlier(
   newAsk: NewAsk,
   at: Date,
 ): Promise<string> {
-  const store = createStore({
-    tableName: inject("tableName"),
-    endpoint: inject("databaseEndpoint"),
-  });
-  try {
-    const posting = await store.postAsk(ownerOf(account), newAsk, at);
-    if (posting.kind !== "posted") throw new Error("Not posted.");
-    return posting.id;
-  } finally {
-    store.close();
-  }
+  const posting = await store.postAsk(ownerOf(account), newAsk, at);
+  if (posting.kind !== "posted") throw new Error("Not posted.");
+  return posting.id;
 }
 
 // The sort function, handed one of the account's asks.
@@ -471,11 +471,7 @@ describe("sorting", () => {
     const id = await post(account);
     // Posting asked the model nothing: it handed the ask on.
     expect(fakes.model.calls).toHaveLength(calls);
-    expect(fakes.lambda.invoked.at(-1)).toEqual({
-      functionName: "askme-prod-sort",
-      invocationType: "Event",
-      payload: { accountId: account, askId: id },
-    });
+    expect(fakes.lambda.invoked.at(-1)).toEqual(sortOf(account, id));
     expect(await sorted(account)).toEqual({
       hashtags: [
         { name: "work", colour: 0 },
@@ -597,25 +593,6 @@ describe("sorting", () => {
       { summary: "New", area: "Shop", spokenDetail: "New.", replaces: old },
       new Date(Date.now() - 2 * sortRetryAfterMs),
     );
-    const invoked = fakes.lambda.invoked.length;
-    expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
-    expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
-    await runSorts();
-  });
-
-  it("asks again for an ask stored before askme recorded when, a minute after it was posted", async () => {
-    const account = newAccount();
-    const id = "AAAAAAAAAAAAAAAAAAAAAAAA";
-    const posted = new Date(Date.now() - 2 * sortRetryAfterMs);
-    await storeItem(inject("databaseEndpoint"), inject("tableName"), {
-      ...keys.openAsk(ownerOf(account), id),
-      id,
-      summary: "Old",
-      area: "Shop",
-      spokenDetail: "Old.",
-      postedAt: posted.toISOString(),
-      expiresAt: Math.floor(posted.getTime() / 1000) + askLifetimeDays * 86_400,
-    });
     const invoked = fakes.lambda.invoked.length;
     expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
     expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);

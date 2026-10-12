@@ -105,9 +105,8 @@ const rulesView = (rules: AccountRules) =>
 // Asks the sort function again for asks still unsorted a while after they
 // were stored, as when sorting failed (PRD, "Back end"). Not posted: a
 // replacing ask keeps the posting time of the one it replaces, so it would
-// be asked for again while its first sort runs. An ask stored before the
-// store recorded when counts from its posting time. Each one counts against
-// the account's limit, so polling cannot spend the model's budget.
+// be asked for again while its first sort runs. Each one counts against the
+// account's limit, so polling cannot spend the model's budget.
 async function retryUnsorted(
   account: AccountId,
   asks: StoredAsk[],
@@ -118,8 +117,7 @@ async function retryUnsorted(
     .filter(
       (ask) =>
         ask.sort === undefined &&
-        now.getTime() - Date.parse(ask.storedAt ?? ask.postedAt) >=
-          sortRetryAfterMs,
+        now.getTime() - Date.parse(ask.storedAt) >= sortRetryAfterMs,
     )
     .slice(0, sortRetriesPerPoll);
   // Asked for together, so a slow Lambda holds the poll up once, not once
