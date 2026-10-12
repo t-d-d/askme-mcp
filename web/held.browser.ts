@@ -372,4 +372,48 @@ describe("holding, with cards opened and dismissed", () => {
     await page.clock.runFor(100);
     expect(await card.getAttribute("style")).toBe(before);
   });
+
+  it("puts focus on the next row after Dismiss, though the ask's hours closed while its card was open", async () => {
+    // Monday, two minutes before work's hours close in London.
+    const late = new Date("2026-10-12T16:58:00Z");
+    const list = listOf([
+      ask("d", "Renew the shop's domain?", late, {
+        hashtags: ["shop"],
+        level: "high",
+      }),
+      ask("b", "Which date format should the export use?", late, {
+        hashtags: ["work"],
+        level: "normal",
+      }),
+      ask("c", "Swap Saturday's school run?", late, {
+        hashtags: ["family"],
+        level: "low",
+      }),
+    ]);
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: late,
+      api: {
+        [pagePaths.asks]: new Answering((url) => answerPoll(url, list)),
+        [askChangePaths.dismissed]: new Status(204),
+      },
+    });
+    const { page, apiCalls } = view;
+    await page.getByRole("article").waitFor();
+    await page
+      .getByRole("link", {
+        name: /^Which date format should the export use\?/u,
+      })
+      .click();
+    await page.getByRole("link", { name: "All asks" }).waitFor();
+    const polls = apiCalls.length;
+    await page.clock.fastForward(3 * minute + pollMs);
+    await expect.poll(() => apiCalls.length).toBeGreaterThan(polls);
+    await page.clock.runFor(100);
+    await page.getByRole("button", { name: "Dismiss" }).click();
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    const row = page.getByRole("listitem");
+    expect(await row.innerText()).toContain("Swap Saturday's school run?");
+    expect(await focused(row.getByRole("link"))).toBe(true);
+  });
 });

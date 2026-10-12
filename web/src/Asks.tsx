@@ -125,11 +125,11 @@ export function Asks({ card }: { card: string | null }) {
       : everything;
   if (tab !== chosen) choose(tab);
   const onThisTab = onTab(asks, tab);
-  const shown = waiting(onThisTab);
+  const shown = inListOrder(waiting(onThisTab));
   const heldHere = onThisTab.filter(({ id }) => held.has(id)).length;
   const list = useListPlace(
     open?.id,
-    inListOrder(shown).map(({ id }) => id),
+    shown.map(({ id }) => id),
   );
   const heldLine = (atFoot: boolean) => (
     <Held

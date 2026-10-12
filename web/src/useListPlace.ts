@@ -19,36 +19,47 @@ export function useListPlace(
   const list = useRef<HTMLDivElement>(null);
   // The card drawn last time, if one was.
   const drawn = useRef<string | undefined>(undefined);
-  // How far the list was scrolled as a card opened over it.
+  // Whether the list showed its asks last time.
+  const listing = useRef(false);
+  // How far the list is scrolled while it shows its asks, and so how far it
+  // was as a card opened over it. Null when it last showed none.
   const place = useRef<number | null>(null);
-  // The open card's ask and those after it, in the list's order.
+  // The open card's ask and those after it, as the list stood when the card
+  // opened.
   const from = useRef<readonly string[]>([]);
 
-  // The address changes before the card is drawn, so the list is still
-  // where the person left it.
+  // The place is kept as the list scrolls. It cannot be read as the
+  // address changes: once the list's screen has been drawn anew, SignedIn
+  // hears of the change first, and the card may already be drawn. The card's
+  // own scrolling comes after it is drawn, so it is not kept.
   useEffect(() => {
-    const leaving = () => {
-      if (drawn.current === undefined) place.current = window.scrollY;
+    const scrolling = () => {
+      if (listing.current) place.current = window.scrollY;
     };
-    window.addEventListener("hashchange", leaving);
+    window.addEventListener("scroll", scrolling, { passive: true });
     return () => {
-      window.removeEventListener("hashchange", leaving);
+      window.removeEventListener("scroll", scrolling);
     };
   }, []);
 
   useLayoutEffect(() => {
     const was = drawn.current;
     drawn.current = card;
+    listing.current = card === undefined && order.length > 0;
     if (card !== undefined) {
+      if (card === was) return;
       const at = order.indexOf(card);
       from.current = at < 0 ? [] : order.slice(at);
-      if (card !== was) window.scrollTo(0, 0);
+      window.scrollTo(0, 0);
       return;
     }
-    if (was === undefined) return;
+    if (was === undefined) {
+      place.current = listing.current ? window.scrollY : null;
+      return;
+    }
     const left = place.current;
-    place.current = null;
     window.scrollTo(0, left ?? 0);
+    place.current = listing.current ? window.scrollY : null;
     if (left === null) return;
     // Each ask's card is opened by one link in the list, so the link is
     // found by where it leads.

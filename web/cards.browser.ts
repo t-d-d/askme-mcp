@@ -897,6 +897,26 @@ describe("going back to the list from a card", () => {
     },
   );
 
+  // The list's screen is drawn anew on the way back from the rules.
+  it("after a visit to the rules leaves the list where it was, and focus on the row that opened the card", async () => {
+    const opened = await open(listOf(...long), {
+      api: {
+        [pagePaths.rules]: { text: "", hashtags: [], readFailed: false },
+      },
+    });
+    await opened.page.getByRole("link", { name: "Rules" }).click();
+    await opened.page
+      .getByRole("heading", { name: "Your rules", exact: true })
+      .waitFor();
+    await opened.page.goBack();
+    await opened.page.getByRole("article").waitFor();
+    const at = await openTwelfth(opened);
+    await opened.page.goBack();
+    await opened.page.getByRole("article").waitFor();
+    expect(await scrolled(opened)).toBe(at);
+    expect(await hasFocus(twelfthRow(opened).getByRole("link"))).toBe(true);
+  });
+
   it("after Dismiss leaves the list where it was, and focus on the next row", async () => {
     const opened = await open(listOf(...long));
     const at = await openTwelfth(opened);
