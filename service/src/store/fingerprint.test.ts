@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { fingerprint } from "./fingerprint";
 import type { NewAsk } from "./store";
@@ -64,6 +65,15 @@ describe("an ask's fingerprint", () => {
       expect(fingerprint(without)).not.toBe(fingerprint(ask));
     },
   );
+
+  it("stays as it was before the minutes were added, for an ask without them, so a retry across a deploy still matches", () => {
+    const bare = { summary: "a", area: "b", spokenDetail: "c" };
+    expect(fingerprint(bare)).toBe(
+      createHash("sha256")
+        .update(JSON.stringify(["a", "b", "c", null, null, null]))
+        .digest("base64url"),
+    );
+  });
 
   it("tells apart the same text split between fields differently", () => {
     const bare = { summary: "ab", area: "c", spokenDetail: "d" };
