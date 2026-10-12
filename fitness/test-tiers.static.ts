@@ -392,7 +392,7 @@ describe("fitness: the live tier makes no other account (test-tiers.md)", () => 
 
 // The controls the live tier may find: Clerk's buttons, to sign in and up,
 // and the page's own, to move between screens and to sign out. None of them
-// writes to askme's store (ADR 19).
+// writes to askme's store (ADR 20).
 const readingControls = [
   "Sign in",
   "Sign up",

@@ -1,4 +1,4 @@
-# ADR 19: The live tier only reads, and the service may write to answer it
+# ADR 20: The live tier only reads, and the service may write to answer it
 
 Decided on 12 October 2026: the live tier sends the page's API reads only, and the service may write what it writes to answer them. Today that is each poll's rate counter, and, when the account holds an ask not yet sorted with the rules in force, the request to sort it again. Any other write that a read causes needs a new decision first. This replaces the words "It writes nothing to askme's store" in the lead and in point 5 of [ADR 16](0016-live-sign-in.md), and the rule in the constraint file that the live tier "writes nothing to askme's store". The rest of ADR 16 stands.
 

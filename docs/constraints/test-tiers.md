@@ -74,4 +74,4 @@ checked by hand after a deploy, and how narrow a third-party
 conformance key is when it is made. No test can see either. A new
 write that the service makes to answer a read of the page's API also
 binds the live tier, and needs a decision before it lands.
-History: [ADR 9](../adr/0009-test-pyramid.md), [ADR 15](../adr/0015-conformance-tier.md), [ADR 16](../adr/0016-live-sign-in.md), [ADR 19](../adr/0019-live-tier-reads.md)
+History: [ADR 9](../adr/0009-test-pyramid.md), [ADR 15](../adr/0015-conformance-tier.md), [ADR 16](../adr/0016-live-sign-in.md), [ADR 20](../adr/0020-live-tier-reads.md)
