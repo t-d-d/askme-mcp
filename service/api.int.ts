@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
 import { pagePaths, rulesLimit } from "../shared/page-api";
-import { storedItems, storeItem } from "../test/dynamodb";
+import { storedItems } from "../test/dynamodb";
 import { fakes, testModelKey } from "../test/fakes";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
@@ -16,8 +16,7 @@ import { callerOf } from "./src/identity";
 import { sortRequestTimeoutMs } from "./src/jobs";
 import { rulesSaveLimit } from "./src/rate";
 import { handler as sorter } from "./src/sorter";
-import { keys } from "./src/store/keys";
-import { askLifetimeDays, createStore, type NewAsk } from "./src/store/store";
+import { createStore, type NewAsk } from "./src/store/store";
 
 let issuer: FakeIssuer;
 beforeAll(async () => {
@@ -437,20 +436,14 @@ const ownerOf = (account: string) =>
     extra: { accountId: account, requestId: "r" },
   }).accountId;
 
-// Runs the store directly, as the service would at another time.
-async function withStore<T>(
-  run: (store: ReturnType<typeof createStore>) => Promise<T>,
-): Promise<T> {
-  const store = createStore({
-    tableName: inject("tableName"),
-    endpoint: inject("databaseEndpoint"),
-  });
-  try {
-    return await run(store);
-  } finally {
-    store.close();
-  }
-}
+// The store, for writing past the service.
+const store = createStore({
+  tableName: inject("tableName"),
+  endpoint: inject("databaseEndpoint"),
+});
+afterAll(() => {
+  store.close();
+});
 
 // Posts an ask straight to the store at a time in the past, so it is not
 // handed to the sort function, as when its sort failed back then. Gives its
@@ -460,11 +453,9 @@ async function postEarlier(
   newAsk: NewAsk,
   at: Date,
 ): Promise<string> {
-  return withStore(async (store) => {
-    const posting = await store.postAsk(ownerOf(account), newAsk, at);
-    if (posting.kind !== "posted") throw new Error("Not posted.");
-    return posting.id;
-  });
+  const posting = await store.postAsk(ownerOf(account), newAsk, at);
+  if (posting.kind !== "posted") throw new Error("Not posted.");
+  return posting.id;
 }
 
 // The sort function, handed one of the account's asks.
@@ -484,11 +475,7 @@ describe("sorting", () => {
     const id = await post(account);
     // Posting asked the model nothing: it handed the ask on.
     expect(fakes.model.calls).toHaveLength(calls);
-    expect(fakes.lambda.invoked.at(-1)).toEqual({
-      functionName: "askme-prod-sort",
-      invocationType: "Event",
-      payload: { accountId: account, askId: id },
-    });
+    expect(fakes.lambda.invoked.at(-1)).toEqual(sortOf(account, id));
     expect(await sorted(account)).toEqual({
       hashtags: [
         { name: "work", colour: 0 },
@@ -552,12 +539,10 @@ describe("sorting", () => {
   it("leaves the ask unsorted when the model fails, and a poll asks again after a minute", async () => {
     const account = newAccount();
     // Rules saved before the ask was posted, so the save did not hand it on.
-    await withStore((store) =>
-      store.saveRules(
-        ownerOf(account),
-        { text: rulesText, hashtags: ["work", "shop"] },
-        new Date(Date.now() - 3 * sortRetryAfterMs),
-      ),
+    await store.saveRules(
+      ownerOf(account),
+      { text: rulesText, hashtags: ["work", "shop"] },
+      new Date(Date.now() - 3 * sortRetryAfterMs),
     );
     // An ask posted two minutes ago, whose sort failed.
     const old = await postEarlier(
@@ -623,55 +608,34 @@ describe("sorting", () => {
     expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
     await runSorts();
   });
-
-  it("asks again for an ask stored before askme recorded when, a minute after it was posted", async () => {
-    const account = newAccount();
-    const id = "AAAAAAAAAAAAAAAAAAAAAAAA";
-    const posted = new Date(Date.now() - 2 * sortRetryAfterMs);
-    await storeItem(inject("databaseEndpoint"), inject("tableName"), {
-      ...keys.openAsk(ownerOf(account), id),
-      id,
-      summary: "Old",
-      area: "Shop",
-      spokenDetail: "Old.",
-      postedAt: posted.toISOString(),
-      expiresAt: Math.floor(posted.getTime() / 1000) + askLifetimeDays * 86_400,
-    });
-    const invoked = fakes.lambda.invoked.length;
-    expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
-    expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
-    await runSorts();
-  });
 });
 
 // An ask posted at a time in the past, sorted then into #work with the
 // rules saved then. Gives its id.
 async function sortedEarlier(account: string, at: Date): Promise<string> {
   const owner = ownerOf(account);
-  return withStore(async (store) => {
-    const { version } = await store.saveRules(
-      owner,
-      { text: "#work first.", hashtags: ["work"] },
-      at,
-    );
-    const id = await postEarlier(
-      account,
-      { summary: "Old", area: "Work", spokenDetail: "Old." },
-      at,
-    );
-    await store.recordSort(
-      owner,
-      id,
-      {
-        hashtags: ["work"],
-        level: "normal",
-        reason: "Routine.",
-        rulesVersion: version,
-      },
-      at,
-    );
-    return id;
-  });
+  const { version } = await store.saveRules(
+    owner,
+    { text: "#work first.", hashtags: ["work"] },
+    at,
+  );
+  const id = await postEarlier(
+    account,
+    { summary: "Old", area: "Work", spokenDetail: "Old." },
+    at,
+  );
+  await store.recordSort(
+    owner,
+    id,
+    {
+      hashtags: ["work"],
+      level: "normal",
+      reason: "Routine.",
+      rulesVersion: version,
+    },
+    at,
+  );
+  return id;
 }
 
 describe("saving the rules again", () => {
@@ -834,12 +798,10 @@ describe("saving the rules again", () => {
       new Date(Date.now() - 3 * sortRetryAfterMs),
     );
     // Rules saved two minutes ago, whose sort of the ask failed then.
-    await withStore((store) =>
-      store.saveRules(
-        ownerOf(account),
-        { text: "#shop only.", hashtags: ["shop"] },
-        new Date(Date.now() - 2 * sortRetryAfterMs),
-      ),
+    await store.saveRules(
+      ownerOf(account),
+      { text: "#shop only.", hashtags: ["shop"] },
+      new Date(Date.now() - 2 * sortRetryAfterMs),
     );
     const invoked = fakes.lambda.invoked.length;
     expect((await sorted(account)).asks).toEqual([

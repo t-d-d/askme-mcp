@@ -138,11 +138,10 @@ async function handOn(
 // When an ask was last handed to the sort function: when it was stored, or
 // when the rules were last saved, which hands on every open ask. Not when
 // it was posted: a replacing ask keeps the posting time of the one it
-// replaces, so it would be asked for again while its first sort runs. An
-// ask stored before the store recorded when counts from its posting time.
+// replaces, so it would be asked for again while its first sort runs.
 const handedOnAt = (ask: StoredAsk, { savedAt }: AccountRules) =>
   Math.max(
-    Date.parse(ask.storedAt ?? ask.postedAt),
+    Date.parse(ask.storedAt),
     savedAt === undefined ? 0 : Date.parse(savedAt),
   );
 

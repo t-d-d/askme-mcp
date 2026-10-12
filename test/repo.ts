@@ -13,15 +13,16 @@ export function readRepoFile(path: string): string {
 }
 
 // Every file in the repo that git tracks or would track, so nothing ignored.
-// The list is read from git once per test file.
+// The list is read from git once per test file. With -z git writes each path
+// as it is, where it would otherwise quote one with a letter outside ASCII.
 let files: string[] | undefined;
 export function repoFiles(): string[] {
   files ??= execFileSync(
     "git",
-    ["ls-files", "--cached", "--others", "--exclude-standard"],
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
     { cwd: root, encoding: "utf8" },
   )
-    .split("\n")
+    .split("\0")
     .filter((path) => path !== "");
   return [...files];
 }
