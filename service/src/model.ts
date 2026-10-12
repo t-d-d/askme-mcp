@@ -10,8 +10,9 @@
 // before its reply, or partway through it.
 import { z } from "zod";
 
-// The model that sorts, chosen with the eval set. Changing it needs a run
-// of the eval before and after.
+// The model that sorts, chosen with the eval set: the best of the
+// candidates in evals/scores.md. Changing it needs a run of the eval before
+// and after.
 export const defaultModel = "anthropic/claude-haiku-5.5";
 
 // OpenRouter's API, which speaks OpenAI's chat completions.
