@@ -5,7 +5,13 @@ import { callerOf, type AccountId } from "./identity";
 import { createLogger } from "./log";
 import { ModelFailed, type Model, type ModelRequest } from "./model";
 import type { NewSort, StoredAsk, AccountRules } from "./store/store";
-import { emptyRulesSort, sortAsk, sortAttempts } from "./sorter";
+import {
+  emptyRulesSort,
+  sortAsk,
+  sortAttempts,
+  sortMaxTokens,
+  sortTimeoutMs,
+} from "./sorter";
 
 const accountId = (sub: string): AccountId =>
   callerOf({
@@ -121,6 +127,20 @@ describe("sorting an ask", () => {
         event: "ask-sorted",
         accountId: owner,
         askId: ask.id,
+      }),
+    ]);
+  });
+
+  // The eval sends these same two values, so its scores describe the
+  // service's own call.
+  it("asks the model with the token cap and timeout it exports", async () => {
+    const memory = memoryStore({ ask, rules });
+    const { model, asked } = memoryModel([good]);
+    await run(memory, model);
+    expect(asked).toEqual([
+      expect.objectContaining({
+        maxTokens: sortMaxTokens,
+        timeoutMs: sortTimeoutMs,
       }),
     ]);
   });
