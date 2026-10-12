@@ -741,7 +741,7 @@ describe("the rules", () => {
     expect(refusal.code).toBe("rate_limited");
     expect(refusal.class).toBe("retry");
     expect(refusal.message).toContain(String(rulesSaveLimit.saves));
-    expect(refusal.message).toMatch(/Wait \d+ seconds?, then save again\./u);
+    expect(refusal.message).toContain("Wait 30 seconds, then save again.");
     // Another account is not held back by it.
     expect((await saveRules(newAccount(), { text: "" })).status).toBe(200);
   });
