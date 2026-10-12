@@ -234,7 +234,7 @@ describe("fitness: a spent cap sends no call (model-call-cap.md)", () => {
 });
 
 describe("fitness: each call counts once (model-call-cap.md)", () => {
-  it("counts as many calls as the model received, after posts, a save, and a sort whose first try fails", async () => {
+  it("counts as many calls as the model received, after posts, saves, a sort whose first try fails, and jobs skipped as up to date", async () => {
     const sub = newAccount();
     const calls = fakes.model.calls.length;
     await saveRead(sub, "#work first.", ["work"]);
@@ -242,13 +242,16 @@ describe("fitness: each call counts once (model-call-cap.md)", () => {
     await post(sub, "Second");
     fakes.model.reply({ status: 503 }, sorted(["work"]), sorted(["work"]));
     await deliver();
+    // Two saves close together queue two jobs for each ask. The first job
+    // sorts it, and the second finds it up to date and makes no call.
+    await saveRead(sub, "#work, then #home.", ["work", "home"]);
     await saveRead(sub, "#home first, then #work.", ["home", "work"]);
     fakes.model.reply(sorted(["home"]), sorted(["work"]));
-    await deliver();
-    // The first reading, the first ask's two tries, the second ask's one,
-    // the second reading, and one try for each ask after it.
+    expect(await deliver()).toBe(4);
+    // Three readings, the first ask's two tries, the second ask's one, and
+    // one try for each ask after the saves.
     const received = fakes.model.calls.length - calls;
-    expect(received).toBe(7);
+    expect(received).toBe(8);
     expect(await modelCallsMade(accountId(sub))).toBe(received);
   });
 });
