@@ -164,24 +164,33 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
                 ))}
               </ul>
             ))}
-          {data !== undefined && <Footnote saved={data.timeZone} />}
+          <Footnote loaded={data !== undefined} saved={data?.timeZone} />
         </section>
       </main>
     </div>
   );
 }
 
-// The last note: the time zone the hours use, and that saving re-sorts
-// every open ask. A save takes this browser's time zone, so when another
-// browser saved the rules, the note says which one saving here uses.
-function Footnote({ saved }: { saved: string | undefined }) {
+// The last note: the time zone the hours use, once the rules have loaded,
+// and that saving re-sorts every open ask. A save takes this browser's time
+// zone, so when another browser saved the rules, the note says which one
+// saving here uses.
+function Footnote({
+  loaded,
+  saved,
+}: {
+  loaded: boolean;
+  saved: string | undefined;
+}) {
   const here = browserTimeZone();
   const zone =
     saved === undefined || saved === here
-      ? `Hours use ${here}, taken from this browser.`
-      : `Hours use ${saved}, taken from the browser that saved them. Saving here uses ${here}.`;
+      ? `Hours use ${here}, taken from this browser. `
+      : `Hours use ${saved}, taken from the browser that saved them. Saving here uses ${here}. `;
   return (
-    <p className={styles.footnote}>{zone} Saving re-sorts every open ask.</p>
+    <p className={styles.footnote}>
+      {loaded && zone}Saving re-sorts every open ask.
+    </p>
   );
 }
 

@@ -281,6 +281,27 @@ describe("the rules screen", () => {
     expect(await read.innerText()).toContain("Saving re-sorts every open ask.");
   });
 
+  it("says that saving re-sorts every open ask while the rules load", async () => {
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      api: {
+        [pagePaths.rules]: new Answering(async () => {
+          await sleep(5000);
+          return saved;
+        }),
+        [pagePaths.asks]: list,
+      },
+    });
+    const { page } = view;
+    await page
+      .getByRole("heading", { name: "Your rules", exact: true })
+      .waitFor();
+    expect(
+      await page.getByText("Saving re-sorts every open ask.").isVisible(),
+    ).toBe(true);
+    expect(await page.getByText("Hours use").count()).toBe(0);
+  });
+
   it("says there are no hashtags when the box is empty", async () => {
     view = await openRules({ text: "", hashtags: [], readFailed: false });
     expect(

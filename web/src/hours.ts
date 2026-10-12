@@ -20,24 +20,6 @@ export interface WallClock {
 
 export const minutesInDay = 24 * 60;
 
-// One reader of the wall clock for each time zone, made when first needed.
-const readers = new Map<string, Intl.DateTimeFormat>();
-
-function readerFor(timeZone: string | undefined): Intl.DateTimeFormat {
-  const key = timeZone ?? "";
-  const known = readers.get(key);
-  if (known !== undefined) return known;
-  const reader = new Intl.DateTimeFormat("en-US", {
-    ...(timeZone === undefined ? {} : { timeZone }),
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  });
-  readers.set(key, reader);
-  return reader;
-}
-
 // The wall clock at a moment, in a time zone or, without one, in this
 // browser's. Undefined in a time zone this browser does not know.
 export function wallClock(
@@ -46,7 +28,15 @@ export function wallClock(
 ): WallClock | undefined {
   let parts: Intl.DateTimeFormatPart[];
   try {
-    parts = readerFor(timeZone).formatToParts(at);
+    // Made for each reading, so a change to this browser's own time zone is
+    // seen at once.
+    parts = new Intl.DateTimeFormat("en-US", {
+      ...(timeZone === undefined ? {} : { timeZone }),
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(at);
   } catch {
     // A RangeError: no zone has that name.
     return undefined;
@@ -54,8 +44,18 @@ export function wallClock(
   const part = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((one) => one.type === type)?.value ?? "";
   const day = weekdays.find((one) => one === part("weekday").toLowerCase());
-  const minute = Number(part("hour")) * 60 + Number(part("minute"));
-  if (day === undefined || !Number.isInteger(minute)) return undefined;
+  const hour = part("hour");
+  const minutes = part("minute");
+  // Some browsers write the first hour after midnight as 24.
+  const minute = (Number(hour) * 60 + Number(minutes)) % minutesInDay;
+  if (
+    day === undefined ||
+    hour === "" ||
+    minutes === "" ||
+    !Number.isInteger(minute)
+  ) {
+    return undefined;
+  }
   return { day, minute };
 }
 

@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Hashtag, TimeWindow } from "../../shared/page-api";
 import { heldAsks, hoursText, isOpen, wallClock } from "./hours";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const weekdaysOnly: TimeWindow["days"] = ["mon", "tue", "wed", "thu", "fri"];
 const everyDay: TimeWindow["days"] = [...weekdaysOnly, "sat", "sun"];
@@ -43,6 +47,38 @@ describe("the wall clock in a time zone", () => {
 
   it("is not known in a time zone that is not one", () => {
     expect(wallClock(at("2026-10-12T07:00:00Z"), "Mars/Olympus")).toBe(
+      undefined,
+    );
+  });
+
+  // Some browsers give the first hour after midnight as 24, whatever the
+  // hour cycle asked for.
+  const partsSaying = (parts: Intl.DateTimeFormatPart[]) =>
+    vi
+      .spyOn(Intl.DateTimeFormat.prototype, "formatToParts")
+      .mockReturnValue(parts);
+
+  it("counts an hour given as 24 as the first hour of the day", () => {
+    partsSaying([
+      { type: "weekday", value: "Tue" },
+      { type: "literal", value: " " },
+      { type: "hour", value: "24" },
+      { type: "literal", value: ":" },
+      { type: "minute", value: "05" },
+    ]);
+    expect(wallClock(at("2026-10-12T23:05:00Z"), "Europe/London")).toEqual({
+      day: "tue",
+      minute: 5,
+    });
+  });
+
+  it("is not known when the browser gives no hour", () => {
+    partsSaying([
+      { type: "weekday", value: "Tue" },
+      { type: "literal", value: " " },
+      { type: "minute", value: "05" },
+    ]);
+    expect(wallClock(at("2026-10-12T23:05:00Z"), "Europe/London")).toBe(
       undefined,
     );
   });
