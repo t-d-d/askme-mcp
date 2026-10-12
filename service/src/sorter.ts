@@ -1,12 +1,13 @@
 // The sort function (PRD, "Back end"): it sorts one ask after the service
 // has stored it and answered, so posting never waits on the model. The ask
-// tool hands it each new ask, and a poll hands it any ask still unsorted a
-// while after it was stored.
+// tool hands it each new ask, saving the rules hands it every open ask, and
+// a poll hands it any ask not yet sorted with the rules in force a while
+// after it was last handed on.
 //
-// A sort that fails leaves the ask unsorted and is logged at warn. The ask
-// is kept and shown as not sorted yet, and a later poll asks again. The
-// function does not fail for it, so it alerts no one, and Lambda does not
-// run it again by itself.
+// A sort that fails leaves the ask as it was and is logged at warn. The ask
+// is kept, shown as not sorted yet or with its old hashtags, and a later
+// poll asks again. The function does not fail for it, so it alerts no one,
+// and Lambda does not run it again by itself.
 import { z } from "zod";
 import { readEnv } from "./env";
 import { jobAccount, type AccountId } from "./identity";
