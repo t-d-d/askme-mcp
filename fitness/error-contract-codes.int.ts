@@ -21,6 +21,7 @@ import { handler } from "../service/src/handler";
 import { callerOf, type AccountId } from "../service/src/identity";
 import { askLimit } from "../service/src/rate";
 import { createStore, dailyAskCap } from "../service/src/store/store";
+import { noon, stopClockAt } from "../test/clock";
 import {
   startFakeIssuer,
   type FakeIssuer,
@@ -68,15 +69,6 @@ const numbered = (n: number) => ({
   area: "Home renovation",
   spokenDetail: "The electrician needs a yes or no.",
 });
-
-// The middle of a minute and of a UTC day, so that the day's and the
-// minute's counts filled here are the ones the call is counted against.
-const noon = new Date("2026-10-11T12:00:30.000Z");
-
-// Stops the clock at a moment, for the service and the token alike.
-const stopClockAt = (moment: Date) => {
-  vi.useFakeTimers({ toFake: ["Date"], now: moment });
-};
 
 // One call through the official client, as an agent of the account.
 async function call(
