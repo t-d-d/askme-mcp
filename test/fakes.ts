@@ -54,6 +54,8 @@ export interface FakeLambda {
   invoked: Invocation[];
   // When set, Lambda refuses every invoke with a server error.
   failing: boolean;
+  // When set, Lambda takes each invoke and never answers it.
+  hanging: boolean;
   // Runs each invoke not yet run through a handler, as Lambda would after
   // the call that queued it has answered. Gives how many it ran.
   drain(run: (payload: unknown) => Promise<void>): Promise<number>;
@@ -63,6 +65,8 @@ export interface FakeParameterStore {
   endpoint: string;
   // The name of each parameter asked for.
   asked: string[];
+  // When set, Parameter Store takes each call and never answers it.
+  hanging: boolean;
 }
 
 export interface Fakes {
@@ -188,6 +192,7 @@ async function startLambda() {
     endpoint: "",
     invoked,
     failing: false,
+    hanging: false,
     async drain(run) {
       let count = 0;
       while (ran < invoked.length) {
@@ -212,6 +217,7 @@ async function startLambda() {
       send(outgoing, 500, { Type: "Service", message: "Lambda is down." });
       return;
     }
+    if (lambda.hanging) return;
     const type = incoming.headers["x-amz-invocation-type"];
     invoked.push({
       functionName: decodeURIComponent(name),
@@ -225,7 +231,11 @@ async function startLambda() {
 }
 
 async function startParameterStore() {
-  const asked: string[] = [];
+  const parameters: FakeParameterStore = {
+    endpoint: "",
+    asked: [],
+    hanging: false,
+  };
   const server = await listen(async (incoming, outgoing) => {
     const body = z
       .object({ Name: z.string() })
@@ -237,7 +247,8 @@ async function startParameterStore() {
       send(outgoing, 400, { __type: "ValidationException" });
       return;
     }
-    asked.push(body.data.Name);
+    parameters.asked.push(body.data.Name);
+    if (parameters.hanging) return;
     outgoing.setHeader("content-type", "application/x-amz-json-1.1");
     if (body.data.Name !== modelKeyParameter) {
       outgoing.statusCode = 400;
@@ -259,10 +270,8 @@ async function startParameterStore() {
       }),
     );
   });
-  return {
-    parameters: { endpoint: server.address, asked },
-    close: server.close,
-  };
+  parameters.endpoint = server.address;
+  return { parameters, close: server.close };
 }
 
 export async function startFakes(): Promise<Fakes> {

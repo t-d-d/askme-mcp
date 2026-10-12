@@ -68,8 +68,9 @@ export function parseReading(
   return placed.sort((a, b) => a.at - b.at).map(({ name }) => name);
 }
 
-// How long reading the rules may take. The page waits for it, and the
-// function behind the page's API stops at ten seconds.
+// How long reading the rules may take, reading the model's key included.
+// The page waits for it, and the function behind the page's API stops at
+// ten seconds.
 const readingTimeoutMs = 7000;
 
 // Room for a dozen hashtags.

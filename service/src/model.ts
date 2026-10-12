@@ -5,6 +5,9 @@
 //
 // Every call asks for a reply that follows a JSON Schema, declares no
 // tools, and is routed only to providers that keep no prompts (ADR 12).
+// It also turns reasoning off. The provider counts the tokens a model spends
+// thinking against max_tokens, so a model that thinks first can run out
+// before its reply, or partway through it.
 import { z } from "zod";
 
 // The model that sorts, chosen with the eval set. Changing it needs a run
@@ -62,7 +65,13 @@ export function createModel(config: {
   const send = config.fetch ?? fetch;
   return {
     async reply(request) {
+      // One time limit covers reading the key as well as the call, so a slow
+      // read leaves the call less time and never adds to it. A key that
+      // cannot be read is askme's own failure, not the model's, so it is
+      // thrown as it came.
+      const signal = AbortSignal.timeout(request.timeoutMs);
       const key = await config.key();
+      if (signal.aborted) throw new ModelFailed("timeout");
       let answer: Response;
       let body: unknown;
       try {
@@ -91,9 +100,10 @@ export function createModel(config: {
               zdr: true,
               require_parameters: true,
             },
+            reasoning: { enabled: false },
             max_tokens: request.maxTokens,
           }),
-          signal: AbortSignal.timeout(request.timeoutMs),
+          signal,
         });
         if (!answer.ok)
           throw new ModelFailed(`status-${String(answer.status)}`);
