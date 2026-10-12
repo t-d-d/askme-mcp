@@ -103,13 +103,11 @@ export function useDismissing(): Dismissing {
       setDismissed((ids) => new Set(ids).add(id));
       setNote("dismissed");
       const due = () => {
-        waiting.current = null;
-        setNote(null);
-        void send(id);
+        sendWaiting();
       };
       waiting.current = { id, due, timer: window.setTimeout(due, undoMs) };
     },
-    [send, sendWaiting],
+    [sendWaiting],
   );
 
   const undo = useCallback(() => {
