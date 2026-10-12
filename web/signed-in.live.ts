@@ -88,18 +88,23 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
     2 * stepMs,
   );
 
-  // On a phone the header has one control, which opens the rules, and the
-  // rules screen links on to Connect your agents (docs/design.md, "Header").
-  // Opening the rules only reads them.
+  // On a phone the header has one control, which opens the rules
+  // (docs/design.md, "Header"), and the rules screen links on to Connect
+  // your agents (docs/design/mockup/rules.html). Opening the rules only
+  // reads them.
   it(
     "shows the MCP address the deploy published under Connect your agents",
     async () => {
       await page
         .getByRole("link", { name: "Rules", exact: true })
-        .click({ timeout: stepMs });
+        .click({ timeout: stepMs })
+        .catch(failsWith(page, "The header showed no way to the rules."));
       await page
         .getByRole("link", { name: "Connect agents" })
-        .click({ timeout: stepMs });
+        .click({ timeout: stepMs })
+        .catch(
+          failsWith(page, "The rules screen showed no Connect agents link."),
+        );
       await expect
         .poll(() => page.getByLabel("Server address").inputValue(), {
           timeout: stepMs,
