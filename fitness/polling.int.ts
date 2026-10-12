@@ -9,6 +9,7 @@ import { callerOf, type AccountId } from "../service/src/identity";
 import { pollLimit } from "../service/src/rate";
 import { keys } from "../service/src/store/keys";
 import { pagePaths } from "../shared/page-api";
+import { stopClockAt } from "../test/clock";
 import {
   readActions,
   recordDatabase,
@@ -188,11 +189,11 @@ describe("fitness: a counter leaves the version alone (table-design.md)", () => 
 });
 
 describe("fitness: the poll endpoint has its own rate limit (polling.md)", () => {
-  // Ten seconds into a minute, so the window has fifty seconds left. Only
-  // the date is faked, and it stands still until a test moves it.
+  // Ten seconds into a minute, so the window has fifty seconds left. The
+  // clock stands still there until a test moves it.
   const start = new Date("2026-10-11T09:30:10.000Z");
   beforeAll(() => {
-    vi.useFakeTimers({ toFake: ["Date"], now: start });
+    stopClockAt(start);
   });
   afterAll(() => {
     vi.useRealTimers();
