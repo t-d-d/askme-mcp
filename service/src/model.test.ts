@@ -58,12 +58,13 @@ const request: ModelRequest = {
 
 const model = (
   fetch: ReturnType<typeof fakeFetch>["fetch"],
-  { key }: { key: string | undefined } = { key: "test-model-key" },
+  key: () => Promise<string | undefined> = () =>
+    Promise.resolve("test-model-key"),
 ) =>
   createModel({
     endpoint: "http://127.0.0.1:9/api/v1",
     model: "anthropic/claude-haiku-5.5",
-    key: () => Promise.resolve(key),
+    key,
     fetch,
   });
 
@@ -102,7 +103,7 @@ describe("a call to the model", () => {
 
   it("sends no key when it has none, as in a cloud session", async () => {
     const fake = fakeFetch(() => completion('{"level":"high"}'));
-    await model(fake.fetch, { key: undefined }).reply(request);
+    await model(fake.fetch, () => Promise.resolve(undefined)).reply(request);
     expect(fake.sent[0]?.headers.has("authorization")).toBe(false);
   });
 
@@ -167,5 +168,70 @@ describe("a call to the model", () => {
     expect(z.object({ reason: z.string() }).parse(failure).reason).toBe(
       "timeout",
     );
+  });
+});
+
+describe("the model's key, read for a call", () => {
+  // A key that takes this long to read, as from a slow Parameter Store.
+  const keyAfter = (ms: number) => () =>
+    new Promise<string>((resolve) => {
+      setTimeout(() => {
+        resolve("k");
+      }, ms);
+    });
+
+  // A model that answers after this long, unless the call is cut short.
+  const answersAfter =
+    (ms: number) => async (_: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          resolve(completion('{"level":"high"}'));
+        }, ms);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          const reason: unknown = init.signal?.reason;
+          reject(reason instanceof Error ? reason : new Error("aborted"));
+        });
+      });
+
+  const failureOf = (call: Promise<unknown>) =>
+    call.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+  const reasonOf = (failure: unknown) =>
+    z.object({ reason: z.string() }).parse(failure).reason;
+
+  it("counts against the call's time limit, and nothing is sent once that has run out", async () => {
+    const fake = fakeFetch(() => completion('{"level":"high"}'));
+    const failure = await failureOf(
+      model(fake.fetch, keyAfter(200)).reply({ ...request, timeoutMs: 20 }),
+    );
+    expect(failure).toBeInstanceOf(ModelFailed);
+    expect(reasonOf(failure)).toBe("timeout");
+    expect(fake.sent).toEqual([]);
+  });
+
+  it("leaves the call only what is left of its time limit", async () => {
+    // Each alone fits in 300ms. Together they take 350ms.
+    const failure = await failureOf(
+      model(answersAfter(150), keyAfter(200)).reply({
+        ...request,
+        timeoutMs: 300,
+      }),
+    );
+    expect(failure).toBeInstanceOf(ModelFailed);
+    expect(reasonOf(failure)).toBe("timeout");
+  });
+
+  it("is askme's own failure when it cannot be read, thrown as it came", async () => {
+    const fake = fakeFetch(() => completion('{"level":"high"}'));
+    const unreadable = new Error("The key could not be read.");
+    const failure = await failureOf(
+      model(fake.fetch, () => Promise.reject(unreadable)).reply(request),
+    );
+    expect(failure).toBe(unreadable);
+    expect(fake.sent).toEqual([]);
   });
 });

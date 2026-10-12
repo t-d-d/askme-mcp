@@ -65,7 +65,13 @@ export function createModel(config: {
   const send = config.fetch ?? fetch;
   return {
     async reply(request) {
+      // One time limit covers reading the key as well as the call, so a slow
+      // read leaves the call less time and never adds to it. A key that
+      // cannot be read is askme's own failure, not the model's, so it is
+      // thrown as it came.
+      const signal = AbortSignal.timeout(request.timeoutMs);
       const key = await config.key();
+      if (signal.aborted) throw new ModelFailed("timeout");
       let answer: Response;
       let body: unknown;
       try {
@@ -97,7 +103,7 @@ export function createModel(config: {
             reasoning: { enabled: false },
             max_tokens: request.maxTokens,
           }),
-          signal: AbortSignal.timeout(request.timeoutMs),
+          signal,
         });
         if (!answer.ok)
           throw new ModelFailed(`status-${String(answer.status)}`);
