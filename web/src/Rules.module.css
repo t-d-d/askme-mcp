@@ -193,6 +193,40 @@
   margin: var(--space-10) 0 0;
 }
 
+/* Under a hairline at the foot: the account at the left, Sign out at the
+   right. A long address wraps rather than pushing the page sideways. */
+.account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-16);
+  margin: var(--space-26) var(--space-text) 0;
+  padding-top: var(--space-4);
+  border-top: var(--hairline) solid var(--line);
+}
+
+.signedIn {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--size-note);
+  line-height: var(--leading-note);
+  overflow-wrap: anywhere;
+}
+
+.signOut {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: var(--weight-label);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 @media (min-width: 768px) {
   .screen {
     width: 90%;

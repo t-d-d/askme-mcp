@@ -2,6 +2,8 @@
 // other in the page's storage.
 export const sessionKey = "askme-test-session";
 export const askedForKey = "askme-test-asked-for";
+// The signed-in person's email address, as Clerk would give it.
+export const emailKey = "askme-test-email";
 // Where, on the page's window, the stand-in for the browser's speech records
 // what the page asked it to read aloud.
 export const spokenKey = "askme-test-spoken";

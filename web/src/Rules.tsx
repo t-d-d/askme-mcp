@@ -6,6 +6,7 @@ import {
   type SubmitEvent,
 } from "react";
 import { rulesLimit } from "../../shared/page-api";
+import { useAuth } from "./auth";
 import { Refusal } from "./load";
 import type { AskFirst } from "./SignedIn";
 import { hoursText } from "./hours";
@@ -19,8 +20,10 @@ const leaving = "Leave without saving your rules?";
 // from them, each with its hours. Saving waits while askme reads them. If
 // it cannot, the text is saved all the same, the old hashtags and hours
 // stay, and the page offers to try again. Either way, saving re-sorts every
-// open ask, and a last note says so, after the time zone the hours use.
+// open ask, and a last note says so, after the time zone the hours use. At
+// the foot, the account signed in, and Sign out.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
+  const auth = useAuth();
   const { loaded, save } = useRules();
   const { data, failed } = loaded;
   const boxId = useId();
@@ -58,6 +61,15 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
     if (!changed || elsewhere) return;
     if (window.confirm(leaving)) askFirst(null);
     else event.preventDefault();
+  };
+
+  // Signing out leaves the rules too, so unsaved text asks first. The screen
+  // goes from the address, so whoever signs in next starts at the list.
+  const signOut = () => {
+    if (changed && !window.confirm(leaving)) return;
+    const { pathname, search } = window.location;
+    window.history.replaceState(null, "", pathname + search);
+    auth.signOut();
   };
 
   const saveText = () => {
@@ -166,6 +178,14 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
             ))}
           <Footnote loaded={data !== undefined} saved={data?.timeZone} />
         </section>
+        <div className={styles.account}>
+          {auth.email !== null && (
+            <p className={styles.signedIn}>Signed in as {auth.email}</p>
+          )}
+          <button className={styles.signOut} type="button" onClick={signOut}>
+            Sign out
+          </button>
+        </div>
       </main>
     </div>
   );

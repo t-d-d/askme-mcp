@@ -1,7 +1,8 @@
 // After each deploy, the one test account signs in on the live page through
 // Clerk's own screens, as a person does, and the signed-in page loads its
 // list (ADR 16). The first run, and any run after the account is deleted,
-// signs it up. The page only reads, so nothing here writes to askme's store.
+// signs it up. The run ends by signing out. The page only reads, so nothing
+// here writes to askme's store.
 import {
   chromium,
   type Browser,
@@ -48,7 +49,7 @@ const signUpAnswer = z.object({
   }),
 });
 
-describe("fitness: a person can sign in on the live page (test-tiers.md)", () => {
+describe("fitness: a person can sign in and out on the live page (test-tiers.md)", () => {
   let browser: Browser | undefined;
   let page: Page;
 
@@ -113,6 +114,35 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
       expect(
         await page.getByText("Not connected. Trying again.").isVisible(),
       ).toBe(false);
+    },
+    4 * stepMs,
+  );
+
+  // Sign out sits at the foot of the rules (docs/design.md, "Rules"). Once
+  // Clerk has ended the session, a reload still finds nobody signed in, so
+  // the run leaves no session behind.
+  it(
+    "signs out from the rules and shows the signed-out page",
+    async () => {
+      await page.getByRole("link", { name: "All asks" }).click();
+      await page
+        .getByRole("link", { name: "Rules", exact: true })
+        .click({ timeout: stepMs })
+        .catch(failsWith(page, "The header showed no way to the rules."));
+      expect(
+        await page
+          .getByText(`Signed in as ${testAddress}`, { exact: true })
+          .isVisible(),
+      ).toBe(true);
+      await page.getByRole("button", { name: "Sign out" }).click();
+      const signIn = page.getByRole("button", { name: "Sign in" });
+      await signIn
+        .waitFor({ timeout: stepMs })
+        .catch(failsWith(page, "Sign out did not show the signed-out page."));
+      await page.reload();
+      await signIn
+        .waitFor({ timeout: stepMs })
+        .catch(failsWith(page, "A reload after signing out was signed in."));
     },
     4 * stepMs,
   );

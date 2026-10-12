@@ -17,6 +17,7 @@ import { palette } from "./src/palette";
 
 const phone = { width: 390, height: 844 };
 const session = "test-session-token";
+const email = "sam@example.com";
 
 const text =
   "#work is my day job. Only show it on weekdays between 8am and 6pm.\n\n#shop is my online shop. Anything a customer can see comes first.";
@@ -69,6 +70,7 @@ async function openRules(
 ): Promise<OpenPage> {
   const view = await openPage(`${inject("pageUrl")}#rules`, viewport, {
     session,
+    email,
     timeZone,
     api: { [pagePaths.rules]: rules, [pagePaths.asks]: list },
   });
@@ -468,5 +470,72 @@ describe("the rules screen", () => {
       expect(box?.height, await control.innerText()).toBeGreaterThanOrEqual(44);
       expect(box?.width, await control.innerText()).toBeGreaterThanOrEqual(44);
     }
+  });
+});
+
+describe("signing out", () => {
+  const headline = "Your agents ask here. You decide what gets through.";
+
+  it("names the account at the foot of the rules, with Sign out beside it", async () => {
+    view = await openRules(saved);
+    const { page } = view;
+    const account = page.getByText(`Signed in as ${email}`, { exact: true });
+    const signOut = page.getByRole("button", { name: "Sign out" });
+    expect(await account.isVisible()).toBe(true);
+    expect(await signOut.isVisible()).toBe(true);
+    const footnote = await page
+      .getByText("Saving re-sorts every open ask.")
+      .boundingBox();
+    const [named, button] = await Promise.all([
+      account.boundingBox(),
+      signOut.boundingBox(),
+    ]);
+    expect(named?.y).toBeGreaterThan(footnote?.y ?? Infinity);
+    expect(button?.x).toBeGreaterThan(named?.x ?? Infinity);
+  });
+
+  it("offers Sign out alone when Clerk has no email address for the account", async () => {
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      api: { [pagePaths.rules]: saved, [pagePaths.asks]: list },
+    });
+    const { page } = view;
+    await page.getByRole("button", { name: "Sign out" }).waitFor();
+    expect(await page.getByText("Signed in as").count()).toBe(0);
+  });
+
+  it("signs out through Clerk and shows the signed-out page, with no screen in the address", async () => {
+    view = await openRules(saved);
+    const { page } = view;
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.getByRole("heading", { level: 1, name: headline }).waitFor();
+    expect(await view.askedFor()).toBe("sign-out");
+    expect(
+      await page.getByRole("button", { name: "Sign in" }).isVisible(),
+    ).toBe(true);
+    expect(new URL(page.url()).hash).toBe("");
+  });
+
+  it("asks before signing out with unsaved text, and stays signed in when told to", async () => {
+    view = await openRules(saved);
+    const { page } = view;
+    const box = page.getByRole("textbox");
+    await box.fill("#work only.");
+    const asked: string[] = [];
+    page.once("dialog", (dialog) => {
+      asked.push(dialog.message());
+      void dialog.dismiss();
+    });
+    await page.getByRole("button", { name: "Sign out" }).click();
+    expect(asked).toEqual(["Leave without saving your rules?"]);
+    expect(await view.askedFor()).toBeNull();
+    expect(await box.inputValue()).toBe("#work only.");
+    expect(new URL(page.url()).hash).toBe("#rules");
+    page.once("dialog", (dialog) => {
+      void dialog.accept();
+    });
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.getByRole("heading", { level: 1, name: headline }).waitFor();
+    expect(await view.askedFor()).toBe("sign-out");
   });
 });
