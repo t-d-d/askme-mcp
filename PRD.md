@@ -16,9 +16,9 @@ askme is one place where all of a person's AI agents ask for their input, sorted
 
 1. **The user writes rules.** In one box on the page, in plain English: the hashtags they want, what should rank high or low, and any hours a hashtag should be limited to.
 2. **The service reads the rules once.** On save, a model call lists the hashtags and their time windows and shows them back. Nothing else is compiled.
-3. **An agent posts an ask.** It calls the MCP server with a short summary, the broad area the ask belongs to, a version written to be listened to, and up to two optional links: one to where the user should act, such as a pull request or a ticket, and one back to its session. The service stores the ask and returns an id.
-4. **The service sorts it.** A model call reads the rules and the ask. It picks hashtags from the user's own set, one of three priority levels, and a one-line reason. If the call fails, the ask is kept and shown as unsorted.
-5. **The user sees it.** Cards are ordered by priority, then by how long they have waited. An ask with a hashtag outside its hours is held back, and one line says how many are held and lets the user show them.
+3. **An agent posts an ask.** It calls the MCP server with a short summary, the broad area the ask belongs to, a version written to be listened to, and up to two optional links: one to where the user should act, such as a pull request or a ticket, and one back to its session. If the ask stops mattering at a known time, the agent also says how long until then. The service stores the ask and returns an id.
+4. **The service sorts it.** A model call reads the rules and the ask. It picks hashtags from the user's own set, one of three priority levels, and a one-line reason. The level says what it would cost if the user never acted, never how soon. If the call fails, the ask is kept and shown as unsorted.
+5. **The user sees it.** Cards are ordered by priority, then by how long they have waited, and an ask about to stop mattering moves up. An ask with a hashtag outside its hours is held back, and one line says how many are held and lets the user show them. An ask whose time has passed is lapsed, and is held back behind a line of its own.
 6. **The user listens or reads.** A card can be read aloud.
 7. **The user acts where the work is.** A card's main button opens the place to act: a pull request, say, or the agent's own session, where the user replies with full context. askme does not carry the answer back.
 8. **The ask clears.** The agent resolves it as soon as it is unblocked, or the user swipes it away.
@@ -66,8 +66,9 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 | Action link | Sending agent, optional | Where the user takes the action when that is not the session, such as a pull request or a ticket. Must be https. |
 | Session link | Sending agent, optional | Back to the agent's session, for when the user needs to reply to the agent. Must be https. |
 | Replaces | Sending agent, optional | The id of an earlier ask that this one takes over from. |
+| Stale after | Sending agent, optional | How many minutes from posting until the ask stops mattering, such as a passkey prompt that times out or a delivery slot that goes. Set only when the ask stops mattering then, not for a bill that falls due. At most 30 days. The sorting model never sees it. |
 | Hashtags | Model | Only from the user's own set. An ask can carry several, or none. They are shown in the order the hashtags appear in the rules, and the first sets the colour of the ask's main button. |
-| Priority | Model | Three levels, judged on what is stalled. Used for order only and not shown. |
+| Priority | Model | Three levels, judged on what it would cost if the user never acted, never on how soon. Used for order only and not shown. |
 | Reason | Model | One line on why the ask was sorted this way. |
 | State | Service | Open, opened or closed. A closed ask records how it ended: resolved by the agent, dismissed by the user, or replaced. |
 
@@ -76,7 +77,7 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 - Serverless, with no always-on compute. The page polls for new asks.
 - An ask is never rejected or lost because sorting failed, or because the account reached its cap on model calls. It keeps its old sort, or shows as unsorted if it has none, and is retried. Past the cap, a retry makes no model call until the cap resets.
 - One model call per ask does the sorting and returns a validated structure, with a second try if the first fails. One smaller call runs when rules are saved, unless the box is empty.
-- Time windows are applied in code when the page loads, not by the model.
+- Time windows, and the time an ask lapses, are applied in code when the page loads, not by the model. Nothing is re-sorted as time passes.
 - When an ask is replaced, both versions stay in the store. A retried ask is matched by its content and is not stored twice.
 
 ### Web page
@@ -84,7 +85,8 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 - Mobile first and responsive, so it also works on desktop.
 - An Everything tab, plus one tab per hashtag.
 - An ask is held back if any of its hashtags is outside its hours. When asks are held, a line under the tabs says how many, with a control to show them. With nothing held, the line is not there. This works the same on every tab.
-- Order is priority level, then longest waiting first. Opened cards sink below unopened ones at the same level. The first ask is shown large, and the rest as a compact list below it.
+- Order is priority level, then longest waiting first, with two exceptions for time. Asks that lapse within the hour come first, whatever their level, and count as a level of their own. Within a level, asks that lapse within the next day come before the rest, soonest first. Opened cards sink below unopened ones at the same level, and each part keeps that order. The first ask is shown large, and the rest as a compact list below it.
+- Once an ask's time has passed, it is lapsed and leaves the order. When asks have lapsed, a line like the held line says how many, with a control to show them. A lapsed ask is not closed. An ask outside its hours stays held until its time has passed, and then counts as lapsed, not held.
 - A card shows the summary, its hashtags in colour, and its age.
 - The large card's main button opens its action link, or the session link when there is no action link. With neither, there is no main button. A card with both has a second control for the session. Tapping a row in the list, or the large card's summary, opens the detail, which has the same buttons. Each link shows the name of the site it leads to. The main button says what the link is when askme recognises it, such as a pull request, and otherwise names the site. Following a link marks the card as opened and does not clear it.
 - A Listen button reads the spoken detail aloud, using the browser's built-in speech. A disclosure shows the same text and the reason.
@@ -133,7 +135,7 @@ Each of these was considered and left out on purpose.
 In rough order of value. None of this is built in version 1.
 
 1. **Real approvals.** Answer in the app, with the answer returned to the agent. MCP allows a path back in some cases. This needs care over what exactly is being approved.
-2. **Pings.** Push notifications on the phone, driven by the same rules, so the user decides what interrupts them and at what time of day.
+2. **Pings.** Push notifications on the phone, driven by the same rules, so the user decides what interrupts them and at what time of day. A ping can also use the time an ask lapses.
 3. **Widgets.** A phone and desktop widget showing the top of the list with held asks left out.
 4. **Rules by conversation.** A second, admin permission on the MCP server, held only by the user, so they can set rules by talking to an agent. Other agents still cannot see or change them.
 5. **Hands-free use.** One button that reads the whole list aloud in order, and answering by voice. A further permission would let a voice assistant read the queue and answer for the user.
@@ -162,7 +164,7 @@ Version 1 is done when the recorded demo below works end to end on the deployed 
 
 **Live site.** Anyone can sign up, find example rules already in place, and use the "simulate an agent" control to watch sample asks being sorted.
 
-**Eval set.** About 30 hand-written asks across three areas, each with the hashtags and priority level expected. One further group is hostile: asks that try to steer the sorting. It is scored on its own. See [ADR 12](docs/adr/0012-untrusted-ask-text.md). It runs on demand, not on every commit. The scores are reported in the README, with no pass mark.
+**Eval set.** About 30 hand-written asks across three areas, each with the hashtags and priority level expected. A timing group copies a few of them with only the time changed, and expects the same level. One further group is hostile: asks that try to steer the sorting. It is scored on its own. See [ADR 12](docs/adr/0012-untrusted-ask-text.md). It runs on demand, not on every commit. The scores are reported in the README, with no pass mark.
 
 **Other tests.** Schema validation rejects bad asks. A model failure does not lose an ask. Time windows behave at their boundaries, and a restriction wins when an ask's hashtags disagree. An agent cannot read rules, hashtags or other asks.
 
@@ -177,7 +179,10 @@ The product choices that shape version 1, each with the reason it was made. Tech
 | Agents describe an ask, and the user's side judges it | Every agent thinks its own ask is urgent. |
 | Agents never see the hashtags or rules | Privacy: an agent working on one part of a person's life should not learn what the other parts are. The service also has to sort on its own anyway, because rules change after an ask is posted and the session that sent it may be gone. How this is enforced is recorded as [ADR 2](docs/adr/0002-agents-write-only.md). |
 | Rules stay as plain English | There is no compile step and no dependence on a connected agent. The cost is that no fixed rule sits behind each sorting decision, which is why there is an eval set. |
-| Sorting is done by a model and is not deterministic. Time windows are deterministic and run in code | Models are unreliable at date arithmetic, and a single timestamp cannot express recurring hours. |
+| Sorting is done by a model and is not deterministic. Time windows and the time an ask lapses are deterministic and run in code | Models are unreliable at date arithmetic, and a single timestamp cannot express recurring hours. |
+| An agent may say when its ask stops mattering, and the level ignores time | When an ask stops mattering is a fact the agent knows, while urgency is a judgement every agent makes in its own favour. A level that ignores time never goes out of date, so nothing is re-sorted as time passes. Decided in #101. |
+| Only an ask's last hour lifts it above its level | A far-off time gains an ask nothing, and an ask that claims a short one soon lapses. So an agent gains little by setting a time on every ask. |
+| A lapsed ask is held back, not closed | The agent may still be stuck, and it is never told of a close. When something changes after the time passes, such as a bill now overdue, the agent posts a new ask. |
 | A restriction wins when hashtags disagree | Holding too much back is undone by showing the held asks. Work showing up out of hours defeats the feature. |
 | The user acts where the work is, not in askme | The agent's session or the pull request has the full context, and nothing is approved through a third party. |
 | Agents err towards posting | A cleared ask costs the user nothing, and they may have stepped away. |
