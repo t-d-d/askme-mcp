@@ -1,7 +1,7 @@
-import { readdir, readFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { extname } from "node:path";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { openPage, type OpenPage } from "../test/browser";
+import { builtFiles, openPage, type OpenPage } from "../test/browser";
 
 const phone = { width: 390, height: 844 };
 const desktop = { width: 1280, height: 800 };
@@ -11,14 +11,6 @@ const about =
   "One place where all your AI agents ask for your input, sorted by rules you write in plain English.";
 const notice =
   "This is a demo. Every ask is deleted after a month, and sign-ups stop at 100 accounts.";
-
-async function builtFiles(): Promise<string[]> {
-  const dir = inject("pageDir");
-  const entries = await readdir(dir, { recursive: true, withFileTypes: true });
-  return entries
-    .filter((entry) => entry.isFile())
-    .map((entry) => join(entry.parentPath, entry.name));
-}
 
 describe.each([
   ["a phone", phone],

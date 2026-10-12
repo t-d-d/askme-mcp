@@ -6,7 +6,10 @@
 //
 // Headless Chromium always reports a page as visible, so the page's
 // visibility is replaced before it loads, and a test hides and shows it.
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { chromium, type Page } from "playwright";
+import { inject } from "vitest";
 import { z } from "zod";
 import { sinceParam, type AsksAnswer } from "../shared/page-api";
 import {
@@ -86,6 +89,15 @@ export class Answering {
       sent: { method: string; body: string | null },
     ) => unknown,
   ) {}
+}
+
+// Every file of the page as test/page-server.ts built it.
+export async function builtFiles(): Promise<string[]> {
+  const dir = inject("pageDir");
+  const entries = await readdir(dir, { recursive: true, withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name));
 }
 
 // Answers a poll for the list as the service does: with nothing new when it
