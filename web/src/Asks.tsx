@@ -16,7 +16,9 @@ import { browserSpeech } from "./speech";
 import { Tabs, type TabsHandle } from "./Tabs";
 import { useAsks } from "./useAsks";
 import { useDismissing } from "./useDismissing";
+import { useListPlace } from "./useListPlace";
 import { useOpening } from "./useOpening";
+import { inListOrder } from "./waiting";
 
 // The main screen: the person's open asks, or when none are waiting, All
 // clear, or for an account that has never had an ask, how to begin. The list
@@ -47,6 +49,9 @@ import { useOpening } from "./useOpening";
 //
 // An ask the person has opened shows as opened, and one they have dismissed
 // leaves the list, before the next poll says so.
+//
+// Closing a card puts the list back where it was, with focus on the link
+// that opened the card (useListPlace.ts).
 export function Asks({ card }: { card: string | null }) {
   const { data, receivedAt, polledAt, failed } = useAsks();
   const [chosen, choose] = useState<Tab>(everything);
@@ -75,6 +80,12 @@ export function Asks({ card }: { card: string | null }) {
   const tabs = useRef<TabsHandle>(null);
   const tabsGoneWithFocus = useCallback(() => {
     tabsHadFocus.current = true;
+  }, []);
+  // Tabs that come back with focus in them clear the flag, so StrictMode in
+  // development, which detaches their ref and attaches it again after focus
+  // has moved to the selected tab, leaves it clear.
+  const tabsBackWithFocus = useCallback(() => {
+    tabsHadFocus.current = false;
   }, []);
   const actions = useMemo<AskActions>(
     () => ({ speak, markOpened, dismiss }),
@@ -118,8 +129,12 @@ export function Asks({ card }: { card: string | null }) {
       : everything;
   if (tab !== chosen) choose(tab);
   const onThisTab = onTab(asks, tab);
-  const shown = waiting(onThisTab);
+  const shown = inListOrder(waiting(onThisTab));
   const heldHere = onThisTab.filter(({ id }) => held.has(id)).length;
+  const list = useListPlace(
+    open?.id,
+    shown.map(({ id }) => id),
+  );
   const heldLine = (atFoot: boolean) => (
     <Held
       count={heldHere}
@@ -161,7 +176,11 @@ export function Asks({ card }: { card: string | null }) {
           noted={noted}
         />
       ) : (
-        <div className={styles.screen} data-noted={noted ? "" : undefined}>
+        <div
+          className={styles.screen}
+          data-noted={noted ? "" : undefined}
+          ref={list}
+        >
           <Header />
           {!allClear && (
             <div className={styles.bar}>
@@ -170,6 +189,7 @@ export function Asks({ card }: { card: string | null }) {
                 selected={tab}
                 onSelect={choose}
                 onGoneWithFocus={tabsGoneWithFocus}
+                onBackWithFocus={tabsBackWithFocus}
                 ref={tabs}
               />
               {heldHere > 0 && heldLine(false)}

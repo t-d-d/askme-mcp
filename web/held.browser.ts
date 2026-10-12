@@ -327,6 +327,32 @@ describe("holding asks back until their hours", () => {
     expect(await focused(tab(page, "Everything"))).toBe(true);
   });
 
+  // Vitest sets NODE_ENV to "test", so the page here is built with React's
+  // development code. Its StrictMode detaches the new tabs' ref and attaches
+  // it again after focus has moved into them.
+  it("leaves focus where it is when the list goes all clear after it went to Everything as the tabs came back", async () => {
+    // Tuesday, a minute before work's hours open in London.
+    const early = new Date("2026-10-13T06:59:00Z");
+    const list = listOf(asksAt(early).slice(0, 2));
+    const changing = await openChanging(list, early);
+    view = changing.opened;
+    const { page } = view;
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+    await page.getByRole("button", { name: "Show them" }).focus();
+    await page.clock.fastForward(minute + pollMs);
+    await page.getByRole("navigation", { name: "Hashtags" }).waitFor();
+    expect(await focused(tab(page, "Everything"))).toBe(true);
+    const rules = page.getByRole("link", { name: "Rules" });
+    await rules.focus();
+    // askme drops both asks, so the list goes all clear.
+    changing.answerWith({ ...list, version: list.version + 1, asks: [] });
+    await page.clock.fastForward(pollMs);
+    await page
+      .getByRole("navigation", { name: "Hashtags" })
+      .waitFor({ state: "detached" });
+    expect(await focused(rules)).toBe(true);
+  });
+
   it("moves focus to All clear when it goes at a poll with focus at the foot of All clear", async () => {
     const list = listOf(asksAt(evening).slice(0, 2));
     const changing = await openChanging(list, evening);
@@ -470,5 +496,49 @@ describe("holding, with cards opened and dismissed", () => {
     await expect.poll(() => apiCalls.length).toBeGreaterThan(polls);
     await page.clock.runFor(100);
     expect(await card.getAttribute("style")).toBe(before);
+  });
+
+  it("puts focus on the next row after Dismiss, though the ask's hours closed while its card was open", async () => {
+    // Monday, two minutes before work's hours close in London.
+    const late = new Date("2026-10-12T16:58:00Z");
+    const list = listOf([
+      ask("d", "Renew the shop's domain?", late, {
+        hashtags: ["shop"],
+        level: "high",
+      }),
+      ask("b", "Which date format should the export use?", late, {
+        hashtags: ["work"],
+        level: "normal",
+      }),
+      ask("c", "Swap Saturday's school run?", late, {
+        hashtags: ["family"],
+        level: "low",
+      }),
+    ]);
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: late,
+      api: {
+        [pagePaths.asks]: new Answering((url) => answerPoll(url, list)),
+        [askChangePaths.dismissed]: new Status(204),
+      },
+    });
+    const { page, apiCalls } = view;
+    await page.getByRole("article").waitFor();
+    await page
+      .getByRole("link", {
+        name: /^Which date format should the export use\?/u,
+      })
+      .click();
+    await page.getByRole("link", { name: "All asks" }).waitFor();
+    const polls = apiCalls.length;
+    await page.clock.fastForward(3 * minute + pollMs);
+    await expect.poll(() => apiCalls.length).toBeGreaterThan(polls);
+    await page.clock.runFor(100);
+    await page.getByRole("button", { name: "Dismiss" }).click();
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    const row = page.getByRole("listitem");
+    expect(await row.innerText()).toContain("Swap Saturday's school run?");
+    expect(await focused(row.getByRole("link"))).toBe(true);
   });
 });

@@ -14,7 +14,11 @@ import styles from "./Tabs.module.css";
 //
 // The tabs all go at once when the list goes all clear, Everything with
 // them. If one has focus then, onGoneWithFocus is called, so the page can
-// put focus somewhere that stays. It must stay the same between renders.
+// put focus somewhere that stays. StrictMode in development detaches the
+// ref of tabs that have just come and attaches it again, after the page may
+// have moved focus into them. If they have focus then, onBackWithFocus is
+// called, so the page knows that no tab went. Both must stay the same
+// between renders.
 //
 // Through the ref, the page can move focus to the selected tab.
 export interface TabsHandle {
@@ -26,12 +30,14 @@ export function Tabs({
   selected,
   onSelect,
   onGoneWithFocus,
+  onBackWithFocus,
   ref,
 }: {
   hashtags: readonly Hashtag[];
   selected: Tab;
   onSelect: (tab: Tab) => void;
   onGoneWithFocus: () => void;
+  onBackWithFocus: () => void;
   ref?: Ref<TabsHandle>;
 }) {
   const nav = useRef<HTMLElement>(null);
@@ -56,11 +62,12 @@ export function Tabs({
   const handOn = useCallback(
     (tabs: HTMLElement) => {
       nav.current = tabs;
+      if (tabs.contains(document.activeElement)) onBackWithFocus();
       return () => {
         if (tabs.contains(document.activeElement)) onGoneWithFocus();
       };
     },
-    [onGoneWithFocus],
+    [onGoneWithFocus, onBackWithFocus],
   );
   return (
     <nav className={styles.tabs} ref={handOn} aria-label="Hashtags">
