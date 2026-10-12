@@ -246,6 +246,13 @@ export async function openPage(
         },
         [sessionKey, sessionChangedEvent, session] as const,
       ),
-    close: () => browser.close(),
+    // A route can still be running as the browser closes, such as the guard
+    // aborting a link opened in a new tab. Its error would land after the
+    // test and fail the run, so the routes go first and their errors with
+    // them.
+    close: async () => {
+      await context.unrouteAll({ behavior: "ignoreErrors" });
+      await browser.close();
+    },
   };
 }
