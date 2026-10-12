@@ -33,7 +33,7 @@ import {
   sortRetryLimit,
   windowOf,
 } from "../rate";
-import { hashtagWindow, type HashtagWindow } from "../rules";
+import { exampleRules, hashtagWindow, type HashtagWindow } from "../rules";
 import { levels, type Sort } from "../sort";
 import { fingerprint } from "./fingerprint";
 import { keys, type Key } from "./keys";
@@ -178,19 +178,23 @@ const rulesSchema = z.object({
 
 export type AccountRules = z.output<typeof rulesSchema>;
 
-// The rules of an account that has never saved any: an empty box, and no
-// hashtags.
-const noRules: AccountRules = {
-  text: "",
-  hashtags: [],
-  seen: [],
-  version: 0,
-  readFailed: false,
-};
-
 // The hours as the rules item holds them: absent when there are none.
 const windowsOf = (hours: HashtagWindow[] | undefined) =>
   hours === undefined || hours.length === 0 ? {} : { hours };
+
+// The rules of an account that has never saved any: the example rules,
+// already read (PRD, "Rules"). Their hashtags are seen, so each keeps its
+// colour once the person saves their own. They are never written, so the
+// version stays at 0 until the first save, and they name no time zone, so
+// the page uses its own.
+const firstRules: AccountRules = {
+  text: exampleRules.text,
+  hashtags: [...exampleRules.reading.hashtags],
+  seen: [...exampleRules.reading.hashtags],
+  version: 0,
+  readFailed: false,
+  ...windowsOf(exampleRules.reading.hours),
+};
 
 // Rules as a save hands them in: the text, the time zone of the browser
 // that saved them, and the hashtags read from it with their hours. Without
@@ -456,7 +460,7 @@ export function createStore(config: {
         ConsistentRead: true,
       }),
     );
-    return Item === undefined ? noRules : rulesSchema.parse(Item);
+    return Item === undefined ? firstRules : rulesSchema.parse(Item);
   }
 
   // The item under one key, unless it is missing or has expired.

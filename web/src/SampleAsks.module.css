@@ -1,0 +1,47 @@
+.samples {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-buttons);
+}
+
+/*
+ * A neutral second button: no hashtag is in play. It is a main button on
+ * the list, and a settings screen's on Connect your agents.
+ */
+.send,
+.settings {
+  display: flex;
+  align-items: center;
+  min-height: var(--button-height);
+  padding: 0 var(--space-20);
+  border: 0;
+  border-radius: var(--radius-button);
+  background: var(--neutral-tint);
+  color: var(--ink);
+  font-size: var(--size-row);
+  font-weight: var(--weight-strong);
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings {
+  min-height: var(--button-height-settings);
+}
+
+.send:disabled,
+.settings:disabled {
+  color: var(--text-3);
+  cursor: default;
+}
+
+/* Drawn like the note under Save rules. */
+.note {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--size-meta-small);
+  line-height: var(--leading-note);
+}
+
+.note:empty {
+  display: none;
+}

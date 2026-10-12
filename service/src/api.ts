@@ -21,10 +21,17 @@ import { AgentToken, TokenRejected, type AccountId } from "./identity";
 import type { SortRequests } from "./jobs";
 import { errorClass, type Logger } from "./log";
 import type { Model } from "./model";
-import { pollLimit, rulesSaveLimit } from "./rate";
+import { askLimit, pollLimit, rulesSaveLimit } from "./rate";
 import { mcpPath, type PageRoute } from "./routes";
 import { readRules } from "./rules";
-import type { AccountRules, StoredAsk, Store } from "./store/store";
+import { sendSamples } from "./samples";
+import {
+  dailyAskCap,
+  dedupeWindowMinutes,
+  type AccountRules,
+  type StoredAsk,
+  type Store,
+} from "./store/store";
 
 export interface PageContext {
   // The address the caller used, from which the MCP endpoint's is built.
@@ -91,6 +98,29 @@ function rulesSaveRefusal(secondsLeft: number): Response {
   return pageRefusal(
     "rate_limited",
     `The rules were saved more than ${String(rulesSaveLimit.saves)} times in ${inMinutes(rulesSaveLimit.windowMinutes)}, which is the limit for an account. Wait ${plural(secondsLeft, "second")}, then save again.`,
+  );
+}
+
+function samplesRateRefusal(secondsLeft: number): Response {
+  return pageRefusal(
+    "rate_limited",
+    `This account is posting asks too fast. askme takes at most ${String(askLimit.asks)} asks a minute, sample asks included. Wait ${plural(secondsLeft, "second")}, then send sample asks again.`,
+  );
+}
+
+function samplesCapRefusal(resetsAt: Date): Response {
+  return pageRefusal(
+    "cap_reached",
+    `This account has posted ${String(dailyAskCap)} asks today, sample asks included, which is as many as askme takes in a day. The count starts again at ${resetsAt.toISOString()}, midnight UTC. Send sample asks again after then.`,
+  );
+}
+
+// Every sample was posted in the last ten minutes, so posting one again
+// would only be matched to it (ADR 3).
+function samplesSentRefusal(): Response {
+  return pageRefusal(
+    "rate_limited",
+    `Every sample ask was sent in the last ${String(dedupeWindowMinutes)} minutes, and sending one again would show nothing new. Wait a few minutes, then send sample asks again.`,
   );
 }
 
@@ -329,6 +359,40 @@ async function saveRules(
   return answer(rulesView(saved));
 }
 
+// Posts one sample ask from each of three areas, as an agent would, and
+// hands each to the sort function, so sorting can be watched with no agent
+// connected (PRD, "Web page"). Each counts against the account's rate and
+// its daily cap. A limit reached part way keeps the asks posted before it,
+// and the refusal says which limit it was.
+async function postSamples(
+  account: AccountId,
+  context: PageContext,
+): Promise<Response> {
+  const { store, log } = context;
+  const { posted, refused } = await sendSamples(account, store, new Date());
+  for (const askId of posted) {
+    log.info("sample-posted", { accountId: account, askId });
+  }
+  // Handed on together, so the press waits for Lambda once, not once for
+  // each ask.
+  await Promise.all(posted.map((askId) => handOn(account, askId, context)));
+  if (refused === undefined) {
+    if (posted.length > 0) {
+      return new Response(null, { status: 204, headers: noStore });
+    }
+    log.info("rate-limited", { accountId: account });
+    return samplesSentRefusal();
+  }
+  switch (refused.kind) {
+    case "rate-limited":
+      log.info("rate-limited", { accountId: account });
+      return samplesRateRefusal(refused.secondsLeft);
+    case "over-cap":
+      log.info("cap-reached", { accountId: account });
+      return samplesCapRefusal(refused.resetsAt);
+  }
+}
+
 // What the person did to an ask from the page.
 type AskChangeKind = "opened" | "dismissed";
 
@@ -404,6 +468,8 @@ async function respond(
       return changeAsk("opened", request, account, context);
     case "POST /api/asks/dismissed":
       return changeAsk("dismissed", request, account, context);
+    case "POST /api/asks/samples":
+      return postSamples(account, context);
   }
 }
 

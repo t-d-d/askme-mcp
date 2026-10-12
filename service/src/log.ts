@@ -23,12 +23,18 @@ export const events = [
   "input-invalid",
   // An ask was accepted and answered with its id.
   "ask-posted",
+  // The page's "Send sample asks" posted a sample ask, as an agent would.
+  // Counted apart from ask-posted, so agents' asks are counted alone.
+  "sample-posted",
   // An ask matched one the account posted in the last ten minutes, and was
   // answered with that one's id. Counted to tune the window (ADR 3).
   "ask-deduplicated",
-  // An ask was refused because the account had posted its asks for the day.
+  // An ask, or a press of "Send sample asks", was refused because the
+  // account had posted its asks for the day.
   "cap-reached",
-  // An ask was refused because the account had posted too many this minute.
+  // An ask, or a press of "Send sample asks", was refused because the
+  // account had posted too many this minute, or every sample in the last ten
+  // minutes.
   "rate-limited",
   // A new ask took the place of an open one, which closed as replaced. The
   // id is the old ask's.

@@ -84,6 +84,7 @@ functions:
       - httpApi: "PUT /api/rules"
       - httpApi: "POST /api/asks/opened"
       - httpApi: "POST /api/asks/dismissed"
+      - httpApi: "POST /api/asks/samples"
 
   # Sorts one ask after the service has stored it and answered, so posting
   # never waits on the model. The mcp function invokes it asynchronously,
@@ -520,6 +521,17 @@ resources:
           - !Ref SortLogGroup
         QueryString: |
           filter message.event = "ask-posted"
+          | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
+
+    SamplePostedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/sample-posted
+        LogGroupNames:
+          - !Ref McpLogGroup
+          - !Ref SortLogGroup
+        QueryString: |
+          filter message.event = "sample-posted"
           | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
 
     AskReplacedQuery:

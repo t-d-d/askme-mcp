@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { weekdays } from "../../shared/page-api";
 import {
+  exampleRules,
   hashtagLimit,
   parseReading,
   readingPrompt,
@@ -13,6 +14,8 @@ const text =
 const weekdaysOnly = ["mon", "tue", "wed", "thu", "fri"];
 
 const nineToFive = { days: weekdaysOnly, from: "09:00", to: "17:00" };
+
+const weekdaysOnly8to6 = { days: weekdaysOnly, from: "08:00", to: "18:00" };
 
 describe("the prompt that reads the rules", () => {
   it("holds the rules in their own section, escaped", () => {
@@ -178,5 +181,29 @@ describe("what the model read from the rules", () => {
     expect(
       parseReading({ hashtags, hours: hours.slice(1) }, text)?.hours,
     ).toHaveLength(windowLimit);
+  });
+});
+
+// docs/design/mockup/rules.html shows the rules a new account starts with.
+describe("the example rules a new account starts with", () => {
+  it("name #work, #shop and #family, with hours for #work on weekdays", () => {
+    expect(exampleRules.reading).toEqual({
+      hashtags: ["work", "shop", "family"],
+      hours: [{ hashtag: "work", ...weekdaysOnly8to6 }],
+    });
+  });
+
+  // They are read here, with no model call, so the reading must be one a
+  // model's reply of the same could give.
+  it("are read as a model's reply of the same would be", () => {
+    expect(parseReading(exampleRules.reading, exampleRules.text)).toEqual(
+      exampleRules.reading,
+    );
+  });
+
+  it("say what ranks high and what ranks low", () => {
+    expect(exampleRules.text).toContain(
+      "Anything that blocks a release or costs money ranks high. Routine questions rank low.",
+    );
   });
 });

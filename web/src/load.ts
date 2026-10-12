@@ -1,7 +1,11 @@
 // Loads one answer from the page's API, with the session token, and parses
 // it with the schema both sides share. A failure of any kind throws.
 import type { z } from "zod";
-import { refusalAnswer, type AskChange } from "../../shared/page-api";
+import {
+  refusalAnswer,
+  samplesPath,
+  type AskChange,
+} from "../../shared/page-api";
 
 export async function load<T>(
   path: string,
@@ -31,8 +35,9 @@ export class Refusal extends Error {
   }
 }
 
-// Sends a request to the page's API with a JSON body and the session
-// token. A refusal throws as a Refusal, and any other failure as an error.
+// Sends a request to the page's API with the session token, and a JSON
+// body unless the body is left out. A refusal throws as a Refusal, and any
+// other failure as an error.
 //
 // A keepalive request is still sent when the page is closed while it is on
 // its way.
@@ -44,14 +49,16 @@ async function sendJson(
   keepalive = false,
 ): Promise<Response> {
   const token = await getToken();
+  const authorization = `Bearer ${token ?? ""}`;
   const response = await fetch(path, {
     method,
     keepalive,
-    headers: {
-      authorization: `Bearer ${token ?? ""}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
+    ...(body === undefined
+      ? { headers: { authorization } }
+      : {
+          headers: { authorization, "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
   });
   if (!response.ok) {
     const refusal = refusalAnswer.safeParse(
@@ -87,4 +94,13 @@ export async function changeAsk(
   { keepalive = false }: { keepalive?: boolean } = {},
 ): Promise<void> {
   await sendJson("POST", path, change, getToken, keepalive);
+}
+
+// Asks the page's API to post sample asks into the account. Resolves once
+// they are posted. A refusal, at the account's rate or its daily cap,
+// throws as a Refusal, and any other failure as an error.
+export async function sendSamples(
+  getToken: () => Promise<string | null>,
+): Promise<void> {
+  await sendJson("POST", samplesPath, undefined, getToken);
 }
