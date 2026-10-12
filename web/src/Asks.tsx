@@ -21,11 +21,16 @@ import { useAsks } from "./useAsks";
 // ask, finds the page on Everything. A hashtag's tab with nothing waiting is
 // all clear, under the tabs.
 //
+// After the rules change, an ask keeps its old hashtags until it is sorted
+// again. A hashtag the rules no longer name has no tab, but keeps its
+// colour on the asks that still carry it.
+//
 // An ask with a hashtag outside its hours is held back, on every tab, as of
-// the last poll. The held line under the tabs counts the
-// tab's held asks and shows them, or hides them again. With every ask held
-// and hidden the list is all clear, and the line sits at its foot. Once
-// nothing is held, held asks are hidden again when they are next held.
+// the last poll. The held line under the tabs counts the tab's held asks
+// and shows them, or hides them again. With every ask held and hidden the
+// list is all clear, and the line sits at its foot. Once nothing is held,
+// held asks are hidden again when they are next held. A former hashtag has
+// no hours, so it holds nothing back.
 export function Asks() {
   const { data, receivedAt, polledAt, failed } = useAsks();
   const [chosen, choose] = useState<Tab>(everything);
@@ -73,7 +78,7 @@ export function Asks() {
         <main>
           <AskList
             asks={shown}
-            hashtags={data.hashtags}
+            hashtags={[...data.hashtags, ...data.formerHashtags]}
             tab={tab}
             now={receivedAt}
           />

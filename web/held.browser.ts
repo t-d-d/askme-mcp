@@ -79,6 +79,7 @@ const listOf = (asks: AsksAnswer["asks"]): AsksAnswer => ({
   version: 3,
   everAsked: true,
   hashtags,
+  formerHashtags: [],
   timeZone: "Europe/London",
   asks,
 });

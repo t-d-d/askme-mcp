@@ -578,7 +578,7 @@ describe("the rules", () => {
     });
   });
 
-  it("keep the text and the hashtags read from it, and raise the version", async () => {
+  it("keep the text, the hashtags read from it and when they were saved, and raise the version", async () => {
     const owner = account();
     const saved = await store.saveRules(
       owner,
@@ -591,6 +591,7 @@ describe("the rules", () => {
       seen: ["work", "shop"],
       version: 1,
       readFailed: false,
+      savedAt: now.toISOString(),
     });
     expect(await store.rules(owner)).toEqual(saved);
     expect(await versionOf(owner)).toBe(1);
@@ -690,6 +691,7 @@ describe("the rules", () => {
       seen: ["work"],
       version: 2,
       readFailed: true,
+      savedAt: now.toISOString(),
     });
     expect(await versionOf(owner)).toBe(2);
   });

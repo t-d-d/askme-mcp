@@ -85,8 +85,9 @@ functions:
 
   # Sorts one ask after the service has stored it and answered, so posting
   # never waits on the model. The mcp function invokes it asynchronously,
-  # with an ask's id. It has no route. A sort that fails leaves the ask
-  # unsorted, and a later poll asks again, so Lambda does not retry it.
+  # with an ask's id, for a new ask and for every open ask when the rules
+  # are saved. It has no route. A sort that fails leaves the ask as it was,
+  # and a later poll asks again, so Lambda does not retry it.
   sort:
     handler: service/src/sorter.handler
     # Two tries at the model, of up to 20 seconds each.

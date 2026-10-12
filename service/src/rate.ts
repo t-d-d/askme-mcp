@@ -15,8 +15,9 @@ export const askLimit: Readonly<{ asks: number; windowMinutes: number }> = {
   windowMinutes: 1,
 };
 
-// Saving the rules. Each save reads the rules with a model call, so a page
-// pressed over and over is slowed before it spends much.
+// Saving the rules. Each save reads the rules with a model call, and sorts
+// every open ask again with one each, so a page pressed over and over is
+// slowed before it spends much.
 export const rulesSaveLimit: Readonly<{
   saves: number;
   windowMinutes: number;
@@ -25,9 +26,10 @@ export const rulesSaveLimit: Readonly<{
   windowMinutes: 1,
 };
 
-// A poll asking again for an ask that sorting left unsorted. Each one is a
-// model call, and a page can poll often, so the retries are limited apart
-// from the polls.
+// A poll asking again for an ask not yet sorted with the rules in force:
+// one sorting left unsorted, or one still sorted with older rules. Each one
+// is a model call, and a page can poll often, so the retries are limited
+// apart from the polls.
 export const sortRetryLimit: Readonly<{
   retries: number;
   windowMinutes: number;

@@ -148,8 +148,9 @@ const dedupeSchema = z.object({
 // The account's rules: the text the person wrote, the hashtags read from
 // it in the order the rules give them, and every hashtag the account has
 // had, in the order each first appeared, which keeps each one's colour
-// (docs/design.md). The version goes up on every save. When the last save
-// could not be read, the hashtags are the ones read before it.
+// (docs/design.md). The version goes up on every save, and savedAt says
+// when the last save was. When the last save could not be read, the
+// hashtags are the ones read before it.
 //
 // The hours are the windows read with the hashtags, absent when the rules
 // give no hashtag any, and the time zone is the one the browser that saved
@@ -160,6 +161,8 @@ const rulesSchema = z.object({
   seen: z.array(z.string()),
   version: z.number().int().nonnegative(),
   readFailed: z.boolean(),
+  // Absent until the rules are first saved.
+  savedAt: z.iso.datetime().optional(),
   hours: z.array(hashtagWindow).min(1).optional(),
   timeZone: z.string().optional(),
 });
@@ -713,6 +716,7 @@ export function createStore(config: {
           ],
           version: current.version + 1,
           readFailed: hashtags === undefined,
+          savedAt: now.toISOString(),
           ...windowsOf(hashtags === undefined ? current.hours : hours),
           timeZone: timeZone ?? current.timeZone,
         };
@@ -721,11 +725,7 @@ export function createStore(config: {
             {
               Put: {
                 TableName,
-                Item: {
-                  ...keys.rules(account),
-                  ...next,
-                  savedAt: now.toISOString(),
-                },
+                Item: { ...keys.rules(account), ...next },
                 ConditionExpression:
                   current.version === 0
                     ? "attribute_not_exists(sk)"

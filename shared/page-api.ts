@@ -78,6 +78,11 @@ export const timeZoneLimit = 64;
 // Each ask carries its sort: its hashtags, in the rules' order, and its
 // level. An ask not sorted yet carries null.
 //
+// Saving the rules sorts every open ask again, and each keeps its old sort
+// until then, so an ask can carry a hashtag the rules no longer name. Those
+// are the former hashtags, each with its colour. They have no tab, and no
+// hours.
+//
 // The time zone is the one the rules were saved in, which their hours use.
 // It is absent until rules are saved with one, and the page then uses its
 // own.
@@ -85,6 +90,7 @@ export const asksAnswer = z.object({
   version: z.number().int().nonnegative(),
   everAsked: z.boolean(),
   hashtags: z.array(hashtag),
+  formerHashtags: z.array(hashtag),
   timeZone: z.string().optional(),
   asks: z.array(
     z.object({

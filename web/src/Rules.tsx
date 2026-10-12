@@ -16,9 +16,10 @@ import { browserTimeZone, useRules } from "./useRules";
 const leaving = "Leave without saving your rules?";
 
 // The rules: one box in plain English, and below it the hashtags askme read
-// from them, each with its hours, and the time zone the hours use. Saving
-// waits while askme reads them. If it cannot, the text is saved all the
-// same, the old hashtags and hours stay, and the page offers to try again.
+// from them, each with its hours. Saving waits while askme reads them. If
+// it cannot, the text is saved all the same, the old hashtags and hours
+// stay, and the page offers to try again. Either way, saving re-sorts every
+// open ask, and a last note says so, after the time zone the hours use.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const { loaded, save } = useRules();
   const { data, failed } = loaded;
@@ -163,23 +164,24 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
                 ))}
               </ul>
             ))}
-          {data !== undefined && <Zone saved={data.timeZone} />}
+          {data !== undefined && <Footnote saved={data.timeZone} />}
         </section>
       </main>
     </div>
   );
 }
 
-// The last note: the time zone the hours use. A save takes this browser's,
-// so when another browser saved them, it says which one saving here uses.
-function Zone({ saved }: { saved: string | undefined }) {
+// The last note: the time zone the hours use, and that saving re-sorts
+// every open ask. A save takes this browser's time zone, so when another
+// browser saved the rules, the note says which one saving here uses.
+function Footnote({ saved }: { saved: string | undefined }) {
   const here = browserTimeZone();
+  const zone =
+    saved === undefined || saved === here
+      ? `Hours use ${here}, taken from this browser.`
+      : `Hours use ${saved}, taken from the browser that saved them. Saving here uses ${here}.`;
   return (
-    <p className={styles.zone}>
-      {saved === undefined || saved === here
-        ? `Hours use ${here}, taken from this browser.`
-        : `Hours use ${saved}, taken from the browser that saved them. Saving here uses ${here}.`}
-    </p>
+    <p className={styles.footnote}>{zone} Saving re-sorts every open ask.</p>
   );
 }
 
