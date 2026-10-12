@@ -17,9 +17,7 @@ describe("the core eval set", () => {
     const areas = new Set(core.map((one) => one.area));
     expect([...areas].sort()).toEqual(["family", "shop", "work"]);
     for (const area of areas) {
-      expect(core.filter((one) => one.area === area).length).toBeGreaterThan(
-        5,
-      );
+      expect(core.filter((one) => one.area === area).length).toBeGreaterThan(5);
     }
   });
 
