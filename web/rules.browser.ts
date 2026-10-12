@@ -223,6 +223,111 @@ describe("the rules screen", () => {
     await page.getByRole("heading", { name: "All clear." }).waitFor();
   });
 
+  it("asks before Back leaves unsaved text, and keeps the text when told to stay", async () => {
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      api: { [pagePaths.rules]: saved, [pagePaths.asks]: list },
+    });
+    const { page } = view;
+    await page.getByRole("link", { name: "Rules" }).click();
+    const box = page.getByRole("textbox");
+    await box.fill("#work only.");
+    const asked: string[] = [];
+    page.once("dialog", (dialog) => {
+      asked.push(dialog.message());
+      void dialog.dismiss();
+    });
+    await page.goBack();
+    await expect
+      .poll(() => asked)
+      .toEqual(["Leave without saving your rules?"]);
+    expect(new URL(page.url()).hash).toBe("#rules");
+    expect(await box.inputValue()).toBe("#work only.");
+    page.once("dialog", (dialog) => {
+      void dialog.accept();
+    });
+    await page.goBack();
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+  });
+
+  it("asks before a typed address leaves unsaved text, and keeps the text when told to stay", async () => {
+    view = await openRules(saved);
+    const { page } = view;
+    const box = page.getByRole("textbox");
+    await box.fill("#work only.");
+    const asked: string[] = [];
+    page.once("dialog", (dialog) => {
+      asked.push(dialog.message());
+      void dialog.dismiss();
+    });
+    await page.goto(`${inject("pageUrl")}#connect`);
+    await expect
+      .poll(() => asked)
+      .toEqual(["Leave without saving your rules?"]);
+    expect(new URL(page.url()).hash).toBe("#rules");
+    expect(await box.inputValue()).toBe("#work only.");
+  });
+
+  it("keeps the history as it was when the person stays after a typed address", async () => {
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      api: { [pagePaths.rules]: saved, [pagePaths.asks]: list },
+    });
+    const { page } = view;
+    await page.getByRole("link", { name: "Rules" }).click();
+    const box = page.getByRole("textbox");
+    await box.fill("#work only.");
+    page.once("dialog", (dialog) => {
+      void dialog.dismiss();
+    });
+    await page.goto(`${inject("pageUrl")}#connect`);
+    await expect.poll(() => new URL(page.url()).hash).toBe("#rules");
+    page.once("dialog", (dialog) => {
+      void dialog.accept();
+    });
+    await page.goBack();
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+  });
+
+  it("still asks before Back after a link is opened in a new tab", async () => {
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      api: { [pagePaths.rules]: saved, [pagePaths.asks]: list },
+    });
+    const { page } = view;
+    await page.getByRole("link", { name: "Rules" }).click();
+    const box = page.getByRole("textbox");
+    await box.fill("#work only.");
+    const asked: string[] = [];
+    page.on("dialog", (dialog) => {
+      asked.push(dialog.message());
+      void dialog.dismiss();
+    });
+    const opened = page.context().waitForEvent("page");
+    await page
+      .getByRole("link", { name: "Connect agents" })
+      .click({ modifiers: ["ControlOrMeta"] });
+    await (await opened).close();
+    expect(asked).toEqual([]);
+    await page.goBack();
+    await expect
+      .poll(() => asked)
+      .toEqual(["Leave without saving your rules?"]);
+    expect(await box.inputValue()).toBe("#work only.");
+  });
+
+  it("asks before the tab closes with unsaved text", async () => {
+    view = await openRules(saved);
+    const { page } = view;
+    await page.getByRole("textbox").fill("#work only.");
+    const asked = page.waitForEvent("dialog");
+    await page.close({ runBeforeUnload: true });
+    const dialog = await asked;
+    expect(dialog.type()).toBe("beforeunload");
+    await dialog.dismiss();
+    expect(page.isClosed()).toBe(false);
+  });
+
   it("leaves without asking when nothing changed", async () => {
     view = await openRules(saved);
     const { page } = view;
