@@ -411,7 +411,9 @@ type AskChangeKind = "opened" | "dismissed";
 // Any other call reads at most two items and changes nothing. One that
 // loses a race to another change of the same ask also sends up to
 // writeTries refused transactions, as the store retries one cancelled by a
-// conflict. A counter would add a write to every call, a refused one
+// conflict. So can one that writes, as every write raises the account's
+// version and so conflicts with any other write to the account at the same
+// moment. A counter would add a write to every call, a refused one
 // included, so a flood would cost more with a limit than without one.
 async function changeAsk(
   kind: AskChangeKind,
