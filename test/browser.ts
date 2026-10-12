@@ -43,8 +43,8 @@ export interface PageOptions {
   // answer worked out for each call. A path with no answer gets a 404.
   api?: Record<string, unknown>;
   // Give the page Playwright's clock, which runs as usual until a test
-  // moves it on with page.clock.
-  clock?: boolean;
+  // moves it on with page.clock. Given a time, the clock starts there.
+  clock?: boolean | Date;
 }
 
 // An answer that is a status, such as a failure, with a JSON body when one
@@ -176,7 +176,11 @@ export async function openPage(
       get: () => (hidden() ? "hidden" : "visible"),
     });
   }, hiddenFlag);
-  if (options.clock === true) await context.clock.install();
+  if (options.clock instanceof Date) {
+    await context.clock.install({ time: options.clock });
+  } else if (options.clock === true) {
+    await context.clock.install();
+  }
   if (options.session !== undefined) {
     await context.addInitScript(
       ([key, token]) => {

@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
-import { storedItems } from "../test/dynamodb";
+import { storedItems, storeItem } from "../test/dynamodb";
 import { callerOf, type AccountId } from "./src/identity";
 import {
   askLimit,
@@ -10,6 +10,7 @@ import {
   rulesSaveLimit,
   sortRetryLimit,
 } from "./src/rate";
+import type { HashtagWindow } from "./src/rules";
 import { keys } from "./src/store/keys";
 import {
   askLifetimeDays,
@@ -560,6 +561,12 @@ describe("the asks since a version", () => {
 
 describe("the rules", () => {
   const now = new Date("2026-10-11T09:30:00.000Z");
+  const workHours: HashtagWindow = {
+    hashtag: "work",
+    days: ["mon", "tue", "wed", "thu", "fri"],
+    from: "08:00",
+    to: "18:00",
+  };
 
   it("are empty, with no hashtags, for an account that never saved any", async () => {
     expect(await store.rules(account())).toEqual({
@@ -568,6 +575,7 @@ describe("the rules", () => {
       seen: [],
       version: 0,
       readFailed: false,
+      hours: [],
     });
   });
 
@@ -584,9 +592,86 @@ describe("the rules", () => {
       seen: ["work", "shop"],
       version: 1,
       readFailed: false,
+      hours: [],
     });
     expect(await store.rules(owner)).toEqual(saved);
     expect(await versionOf(owner)).toBe(1);
+  });
+
+  it("keep each hashtag's hours, read with it, and the time zone they use", async () => {
+    const owner = account();
+    const saved = await store.saveRules(
+      owner,
+      {
+        text: "#work on weekdays, 8am to 6pm. #shop at any time.",
+        timeZone: "Europe/London",
+        hashtags: ["work", "shop"],
+        hours: [workHours],
+      },
+      now,
+    );
+    expect(saved).toMatchObject({
+      hashtags: ["work", "shop"],
+      hours: [workHours],
+      timeZone: "Europe/London",
+    });
+    expect(await store.rules(owner)).toEqual(saved);
+  });
+
+  it("keep the old hours, and take the new time zone, when the rules could not be read", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      {
+        text: "#work on weekdays, 8am to 6pm.",
+        timeZone: "Europe/London",
+        hashtags: ["work"],
+        hours: [workHours],
+      },
+      now,
+    );
+    const saved = await store.saveRules(
+      owner,
+      { text: "#work on weekdays, 9 to 5.", timeZone: "America/New_York" },
+      now,
+    );
+    expect(saved).toMatchObject({
+      hashtags: ["work"],
+      hours: [workHours],
+      timeZone: "America/New_York",
+      readFailed: true,
+    });
+  });
+
+  it("keep the time zone saved before when a save gives none", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      { text: "#work", timeZone: "Asia/Tokyo", hashtags: ["work"] },
+      now,
+    );
+    const saved = await store.saveRules(
+      owner,
+      { text: "#work first.", hashtags: ["work"] },
+      now,
+    );
+    expect(saved.timeZone).toBe("Asia/Tokyo");
+  });
+
+  it("read rules saved before askme read hours as having none, and no time zone", async () => {
+    const owner = account();
+    await storeItem(endpoint, tableName, {
+      ...keys.rules(owner),
+      text: "#work first.",
+      hashtags: ["work"],
+      seen: ["work"],
+      version: 3,
+      readFailed: false,
+      savedAt: now.toISOString(),
+    });
+    const rules = await store.rules(owner);
+    expect(rules.hours).toEqual([]);
+    expect(rules.timeZone).toBeUndefined();
   });
 
   it("keep the new text and the old hashtags when the rules could not be read", async () => {
@@ -607,6 +692,7 @@ describe("the rules", () => {
       seen: ["work"],
       version: 2,
       readFailed: true,
+      hours: [],
     });
     expect(await versionOf(owner)).toBe(2);
   });

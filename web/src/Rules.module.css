@@ -139,9 +139,12 @@
   list-style: none;
 }
 
+/* The pill at the left, and its hours at the right. */
 .hashtag {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
   min-height: var(--tap);
   padding: var(--space-2) 0;
   border-top: var(--hairline) solid var(--line);
@@ -152,11 +155,32 @@
 }
 
 .pill {
+  flex-shrink: 0;
   padding: var(--space-4) var(--space-10);
   border-radius: var(--radius-pill);
   background: var(--tag-tint);
   color: var(--tag-ink);
   font-weight: var(--weight-label);
+}
+
+/* One line for each window. */
+.hours {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: var(--space-6) 0;
+  text-align: right;
+}
+
+.window {
+  display: block;
+}
+
+.zone {
+  margin: var(--space-10) 0 0;
+  color: var(--text-3);
+  font-size: var(--size-meta-small);
+  line-height: var(--leading-note);
 }
 
 .none {

@@ -16,16 +16,66 @@ export const levels = ["high", "normal", "low"] as const;
 
 export type Level = (typeof levels)[number];
 
+// The days of the week, from Monday, as a window of hours names them.
+export const weekdays = [
+  "mon",
+  "tue",
+  "wed",
+  "thu",
+  "fri",
+  "sat",
+  "sun",
+] as const;
+
+export type Weekday = (typeof weekdays)[number];
+
+// A time of day on the 24-hour clock, such as 08:00.
+export const clockTime = /^(?:[01]\d|2[0-3]):[0-5]\d$/u;
+
+// The end of the day, which a window may close at but never open at.
+export const endOfDay = "24:00";
+
+// One window of a hashtag's hours (PRD, "Rules"): the days it opens on, and
+// the times it opens and closes, on the wall clock of the time zone the
+// rules were saved in. It is open from the minute it opens up to the minute
+// it closes. One that closes before the time it opens runs past midnight
+// into the next day. The page applies it, in code.
+export const timeWindow = z.object({
+  days: z.array(z.enum(weekdays)).min(1),
+  from: z.string().regex(clockTime),
+  to: z.union([z.string().regex(clockTime), z.literal(endOfDay)]),
+});
+
+export type TimeWindow = z.infer<typeof timeWindow>;
+
 // One of the account's hashtags, in the order the rules give them. Its
 // colour is a number: the place the hashtag took when it first appeared in
 // the account's rules, which never changes. The page's palette turns it
-// into a colour (docs/design.md).
+// into a colour (docs/design.md). Its hours are the windows its asks show
+// in, absent when the rules give it none, so it shows at any time.
 export const hashtag = z.object({
   name: z.string(),
   colour: z.number().int().nonnegative(),
+  hours: z.array(timeWindow).min(1).optional(),
 });
 
 export type Hashtag = z.infer<typeof hashtag>;
+
+// A time zone's name as this runtime writes it, such as Europe/London for
+// europe/london, or undefined when it does not know the zone.
+export function timeZoneOf(name: string): string | undefined {
+  try {
+    return Intl.DateTimeFormat("en", { timeZone: name }).resolvedOptions()
+      .timeZone;
+  } catch {
+    // A RangeError: no zone has that name.
+    return undefined;
+  }
+}
+
+// The most characters a time zone's name may hold. The longest IANA name is
+// about 30.
+export const timeZoneLimit = 64;
 
 // The account's open asks, the version they were read at, and whether the
 // account has ever had an ask, which tells a new account from one that is
@@ -33,10 +83,15 @@ export type Hashtag = z.infer<typeof hashtag>;
 //
 // Each ask carries its sort: its hashtags, in the rules' order, and its
 // level. An ask not sorted yet carries null.
+//
+// The time zone is the one the rules were saved in, which their hours use.
+// It is absent until rules are saved with one, and the page then uses its
+// own.
 export const asksAnswer = z.object({
   version: z.number().int().nonnegative(),
   everAsked: z.boolean(),
   hashtags: z.array(hashtag),
+  timeZone: z.string().optional(),
   asks: z.array(
     z.object({
       id: z.string(),
@@ -78,20 +133,30 @@ export type ConnectionAnswer = z.infer<typeof connectionAnswer>;
 // The most characters the rules may hold.
 export const rulesLimit = 2000;
 
-// What the page sends to save the rules.
+// What the page sends to save the rules: the text, and the time zone of the
+// browser that saved them, which their hours use (PRD, "Rules"). Without a
+// time zone the one saved before stays.
 export const rulesInput = z.strictObject({
   text: z.string().max(rulesLimit),
+  timeZone: z
+    .string()
+    .max(timeZoneLimit)
+    .refine((name) => timeZoneOf(name) !== undefined)
+    .transform((name) => timeZoneOf(name) ?? name)
+    .optional(),
 });
 
 export type RulesInput = z.infer<typeof rulesInput>;
 
-// The rules as last saved, and the hashtags askme read from them. When the
-// last save could not be read, readFailed is set, and the hashtags are the
-// ones read before it.
+// The rules as last saved, the hashtags askme read from them with their
+// hours, and the time zone the hours use, absent until rules are saved with
+// one. When the last save could not be read, readFailed is set, and the
+// hashtags and their hours are the ones read before it.
 export const rulesAnswer = z.object({
   text: z.string(),
   hashtags: z.array(hashtag),
   readFailed: z.boolean(),
+  timeZone: z.string().optional(),
 });
 
 export type RulesAnswer = z.infer<typeof rulesAnswer>;

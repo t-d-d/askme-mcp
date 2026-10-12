@@ -8,16 +8,17 @@ import {
 import { rulesLimit } from "../../shared/page-api";
 import { Refusal } from "./load";
 import type { AskFirst } from "./SignedIn";
+import { hoursText } from "./hours";
 import { colourOf, tagColour } from "./palette";
 import styles from "./Rules.module.css";
-import { useRules } from "./useRules";
+import { browserTimeZone, useRules } from "./useRules";
 
 const leaving = "Leave without saving your rules?";
 
 // The rules: one box in plain English, and below it the hashtags askme read
-// from them. Saving waits while askme reads them. If it cannot, the text is
-// saved all the same, the old hashtags stay, and the page offers to try
-// again.
+// from them, each with its hours, and the time zone the hours use. Saving
+// waits while askme reads them. If it cannot, the text is saved all the
+// same, the old hashtags and hours stay, and the page offers to try again.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const { loaded, save } = useRules();
   const { data, failed } = loaded;
@@ -143,7 +144,7 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
               </p>
             ) : (
               <ul className={styles.hashtags}>
-                {data.hashtags.map(({ name, colour }) => (
+                {data.hashtags.map(({ name, colour, hours }) => (
                   <li className={styles.hashtag} key={name}>
                     <span
                       className={styles.pill}
@@ -151,10 +152,23 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
                     >
                       #{name}
                     </span>
+                    <span className={styles.hours}>
+                      {hoursText(hours ?? []).map((line, place) => (
+                        <span className={styles.window} key={place}>
+                          {line}
+                        </span>
+                      ))}
+                    </span>
                   </li>
                 ))}
               </ul>
             ))}
+          {data !== undefined && (
+            <p className={styles.zone}>
+              Hours use {data.timeZone ?? browserTimeZone()}, taken from this
+              browser.
+            </p>
+          )}
         </section>
       </main>
     </div>

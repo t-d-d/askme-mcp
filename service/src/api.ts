@@ -21,7 +21,7 @@ import { errorClass, type Logger } from "./log";
 import type { Model } from "./model";
 import { pollLimit, rulesSaveLimit } from "./rate";
 import { mcpPath, type PageRoute } from "./routes";
-import { readHashtags } from "./rules";
+import { readRules } from "./rules";
 import type { AccountRules, StoredAsk, Store } from "./store/store";
 
 export interface PageContext {
@@ -91,15 +91,30 @@ function rulesSaveRefusal(secondsLeft: number): Response {
 }
 
 // The account's hashtags as the page shows them: in the rules' order, each
-// with the colour it took when it first appeared.
-const hashtagsOf = ({ hashtags, seen }: AccountRules) =>
-  hashtags.map((name) => ({ name, colour: Math.max(0, seen.indexOf(name)) }));
+// with the colour it took when it first appeared, and the windows of its
+// hours when the rules give it any.
+const hashtagsOf = ({ hashtags, seen, hours }: AccountRules) =>
+  hashtags.map((name) => {
+    const windows = hours
+      .filter(({ hashtag }) => hashtag === name)
+      .map(({ days, from, to }) => ({ days, from, to }));
+    return {
+      name,
+      colour: Math.max(0, seen.indexOf(name)),
+      ...(windows.length === 0 ? {} : { hours: windows }),
+    };
+  });
+
+// The time zone the rules' hours use, when they were saved with one.
+const zoneOf = ({ timeZone }: AccountRules) =>
+  timeZone === undefined ? {} : { timeZone };
 
 const rulesView = (rules: AccountRules) =>
   rulesAnswer.parse({
     text: rules.text,
     hashtags: hashtagsOf(rules),
     readFailed: rules.readFailed,
+    ...zoneOf(rules),
   });
 
 // Asks the sort function again for asks still unsorted a while after they
@@ -177,6 +192,7 @@ async function poll(
       version,
       everAsked,
       hashtags: hashtagsOf(rules),
+      ...zoneOf(rules),
       asks: asks.map(({ id, summary, spokenDetail, postedAt, sort }) => ({
         id,
         summary,
@@ -191,9 +207,10 @@ async function poll(
   );
 }
 
-// Saves the rules, and reads the hashtags from them with a model call. If
-// the model cannot read them, the text is still saved and the old hashtags
-// stay, and the answer says so, so the page can offer to try again.
+// Saves the rules and the time zone they were written in, and reads the
+// hashtags and their hours from them with a model call. If the model cannot
+// read them, the text is still saved and the old hashtags and hours stay,
+// and the answer says so, so the page can offer to try again.
 async function saveRules(
   request: Request,
   account: AccountId,
@@ -204,7 +221,7 @@ async function saveRules(
     log.info("input-invalid");
     return pageRefusal(
       "invalid_input",
-      `Send the rules as JSON, as {"text": "..."}, with text of at most ${String(rulesLimit)} characters. Shorten them, then save again.`,
+      `Send the rules as JSON, as {"text": "...", "timeZone": "Europe/London"}. The text may hold at most ${String(rulesLimit)} characters, and the time zone, which may be left out, must be a name from the IANA list. Fix the request, then save again.`,
     );
   }
   const now = new Date();
@@ -213,10 +230,10 @@ async function saveRules(
     log.info("rules-limited", { accountId: account });
     return rulesSaveRefusal(counted.secondsLeft);
   }
-  const { text } = input.data;
-  let read: Awaited<ReturnType<typeof readHashtags>>;
+  const { text, timeZone } = input.data;
+  let read: Awaited<ReturnType<typeof readRules>>;
   try {
-    read = await readHashtags(text, model);
+    read = await readRules(text, model);
     if ("failed" in read) {
       log.warn("rules-read-failed", {
         accountId: account,
@@ -231,7 +248,9 @@ async function saveRules(
   }
   const saved = await store.saveRules(
     account,
-    "failed" in read ? { text } : { text, hashtags: read.hashtags },
+    "failed" in read
+      ? { text, timeZone }
+      : { text, timeZone, hashtags: read.hashtags, hours: read.hours },
     now,
   );
   if (!("failed" in read)) log.info("rules-saved", { accountId: account });

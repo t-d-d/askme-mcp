@@ -1,0 +1,43 @@
+/* A clock, the count, and the control at the right, in the note size. */
+.held,
+.foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 0 var(--space-text);
+  color: var(--text-2);
+  font-size: var(--size-note);
+  line-height: var(--leading-note);
+}
+
+.held svg,
+.foot svg {
+  flex-shrink: 0;
+}
+
+/* On All clear, the line sits at the foot of the screen. */
+.foot {
+  margin-top: auto;
+}
+
+.toggle {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  margin-left: auto;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--size-note);
+  font-weight: var(--weight-label);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (min-width: 768px) {
+  .held,
+  .foot {
+    padding-right: 0;
+    padding-left: 0;
+  }
+}

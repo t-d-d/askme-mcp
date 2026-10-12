@@ -1,22 +1,10 @@
 // Runs the eval set against the real model, with the sorting prompt the
 // service uses, and reports the scores. There is no pass mark: the run
-// fails only when it cannot reach the model at all.
-//
-// On a laptop it sends the eval key from OPENROUTER_API_KEY. In a Claude
-// cloud session it sends no key: the key is a network secret, added to
-// requests for openrouter.ai after they leave the session, through the
-// session's proxy. `npm run eval` sets NODE_USE_ENV_PROXY=1, so Node's own
-// fetch goes through that proxy.
-//
-// EVAL_MODEL picks another model than the default.
+// fails only when it cannot reach the model at all. evals/model.ts says how
+// the model is reached, with or without a key.
 import { describe, expect, it } from "vitest";
 import { callerOf } from "../service/src/identity";
-import {
-  createModel,
-  defaultModel,
-  ModelFailed,
-  openRouterEndpoint,
-} from "../service/src/model";
+import { ModelFailed } from "../service/src/model";
 import { parseSortReply, sortingPrompt, type Sort } from "../service/src/sort";
 import {
   sortAttempts,
@@ -24,25 +12,10 @@ import {
   sortTimeoutMs,
 } from "../service/src/sorter";
 import { cases, evalRules, type EvalCase } from "./cases";
-
-const env = process.env;
-const cloud = env.CLAUDE_CODE_REMOTE === "true";
-const model = env.EVAL_MODEL ?? defaultModel;
+import { evalClient, setupLines } from "./model";
 
 // How many asks are sent at once.
 const parallel = 5;
-
-const proxy = [env.HTTPS_PROXY, env.https_proxy, env.HTTP_PROXY, env.http_proxy]
-  .filter((value) => value !== undefined && value !== "")
-  .at(0);
-
-// Node routes fetch through HTTPS_PROXY only with NODE_USE_ENV_PROXY=1, from
-// 22.21 on the 22 line and from 24.0.
-function nodeUsesProxy(): boolean {
-  const [major = 0, minor = 0] = process.versions.node.split(".").map(Number);
-  const supported = major === 22 ? minor >= 21 : major >= 24;
-  return supported && env.NODE_USE_ENV_PROXY === "1";
-}
 
 const account = callerOf({
   token: "eval",
@@ -88,9 +61,7 @@ function report(outcomes: Outcome[]): string {
       return `- ${one.name}: expected ${expected}; got ${got}`;
     });
   return [
-    `Model: ${model}`,
-    `Key: ${cloud ? "none sent, as in a Claude cloud session, where the proxy adds it" : "OPENROUTER_API_KEY"}`,
-    `Proxy: ${proxy === undefined ? "none" : `fetch goes through the proxy in HTTPS_PROXY (Node ${process.versions.node}, NODE_USE_ENV_PROXY=1)`}`,
+    ...setupLines(),
     `Replies from the model: ${String(outcomes.filter(({ failure }) => failure === undefined || failure === "reply-rejected").length)} of ${String(outcomes.length)}`,
     "",
     "| Group | Asks | Hashtags right | Level right | Both right | No fitting reply |",
@@ -104,22 +75,7 @@ function report(outcomes: Outcome[]): string {
 
 describe("the eval set against the real model", () => {
   it("sorts every ask and reports the scores", async () => {
-    const key = cloud ? undefined : env.OPENROUTER_API_KEY;
-    if (!cloud && (key === undefined || key === "")) {
-      throw new Error(
-        "Set OPENROUTER_API_KEY to the eval key, or run the eval in a Claude cloud session, where the key is added for you.",
-      );
-    }
-    if (proxy !== undefined && !nodeUsesProxy()) {
-      throw new Error(
-        `A proxy is set, but this Node (${process.versions.node}) will not send fetch through it. Run the eval with npm run eval, on Node 22.21 or later.`,
-      );
-    }
-    const client = createModel({
-      endpoint: openRouterEndpoint,
-      model,
-      key: () => Promise.resolve(key),
-    });
+    const client = evalClient();
     const rules = { account, ...evalRules };
 
     async function sortOne(one: EvalCase): Promise<Outcome> {

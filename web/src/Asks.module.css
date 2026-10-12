@@ -5,6 +5,12 @@
   padding-bottom: var(--space-26);
 }
 
+/* The tabs, and the held line under them. */
+.bar {
+  display: flex;
+  flex-direction: column;
+}
+
 .note {
   margin: var(--space-6) var(--space-text) 0;
   color: var(--text-3);
@@ -23,5 +29,14 @@
   .note {
     margin-right: 0;
     margin-left: 0;
+  }
+
+  /* At desktop width the held line sits beside the tabs, at the right. */
+  .bar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4) var(--space-24);
   }
 }

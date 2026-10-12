@@ -42,7 +42,8 @@ describe("the core eval set", () => {
 
   it("expects only hashtags the rules name", () => {
     expect(
-      parseReading({ hashtags: evalRules.hashtags }, evalRules.text),
+      parseReading({ hashtags: evalRules.hashtags, hours: [] }, evalRules.text)
+        ?.hashtags,
     ).toEqual(evalRules.hashtags);
     for (const { name, expected } of cases) {
       for (const set of expected.hashtags) {
