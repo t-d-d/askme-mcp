@@ -11,6 +11,7 @@ import {
   type Level,
 } from "../shared/page-api";
 import {
+  allClearGaps,
   answerPoll,
   Answering,
   openPage,
@@ -230,6 +231,28 @@ describe("holding asks back until their hours", () => {
     await page.getByRole("navigation", { name: "Hashtags" }).waitFor();
     expect(await underTheTabs(page)).toBe("Showing 2 held asksHide them");
     expect(await summaries(page)).toHaveLength(2);
+  });
+
+  // A third of the way down: the space above is half the space below.
+  it("leaves All clear a third of the way down the space above it", async () => {
+    view = await open(listOf(asksAt(evening).slice(0, 2)), evening);
+    const { page } = view;
+    await page.getByText("2 held until their hours").waitFor();
+    const { above, below } = await allClearGaps(
+      page,
+      "2 held until their hours",
+    );
+    expect(Math.abs(above - below / 2)).toBeLessThanOrEqual(4);
+  });
+
+  it("leaves All clear on a tab a third of the way down the space under the tabs", async () => {
+    view = await open(listOf(asksAt(evening)), evening);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#work").click();
+    await page.getByRole("heading", { name: "All clear." }).waitFor();
+    const { above, below } = await allClearGaps(page);
+    expect(Math.abs(above - below / 2)).toBeLessThanOrEqual(4);
   });
 
   it("keeps focus on its control when Show them at the foot of All clear brings the tabs back", async () => {

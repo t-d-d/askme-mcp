@@ -2,12 +2,12 @@
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
-  padding-bottom: var(--space-26);
+  padding-bottom: var(--space-foot);
 }
 
 /* Room at the foot for the note after a dismissal, so it covers nothing. */
 .screen[data-noted] {
-  padding-bottom: calc(var(--space-26) + var(--tap) + 2 * var(--space-6));
+  padding-bottom: calc(var(--space-foot) + var(--tap) + 2 * var(--space-6));
 }
 
 /* The tabs, and the held line under them. */

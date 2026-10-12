@@ -88,11 +88,11 @@
   --space-30: 30px;
   --space-32: 32px;
   --space-34: 34px;
-  --space-all-clear: 130px;
 
   --space-text: var(--space-20);
   --space-outside-card: var(--space-16);
   --space-inside-card: var(--space-22);
+  --space-foot: var(--space-26);
   --gap-buttons: var(--space-8);
 
   /* An opened ask, which sinks below the unopened ones at its level */
