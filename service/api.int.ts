@@ -9,6 +9,7 @@ import {
   expect,
   inject,
   it,
+  onTestFinished,
   vi,
 } from "vitest";
 import { z } from "zod";
@@ -495,6 +496,16 @@ const officeHours = {
   to: "18:00",
 };
 
+// The middle of a minute and of a UTC day. With the clock stopped here, a
+// test's calls are all counted in the same minute and the same day as the
+// counts it filled, however close the real clock is to the end of either.
+const noon = new Date("2026-10-11T12:00:30.000Z");
+
+// Stops the clock at a moment, for the service and the token alike.
+const stopClockAt = (moment: Date) => {
+  vi.useFakeTimers({ toFake: ["Date"], now: moment });
+};
+
 describe("the rules", () => {
   // PRD, "Rules": a new account starts with example rules in the box. They
   // are read already, so no model is asked, and they name no time zone, so
@@ -715,6 +726,11 @@ describe("the rules", () => {
   });
 
   it(`are saved at most ${String(rulesSaveLimit.saves)} times a minute for each account, then refused with rate_limited`, async () => {
+    // Every save falls in one window, so the last one is over the limit.
+    stopClockAt(noon);
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const account = newAccount();
     for (let n = 0; n < rulesSaveLimit.saves; n += 1) {
       expect((await saveRules(account, { text: "" })).status).toBe(200);
@@ -725,7 +741,7 @@ describe("the rules", () => {
     expect(refusal.code).toBe("rate_limited");
     expect(refusal.class).toBe("retry");
     expect(refusal.message).toContain(String(rulesSaveLimit.saves));
-    expect(refusal.message).toMatch(/Wait \d+ seconds?, then save again\./u);
+    expect(refusal.message).toContain("Wait 30 seconds, then save again.");
     // Another account is not held back by it.
     expect((await saveRules(newAccount(), { text: "" })).status).toBe(200);
   });
@@ -1307,15 +1323,6 @@ async function summaries(account: string): Promise<string[]> {
     .parse(await response.json())
     .asks.map(({ summary }) => summary);
 }
-
-// The middle of a minute and of a UTC day, so that the day's and the
-// minute's counts filled here are the ones a press is counted against.
-const noon = new Date("2026-10-11T12:00:30.000Z");
-
-// Stops the clock at a moment, for the service and the token alike.
-const stopClockAt = (moment: Date) => {
-  vi.useFakeTimers({ toFake: ["Date"], now: moment });
-};
 
 describe("sample asks", () => {
   afterEach(() => {

@@ -55,7 +55,7 @@ With one ask waiting, the list keeps its place and says nothing else is waiting.
 | `--text-3` | `#55625B` | Small labels, ages, site names, notes |
 | `--line` | `#D3DAD2` | Hairlines between rows |
 | `--border` | `#C3CCC3` | The edge of a text box or an outlined button |
-| `--neutral-tint` | `#DDE2DC` | The Demo tag, "Not sorted yet", neutral second buttons, a disabled button |
+| `--neutral-tint` | `#DDE2DC` | "Not sorted yet", neutral second buttons, a disabled button |
 
 ### Hashtag colours
 
@@ -129,7 +129,7 @@ There are no shadows and no gradients. Depth comes from the white card on the gr
 
 ### Header
 
-The wordmark, a "Demo" tag in `--neutral-tint`, and at the right one control that opens the rules. At desktop width the right side has two text links: Rules and Connect agents.
+The wordmark, and at the right one control that opens the rules. At desktop width the right side has two text links: Rules and Connect agents. Nothing sits beside the wordmark: a tag there looks like a hashtag or a tab. The demo notice is on the signed-out page and on Connect your agents.
 
 ### Tabs
 
@@ -173,7 +173,7 @@ Saving the rules sorts every open ask again, and an ask can be left behind. One 
 
 The first ask in the list. White, with its hashtag pills, how long it has waited, the summary in large type, and a row of buttons.
 
-- **Main button.** Strong fill. Two lines: what the link is, then the site it leads to. It opens the action link, or the session link when there is no action link.
+- **Main button.** Strong fill. Two lines: its label, then the site it leads to. It opens the action link, or the session link when there is no action link.
 - **Listen.** Tint fill, a speaker icon.
 - **Session.** Tint fill, a speech-bubble icon. Shown only when the ask has both links.
 - Tapping the summary opens the card.
@@ -186,12 +186,14 @@ askme knows only the link's address, so the label comes from its shape.
 | --- | --- |
 | A GitHub pull request | Pull request |
 | A GitHub issue | Issue |
-| Any other action link | Go to, then the site's name |
+| Any other action link | Open |
 | The session link | Reply in the session |
 
 The second line is always the site's name, such as github.com. The list of recognised shapes can grow. It never uses words the agent supplied.
 
 A recognised shape's label names what the link opens, with no verb. The button only ever opens a page, so a word such as "See" adds nothing, and the shorter label stays on one line beside the Listen and session buttons.
+
+Any other link gets "Open". It is a verb because askme has nothing to name. It cannot say what the link is, and the second line already names the site. One short word stays on one line however long the site's name is.
 
 ### List rows
 
