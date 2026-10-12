@@ -17,7 +17,11 @@ const leaving = "Leave without saving your rules?";
 // from them. Saving waits while askme reads them. If it cannot, the text is
 // saved all the same, the old hashtags stay, and the page offers to try
 // again.
-export function Rules() {
+export function Rules({
+  askFirst,
+}: {
+  askFirst: (question: string | null) => void;
+}) {
   const { loaded, save } = useRules();
   const { data, failed } = loaded;
   const boxId = useId();
@@ -27,19 +31,27 @@ export function Rules() {
   const text = draft ?? data?.text ?? "";
   const changed = data !== undefined && draft !== null && draft !== data.text;
 
-  // Leaving with unsaved text asks first.
+  // Leaving with unsaved text asks first. The screens ask when Back or a
+  // typed address changes the fragment, and the browser asks before the tab
+  // closes.
   useEffect(() => {
     if (!changed) return;
+    askFirst(leaving);
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
     return () => {
+      askFirst(null);
       window.removeEventListener("beforeunload", warn);
     };
-  }, [changed]);
+  }, [changed, askFirst]);
+  // This screen's own links ask before the address changes, so staying adds
+  // nothing to the history. Once the person agrees, they are not asked again.
   const away = (event: MouseEvent) => {
-    if (changed && !window.confirm(leaving)) event.preventDefault();
+    if (!changed) return;
+    if (window.confirm(leaving)) askFirst(null);
+    else event.preventDefault();
   };
 
   const saveText = () => {
