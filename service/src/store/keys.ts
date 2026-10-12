@@ -27,7 +27,6 @@ export const sortKeys = {
   pollCount: "POLL#",
   askCount: "RATE#",
   rulesSaveCount: "SAVE#",
-  sortRetryCount: "SORT#",
 } as const;
 
 export const keys = {
@@ -81,11 +80,5 @@ export const keys = {
   rulesSaveCount: (account: AccountId, window: string): Key => ({
     pk: account,
     sk: `${sortKeys.rulesSaveCount}${window}`,
-  }),
-  // The rate counter for asking again for asks not yet sorted with the
-  // rules in force, for one window, named by the minute it starts (ADR 18).
-  sortRetryCount: (account: AccountId, window: string): Key => ({
-    pk: account,
-    sk: `${sortKeys.sortRetryCount}${window}`,
   }),
 };

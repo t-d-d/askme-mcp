@@ -4,7 +4,7 @@ import { z } from "zod";
 import { askTool } from "../service/src/ask";
 import { handler } from "../service/src/handler";
 import { events } from "../service/src/log";
-import { handler as sorter } from "../service/src/sorter";
+import { handler as sorter, sortDeliveries } from "../service/src/sorter";
 import { askChangePaths, pagePaths } from "../shared/page-api";
 import { fakes } from "../test/fakes";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
@@ -176,19 +176,26 @@ describe("fitness: no content reaches the output (logging.md)", () => {
           body: JSON.stringify({ text }),
         }),
       );
-    // Rules the model reads, then rules it cannot.
+    // Rules the model reads, then rules it cannot, then those read, then
+    // saved again unchanged.
     fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
     expect((await save(`#work is ${marker}`)).status).toBe(200);
     fakes.model.reply({ status: 502 });
     expect((await save(`#work and #home are ${marker}`)).status).toBe(200);
+    fakes.model.reply({ json: { hashtags: ["work", "home"], hours: [] } });
+    expect((await save(`#work and #home are ${marker}`)).status).toBe(200);
+    expect((await save(`#work and #home are ${marker}`)).status).toBe(200);
     // The first ask sorted with a reply that holds the marker, and the
-    // second failed by the model.
+    // second failed by the model on every delivery, until it is let go.
     fakes.model.reply({
       json: { hashtags: ["work"], level: "high", reason: `For ${marker}` },
     });
-    await fakes.lambda.drain((payload) =>
-      sorter(payload, { awsRequestId: "sort-1" }),
-    );
+    for (let delivery = 0; delivery < sortDeliveries; delivery++) {
+      await fakes.queue.deliver((event) =>
+        sorter(event, { awsRequestId: "sort-1" }),
+      );
+    }
+    fakes.queue.purge();
   });
 
   it("runs the paths that open and dismiss an ask from the page", async () => {
@@ -244,7 +251,9 @@ describe("fitness: no content reaches the output (logging.md)", () => {
       "request-failed",
       "rules-saved",
       "rules-read-failed",
+      "rules-resaved",
       "ask-sorted",
+      "sort-retried",
       "sort-failed",
       "ask-opened",
       "ask-dismissed",

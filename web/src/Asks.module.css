@@ -22,7 +22,7 @@
   scroll-margin-bottom: calc(2 * var(--focus-width) + var(--space-note));
 }
 
-/* The tabs, and the held line under them. */
+/* The tabs, and the held line and the sorting line under them. */
 .bar {
   display: flex;
   flex-direction: column;

@@ -108,9 +108,15 @@ const changeAsk = async (sub: string, path: string, id: string) =>
     }),
   );
 
-// Runs the sorts handed on so far, as Lambda would.
-const runSorts = () =>
-  fakes.lambda.drain((payload) => sorter(payload, { awsRequestId: "sort-1" }));
+// Delivers the jobs queued so far, as Lambda would, then lets go of any
+// whose sort failed, so none comes round again in a later test.
+const runSorts = async () => {
+  const runs = await fakes.queue.deliver((event) =>
+    sorter(event, { awsRequestId: "sort-1" }),
+  );
+  fakes.queue.purge();
+  return runs;
+};
 
 describe("fitness: every change raises the version (table-design.md)", () => {
   it("raises it on posting", async () => {
@@ -243,7 +249,7 @@ describe("fitness: every change raises the version (table-design.md)", () => {
       token: await issuer.token({ claims: { sub } }),
     });
     try {
-      // Sorts other tests handed on run first, with the example rules their
+      // Sorts other tests queued run first, with the example rules their
       // new accounts start with, so the reply below goes to this ask.
       await runSorts();
       await saveRules(sub, "#home is the house.", ["home"]);

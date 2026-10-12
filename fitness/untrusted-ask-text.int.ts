@@ -70,8 +70,15 @@ async function callTool(sub: string, name: string, args: object) {
   }
 }
 
-const runSorts = () =>
-  fakes.lambda.drain((payload) => sorter(payload, { awsRequestId: "sort-1" }));
+// Delivers the jobs queued so far, as Lambda would, then lets go of any
+// whose sort failed, so none comes round again in a later test.
+const runSorts = async () => {
+  const runs = await fakes.queue.deliver((event) =>
+    sorter(event, { awsRequestId: "sort-1" }),
+  );
+  fakes.queue.purge();
+  return runs;
+};
 
 // The sorting calls the model received for one ask, found by its summary.
 const sortingCallsFor = (summary: string): ModelCall[] =>
