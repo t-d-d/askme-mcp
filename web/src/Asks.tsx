@@ -37,10 +37,11 @@ import { useOpening } from "./useOpening";
 // An ask with a hashtag outside its hours is held back, on every tab, as of
 // the last poll. The held line under the tabs counts the tab's held asks
 // and shows them, or hides them again. With every ask held and hidden the
-// list is all clear, and the line sits at its foot. Once nothing is held,
-// held asks are hidden again when they are next held. A held ask dismissed
-// here is still held until askme drops it, so Undo brings it back shown. A
-// former hashtag has no hours, so it holds nothing back.
+// list is all clear, and the line sits at its foot. If its control has focus
+// as the line moves, the control in its new place takes it. Once nothing is
+// held, held asks are hidden again when they are next held. A held ask
+// dismissed here is still held until askme drops it, so Undo brings it back
+// shown. A former hashtag has no hours, so it holds nothing back.
 //
 // An ask the person has opened shows as opened, and one they have dismissed
 // leaves the list, before the next poll says so.
@@ -51,6 +52,27 @@ export function Asks({ card }: { card: string | null }) {
   const [speak] = useState(browserSpeech);
   const { opened, markOpened } = useOpening();
   const { dismissed, note, dismiss, undo } = useDismissing();
+  // The held line is drawn anew as it moves, so its control goes and another
+  // comes in the same render. The ref callback stays the same between
+  // renders, so React calls its cleanup only as a control goes, while it
+  // still has focus, and calls it again only as one comes. The control that
+  // takes focus clears the flag, so StrictMode in development, which runs the
+  // cleanup and the call a second time, leaves the flag clear.
+  const heldHadFocus = useRef(false);
+  const keepHeldFocus = useCallback((control: HTMLButtonElement) => {
+    if (heldHadFocus.current) {
+      heldHadFocus.current = false;
+      control.focus();
+    }
+    return () => {
+      if (control === document.activeElement) heldHadFocus.current = true;
+    };
+  }, []);
+  // A control that goes with no other to take its place hands focus to none
+  // that comes later.
+  useLayoutEffect(() => {
+    heldHadFocus.current = false;
+  });
   const headline = useRef<HTMLHeadingElement>(null);
   const tabsHadFocus = useRef(false);
   const tabsGoneWithFocus = useCallback(() => {
@@ -108,6 +130,7 @@ export function Asks({ card }: { card: string | null }) {
       onToggle={() => {
         showHeld(!showingHeld);
       }}
+      ref={keepHeldFocus}
     />
   );
   const noted = note !== null;
