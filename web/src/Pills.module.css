@@ -1,0 +1,15 @@
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+.pill {
+  padding: var(--space-4) var(--space-10);
+  border-radius: var(--radius-pill);
+  background: var(--tag-tint);
+  color: var(--tag-ink);
+  font-size: var(--size-meta);
+  line-height: var(--leading-meta);
+  font-weight: var(--weight-label);
+}

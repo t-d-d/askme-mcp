@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Client } from "@modelcontextprotocol/client";
 import { handler, routes } from "../service/src/handler";
 import { instructions } from "../service/src/instructions";
-import { pagePaths } from "../shared/page-api";
+import { askChangePaths, pagePaths } from "../shared/page-api";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, eras, origin, type Era } from "../test/mcp";
@@ -264,13 +264,15 @@ describe("fitness: an agent's token reads nothing from the page's API (agents-wr
       issuer.sessionToken({ claims: { aud: "client_test" } }),
     ]);
 
-  it("finds the page's routes, the rules and their hashtags among them", () => {
+  it("finds the page's routes, the rules and their hashtags, and the changes to an ask, among them", () => {
     expect(pageRoutes).toEqual(
       expect.arrayContaining([
         "GET /api/asks",
         "GET /api/connection",
         "GET /api/rules",
         "PUT /api/rules",
+        "POST /api/asks/opened",
+        "POST /api/asks/dismissed",
       ]),
     );
   });
@@ -292,6 +294,42 @@ describe("fitness: an agent's token reads nothing from the page's API (agents-wr
         expect(refusal.code).toBe("insufficient_scope");
         expect(refusal.class).toBe("do not retry");
       }
+    },
+  );
+
+  // The agent's own account, and one of its own asks, so only the token
+  // stands between the call and the change.
+  it.each(Object.values(askChangePaths))(
+    "changes nothing when an agent's token sends %s an ask of its own account",
+    async (path) => {
+      const sub = newAccount();
+      const agent = await agentOf(sub);
+      const id = await postAs(agent);
+      await agent.close();
+      const before = await pageOf(sub);
+      const tokens = await Promise.all([
+        issuer.token({ claims: { sub, scope: "asks:create" } }),
+        issuer.token({
+          claims: { sub, scope: undefined, scp: ["asks:create"] },
+        }),
+        issuer.sessionToken({ claims: { sub, scope: "asks:create" } }),
+        issuer.sessionToken({ claims: { sub, aud: "client_test" } }),
+      ]);
+      for (const token of tokens) {
+        const response = await invoke(
+          handler,
+          new Request(`${origin}${path}`, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ id }),
+          }),
+        );
+        expect(response.status).toBe(403);
+      }
+      expect(await pageOf(sub)).toEqual(before);
     },
   );
 });

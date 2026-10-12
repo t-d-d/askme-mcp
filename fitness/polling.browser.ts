@@ -23,6 +23,7 @@ const ask = (id: string, summary: string): PageAsk => ({
   summary,
   spokenDetail: `The spoken detail of ${summary}`,
   postedAt: new Date().toISOString(),
+  opened: false,
   sort: null,
 });
 

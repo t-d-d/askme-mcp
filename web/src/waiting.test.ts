@@ -71,10 +71,30 @@ describe("the order of a sorted list", () => {
 
   it("puts the higher level first, then the ask that has waited longest", () => {
     const asks = [
-      { id: "low-old", postedAt: ago(60 * minute), sort: sorted("low") },
-      { id: "high-new", postedAt: ago(1 * minute), sort: sorted("high") },
-      { id: "normal", postedAt: ago(30 * minute), sort: sorted("normal") },
-      { id: "high-old", postedAt: ago(20 * minute), sort: sorted("high") },
+      {
+        id: "low-old",
+        postedAt: ago(60 * minute),
+        opened: false,
+        sort: sorted("low"),
+      },
+      {
+        id: "high-new",
+        postedAt: ago(1 * minute),
+        opened: false,
+        sort: sorted("high"),
+      },
+      {
+        id: "normal",
+        postedAt: ago(30 * minute),
+        opened: false,
+        sort: sorted("normal"),
+      },
+      {
+        id: "high-old",
+        postedAt: ago(20 * minute),
+        opened: false,
+        sort: sorted("high"),
+      },
     ];
     expect(inListOrder(asks).map((ask) => ask.id)).toEqual([
       "high-old",
@@ -86,14 +106,74 @@ describe("the order of a sorted list", () => {
 
   it("puts asks not sorted yet after the sorted ones, longest waiting first", () => {
     const asks = [
-      { id: "unsorted-new", postedAt: ago(1 * minute), sort: null },
-      { id: "low", postedAt: ago(2 * minute), sort: sorted("low") },
-      { id: "unsorted-old", postedAt: ago(9 * minute), sort: null },
+      {
+        id: "unsorted-new",
+        postedAt: ago(1 * minute),
+        opened: false,
+        sort: null,
+      },
+      {
+        id: "low",
+        postedAt: ago(2 * minute),
+        opened: false,
+        sort: sorted("low"),
+      },
+      {
+        id: "unsorted-old",
+        postedAt: ago(9 * minute),
+        opened: false,
+        sort: null,
+      },
     ];
     expect(inListOrder(asks).map((ask) => ask.id)).toEqual([
       "low",
       "unsorted-old",
       "unsorted-new",
     ]);
+  });
+
+  it("sinks an opened ask below the unopened ones at its level, and no further", () => {
+    const asks = [
+      {
+        id: "high-opened",
+        postedAt: ago(50 * minute),
+        opened: true,
+        sort: sorted("high"),
+      },
+      {
+        id: "high",
+        postedAt: ago(1 * minute),
+        opened: false,
+        sort: sorted("high"),
+      },
+      {
+        id: "normal",
+        postedAt: ago(40 * minute),
+        opened: false,
+        sort: sorted("normal"),
+      },
+      {
+        id: "unsorted-opened",
+        postedAt: ago(30 * minute),
+        opened: true,
+        sort: null,
+      },
+      { id: "unsorted", postedAt: ago(2 * minute), opened: false, sort: null },
+    ];
+    expect(inListOrder(asks).map((ask) => ask.id)).toEqual([
+      "high",
+      "high-opened",
+      "normal",
+      "unsorted",
+      "unsorted-opened",
+    ]);
+  });
+
+  it("keeps opened asks at one level longest waiting first", () => {
+    const asks = [
+      { id: "new", postedAt: ago(1 * minute), opened: true, sort: null },
+      { id: "old", postedAt: ago(9 * minute), opened: true, sort: null },
+    ];
+    expect(inListOrder(asks).map((ask) => ask.id)).toEqual(["old", "new"]);
   });
 });

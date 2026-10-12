@@ -37,8 +37,14 @@ export const events = [
   "ask-resolved",
   // An agent resolved an ask that was already closed. It succeeds.
   "ask-already-closed",
-  // An agent resolved an id its account has no ask for, so it was refused.
+  // An agent resolved, or the page changed, an id its account has no ask
+  // for, so it was refused.
   "ask-not-found",
+  // The person followed one of an ask's links for the first time, and it
+  // was marked as opened. It stays open.
+  "ask-opened",
+  // The person dismissed an open ask, which closed.
+  "ask-dismissed",
   // A poll came over the account's limit for the minute, and was refused
   // with rate_limited. Expected, so logged at info.
   "poll-limited",
