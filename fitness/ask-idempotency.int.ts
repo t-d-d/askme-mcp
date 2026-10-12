@@ -48,16 +48,18 @@ const ask = {
   action_link: "https://github.com/t-d-d/askme-mcp/pull/1",
   session_link: "https://claude.ai/code/session_1",
   replaces: "AAAAAAAAAAAAAAAAAAAAAAAA",
+  stale_after_minutes: 45,
 };
 
 // The same ask, changed in one field and nothing else.
-const changed: Record<keyof typeof ask, string> = {
+const changed: Record<keyof typeof ask, string | number> = {
   summary: `${ask.summary}, again`,
   area: "Home renovation, downstairs",
   spoken_detail: `${ask.spoken_detail} Or Monday.`,
   action_link: "https://github.com/t-d-d/askme-mcp/pull/2",
   session_link: "https://claude.ai/code/session_2",
   replaces: "BBBBBBBBBBBBBBBBBBBBBBBB",
+  stale_after_minutes: 46,
 };
 
 const agentOf = async (sub: string, era: Era = "legacy") =>
@@ -67,8 +69,10 @@ const idOf = (result: unknown) =>
   z.object({ structuredContent: z.object({ id: z.string() }) }).parse(result)
     .structuredContent.id;
 
-const post = async (agent: Client, args: Record<string, string> = ask) =>
-  idOf(await agent.callTool({ name: "ask", arguments: args }));
+const post = async (
+  agent: Client,
+  args: Record<string, string | number> = ask,
+) => idOf(await agent.callTool({ name: "ask", arguments: args }));
 
 // The asks stored under an account, open or closed, read straight from the
 // table.
@@ -106,7 +110,10 @@ describe("fitness: same call twice (ask-idempotency.md)", () => {
     try {
       const first = await post(agent);
       const padded = Object.fromEntries(
-        Object.entries(ask).map(([field, value]) => [field, ` ${value}\n`]),
+        Object.entries(ask).map(([field, value]) => [
+          field,
+          typeof value === "string" ? ` ${value}\n` : value,
+        ]),
       );
       expect(await post(agent, padded)).toBe(first);
       expect(await asksOf(sub)).toHaveLength(1);
@@ -162,7 +169,7 @@ describe("fitness: any difference is new (ask-idempotency.md)", () => {
     },
   );
 
-  it.each(["action_link", "session_link", "replaces"])(
+  it.each(["action_link", "session_link", "replaces", "stale_after_minutes"])(
     "makes a new ask when only the %s is left out",
     async (field) => {
       const sub = newAccount();

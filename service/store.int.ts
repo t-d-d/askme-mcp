@@ -101,6 +101,7 @@ describe("the store", () => {
     expect(stored).not.toHaveProperty("actionLink");
     expect(stored).not.toHaveProperty("sessionLink");
     expect(stored).not.toHaveProperty("replaces");
+    expect(stored).not.toHaveProperty("lapsesAt");
   });
 
   it("gives each ask a long random id", async () => {
@@ -152,6 +153,63 @@ const itemsOf = async (owner: AccountId, id: string) =>
 
 const versionOf = async (owner: AccountId) =>
   (await store.openAsks(owner, new Date())).version;
+
+describe("an ask that stops mattering", () => {
+  it("is stored with the time it lapses, counted from when it was posted, and listed with it", async () => {
+    const owner = account();
+    const now = new Date("2026-10-11T09:30:00.000Z");
+    const { id } = await postNew(owner, { ...ask, staleAfterMinutes: 45 }, now);
+    expect((await store.openAsks(owner, now)).asks).toEqual([
+      {
+        id,
+        ...ask,
+        postedAt: "2026-10-11T09:30:00.000Z",
+        storedAt: "2026-10-11T09:30:00.000Z",
+        lapsesAt: "2026-10-11T10:15:00.000Z",
+      },
+    ]);
+    expect(await itemsOf(owner, id)).toEqual([
+      expect.objectContaining({ lapsesAt: "2026-10-11T10:15:00.000Z" }),
+    ]);
+  });
+
+  it("stays listed after it lapses, as a lapsed ask is not closed", async () => {
+    const owner = account();
+    const now = new Date("2026-10-11T09:30:00.000Z");
+    const { id } = await postNew(owner, { ...ask, staleAfterMinutes: 1 }, now);
+    const later = new Date(now.getTime() + day);
+    expect((await store.openAsks(owner, later)).asks).toEqual([
+      expect.objectContaining({ id, lapsesAt: "2026-10-11T09:31:00.000Z" }),
+    ]);
+  });
+
+  it("that replaces another counts its minutes from its own posting, and takes no lapse time from the old ask", async () => {
+    const owner = account();
+    const first = new Date("2026-10-11T09:30:00.000Z");
+    const second = new Date("2026-10-11T11:00:00.000Z");
+    const old = await postNew(owner, { ...ask, staleAfterMinutes: 45 }, first);
+    const timed = await postNew(
+      owner,
+      { ...numbered(1), replaces: old.id, staleAfterMinutes: 10 },
+      second,
+    );
+    const untimed = await postNew(
+      owner,
+      { ...numbered(2), replaces: timed.id },
+      second,
+    );
+    expect(timed.replaced && untimed.replaced).toBe(true);
+    expect(await itemsOf(owner, timed.id)).toEqual([
+      expect.objectContaining({
+        postedAt: first.toISOString(),
+        lapsesAt: "2026-10-11T11:10:00.000Z",
+      }),
+    ]);
+    const [listed] = (await store.openAsks(owner, second)).asks;
+    expect(listed?.id).toBe(untimed.id);
+    expect(listed).not.toHaveProperty("lapsesAt");
+  });
+});
 
 describe("resolving an ask", () => {
   it("closes an open ask as resolved, and the list no longer holds it", async () => {

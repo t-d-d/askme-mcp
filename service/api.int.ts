@@ -72,7 +72,7 @@ const ask = {
 async function call(
   account: string,
   name: string,
-  args: Record<string, string>,
+  args: Record<string, string | number>,
 ): Promise<unknown> {
   const client = await connect(handler, {
     token: await issuer.token({ claims: { sub: account } }),
@@ -86,7 +86,7 @@ async function call(
 
 async function post(
   account: string,
-  args: Record<string, string> = ask,
+  args: Record<string, string | number> = ask,
 ): Promise<string> {
   return z.object({ id: z.string() }).parse(await call(account, "ask", args))
     .id;
@@ -783,6 +783,74 @@ const sortOf = (account: string, askId: string) => ({
   functionName: "askme-prod-sort",
   invocationType: "Event",
   payload: { accountId: account, askId },
+});
+
+describe("an ask that stops mattering", () => {
+  // Each ask as the page lists it, with its lapse time when it has one.
+  async function lapses(account: string) {
+    const response = await get(pagePaths.asks, await session(account));
+    return z
+      .object({
+        asks: z.array(
+          z.looseObject({
+            id: z.string(),
+            postedAt: z.string(),
+            lapsesAt: z.string().optional(),
+          }),
+        ),
+      })
+      .parse(await response.json()).asks;
+  }
+
+  it("is listed with the time it lapses, counted from when it was posted", async () => {
+    const account = newAccount();
+    const id = await post(account, { ...ask, stale_after_minutes: 45 });
+    const [listed] = await lapses(account);
+    expect(listed?.id).toBe(id);
+    expect(
+      Date.parse(listed?.lapsesAt ?? "") - Date.parse(listed?.postedAt ?? ""),
+    ).toBe(45 * 60_000);
+  });
+
+  it("is listed with no lapse time when posted without one", async () => {
+    const account = newAccount();
+    const id = await post(account);
+    const [listed] = await lapses(account);
+    expect(listed?.id).toBe(id);
+    expect(listed).not.toHaveProperty("lapsesAt");
+  });
+
+  it("is sorted with no lapse time in the sorting request, as captured at the HTTP edge", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
+    await saveRules(account, { text: rulesText });
+    await runSorts();
+    const summary = `Stops mattering ${randomUUID()}`;
+    await post(account, { ...ask, summary, stale_after_minutes: 4321 });
+    fakes.model.reply({
+      json: { hashtags: ["work"], level: "normal", reason: "It can wait." },
+    });
+    await runSorts();
+    const sorting = fakes.model.calls.filter((call) =>
+      JSON.stringify(call.body).includes(summary),
+    );
+    expect(sorting).toHaveLength(1);
+    const [listed] = await lapses(account);
+    const lapsesAt = Date.parse(listed?.lapsesAt ?? "");
+    expect(lapsesAt).not.toBeNaN();
+    const request = JSON.stringify(sorting[0]?.body);
+    for (const held of [
+      "stale_after_minutes",
+      "staleAfterMinutes",
+      "lapsesAt",
+      "4321",
+      new Date(lapsesAt).toISOString(),
+      String(lapsesAt),
+      String(lapsesAt / 1000),
+    ]) {
+      expect(request).not.toContain(held);
+    }
+  });
 });
 
 describe("sorting", () => {

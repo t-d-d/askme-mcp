@@ -296,6 +296,7 @@ async function poll(
         actionLink: ask.actionLink,
         sessionLink: ask.sessionLink,
         postedAt: ask.postedAt,
+        lapsesAt: ask.lapsesAt,
         opened: ask.openedAt !== undefined,
         sort:
           ask.sort === undefined

@@ -79,9 +79,10 @@ const link = z.url({ protocol: /^https$/u });
 // all clear.
 //
 // Each ask carries the links its agent gave, if any, and whether the person
-// has opened it by following one. It carries its sort: its hashtags, in the
-// rules' order, its level, and the model's one line on why. An ask not
-// sorted yet carries null.
+// has opened it by following one. It carries the time it stops mattering,
+// when its agent gave one. It stays open after that time. It carries its
+// sort: its hashtags, in the rules' order, its level, and the model's one
+// line on why. An ask not sorted yet carries null.
 //
 // Saving the rules sorts every open ask again, and each keeps its old sort
 // until then, so an ask can carry a hashtag the rules no longer name. Those
@@ -105,6 +106,7 @@ export const asksAnswer = z.object({
       actionLink: link.optional(),
       sessionLink: link.optional(),
       postedAt: z.iso.datetime(),
+      lapsesAt: z.iso.datetime().optional(),
       opened: z.boolean(),
       sort: z
         .object({
