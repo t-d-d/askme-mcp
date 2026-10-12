@@ -10,9 +10,8 @@ import { vi } from "vitest";
 export const noon = new Date("2026-10-11T12:00:30.000Z");
 
 // Stops the clock at a moment, for the service and the token alike. Only the
-// date stands still, so the timers the database client and the fake issuer
-// wait on still run. vi.setSystemTime moves the stopped clock, and
-// vi.useRealTimers starts it again.
+// date is faked, so timers still run. A second call moves the stopped clock,
+// and vi.useRealTimers starts it again.
 export function stopClockAt(moment: Date): void {
   vi.useFakeTimers({ toFake: ["Date"], now: moment });
 }

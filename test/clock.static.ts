@@ -11,24 +11,29 @@ const helper = "test/clock.ts";
 const others = (): string[] =>
   repoFiles().filter((path) => path.endsWith(".ts") && path !== helper);
 
+// A call to either fakes the date. vi.setSystemTime does it on its own when
+// nothing else has.
+const fakesTheDate = /\b(?:useFakeTimers|setSystemTime)\(/u;
+
 describe("the integration tests stop the clock in one place", () => {
   it("fakes the date in test/clock.ts and no integration test", () => {
-    expect(readRepoFile(helper)).toContain("useFakeTimers");
+    expect(readRepoFile(helper)).toMatch(fakesTheDate);
     expect(
-      others().filter(
+      repoFiles().filter(
         (path) =>
-          path.endsWith(".int.ts") &&
-          readRepoFile(path).includes("useFakeTimers"),
+          path.endsWith(".int.ts") && fakesTheDate.test(readRepoFile(path)),
       ),
     ).toEqual([]);
   });
 
-  it("names the stopped moment in test/clock.ts and no other file", () => {
-    expect(readRepoFile(helper)).toContain(noon.toISOString());
+  // To the second, so the moment is found however its milliseconds are
+  // written, or left out.
+  const moment = noon.toISOString().slice(0, "YYYY-MM-DDTHH:mm:ss".length);
+
+  it("names the stopped moment in test/clock.ts and no other TypeScript file", () => {
+    expect(readRepoFile(helper)).toContain(moment);
     expect(
-      others().filter((path) =>
-        readRepoFile(path).includes(noon.toISOString()),
-      ),
+      others().filter((path) => readRepoFile(path).includes(moment)),
     ).toEqual([]);
   });
 });
