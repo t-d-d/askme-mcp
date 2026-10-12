@@ -24,8 +24,11 @@ most of it can only be read signed in.
   verification code.
 - MCP is tested through the official client.
 - One runner for the repo. Playwright is used as a library.
-- The live tier checks the deployed site, and writes nothing to
-  askme's store. It may sign in as the one test account and no other,
+- The live tier checks the deployed site. It makes no write of its
+  own to askme's store, and sends the page's API reads only. The
+  service may write a rate counter to answer them, and may ask again
+  for an ask to be sorted. No other write may follow from them.
+- The live tier may sign in as the one test account and no other,
   through Clerk's own screens, using Clerk's test mode and no stored
   secret. The account's address carries +clerk_test and is one
   constant, in one file, used as it is. When Clerk says the account
@@ -60,8 +63,15 @@ most of it can only be read signed in.
 - Delete an account from the live tier: it takes Clerk's secret key.
 - Give the live tier Clerk's secret key, as @clerk/testing's
   server-side sign-in needs: it can change anything in the instance.
+- Stop the live check before the page polls, or answer its polls in
+  the check: the poll is the only call that shows a session token
+  reaching the service and passing.
+- Leave a limit out for the test account in the service: anyone can
+  sign in as it, so it would be the one account with no limit.
 
 Judgment: A real agent connecting and its ask reaching a card is
 checked by hand after a deploy, and how narrow a third-party
-conformance key is when it is made. No test can see either.
-History: [ADR 9](../adr/0009-test-pyramid.md), [ADR 15](../adr/0015-conformance-tier.md), [ADR 16](../adr/0016-live-sign-in.md)
+conformance key is when it is made. No test can see either. A new
+write that the service makes to answer a read of the page's API also
+binds the live tier, and needs a decision before it lands.
+History: [ADR 9](../adr/0009-test-pyramid.md), [ADR 15](../adr/0015-conformance-tier.md), [ADR 16](../adr/0016-live-sign-in.md), [ADR 20](../adr/0020-live-tier-reads.md)

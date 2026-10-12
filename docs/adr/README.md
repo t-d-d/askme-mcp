@@ -23,6 +23,7 @@ Each technical decision that is hard to reverse is recorded here, one file per d
 | [17](0017-spend-reads-the-bill.md) | The spend alarm reads the account's bill | [alerting.md](../constraints/alerting.md) |
 | [18](0018-rate-counter.md) | A rate counter is written without raising the version | [table-design.md](../constraints/table-design.md) |
 | [19](0019-unknown-tool-name.md) | A call to a tool askme does not have gets the MCP spec's protocol error | [error-contract.md](../constraints/error-contract.md) |
+| [20](0020-live-tier-reads.md) | The live tier only reads, and the service may write to answer it | [test-tiers.md](../constraints/test-tiers.md) |
 
 ## How a decision is recorded
 

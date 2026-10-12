@@ -2,7 +2,8 @@
 // Clerk's own screens, as a person does, and the signed-in page loads its
 // list (ADR 16). The first run, and any run after the account is deleted,
 // signs it up. The run ends by signing out. The page only reads, so nothing
-// here writes to askme's store.
+// here writes to askme's store of its own. The service may still write to
+// answer those reads, as it does each poll's rate counter (ADR 20).
 import {
   chromium,
   type Browser,
@@ -12,6 +13,7 @@ import {
 } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { pagePaths } from "../shared/page-api";
 import { mcpUrl, pageUrl, phone } from "../test/live";
 
 // The one test account. Clerk's test mode verifies a +clerk_test address
@@ -52,10 +54,20 @@ const signUpAnswer = z.object({
 describe("fitness: a person can sign in and out on the live page (test-tiers.md)", () => {
   let browser: Browser | undefined;
   let page: Page;
+  // Every call the page, or a worker it starts, sends its own API during the
+  // run, as its method and path.
+  const apiCalls: string[] = [];
 
   beforeAll(async () => {
     browser = await chromium.launch();
     page = await browser.newPage({ viewport: phone });
+    const { origin } = new URL(pageUrl());
+    page.context().on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.origin === origin && url.pathname.startsWith("/api/")) {
+        apiCalls.push(`${request.method()} ${url.pathname}`);
+      }
+    });
     await page.goto(pageUrl());
     await signIn(page);
   }, 5 * stepMs);
@@ -152,6 +164,15 @@ describe("fitness: a person can sign in and out on the live page (test-tiers.md)
     },
     4 * stepMs,
   );
+
+  // The page polled while signed in, and the first test saw the list that
+  // poll loaded. It sent nothing but reads, so the run made no write of its
+  // own to askme's store (ADR 20).
+  it("sends the page's API nothing but reads", () => {
+    const reads = Object.values(pagePaths).map((path) => `GET ${path}`);
+    expect(apiCalls).toContain(`GET ${pagePaths.asks}`);
+    expect(apiCalls.filter((call) => !reads.includes(call))).toEqual([]);
+  });
 });
 
 // Signs in from the signed-out page, on Clerk's screens, and lands back on
