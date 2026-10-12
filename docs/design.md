@@ -195,6 +195,8 @@ Swiping a row or the top card dismisses it. A note with "Undo" shows for a few s
 Shown when nothing is waiting and the account has had at least one ask.
 
 - "All clear." at 146px, on two lines.
+- The headline and its two lines sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the held line. On a screen too short for that, 26px stays above them.
+- Both lines balance their line breaks, so a line that wraps never leaves a word or two on their own.
 - A fixed line in ink: "Your agents are getting on with it."
 - A second line in `--text-2` that changes on each visit:
   - Go and put the kettle on.

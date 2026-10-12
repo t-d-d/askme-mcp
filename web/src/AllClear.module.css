@@ -1,8 +1,27 @@
+/* It fills the space down to the foot of the screen and sits a third of
+   the way down it, so the space above is half the space below. The two
+   spacers split the free space one to two. The padding keeps a gap on a
+   screen too short for that. Below it, the screen's own padding, or the
+   held line's margin, adds the same again, so the fixed space below is
+   double the fixed space above too. */
 .allClear {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: var(--space-6);
-  padding: var(--space-all-clear) var(--space-inside-card) 0;
+  padding: var(--space-26) var(--space-inside-card);
+}
+
+.allClear::before,
+.allClear::after {
+  content: "";
+}
+
+.allClear::before {
+  flex: 1;
+}
+
+.allClear::after {
+  flex: 2;
 }
 
 .headline {
@@ -21,9 +40,10 @@
 .fixed,
 .line {
   max-width: var(--measure);
-  margin: 0;
+  margin: var(--space-6) 0 0;
   font-size: var(--size-all-clear-lines);
   line-height: var(--leading-all-clear-lines);
+  text-wrap: balance;
 }
 
 .fixed {

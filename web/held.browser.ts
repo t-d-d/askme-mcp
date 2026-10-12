@@ -232,6 +232,29 @@ describe("holding asks back until their hours", () => {
     expect(await summaries(page)).toHaveLength(2);
   });
 
+  // A third of the way down: the space above is half the space below.
+  it("leaves All clear a third of the way down the space above it", async () => {
+    view = await open(listOf(asksAt(evening).slice(0, 2)), evening);
+    const { page } = view;
+    await page.getByText("2 held until their hours").waitFor();
+    const { above, below } = await page.evaluate(async () => {
+      await document.fonts.ready;
+      const header = document.querySelector("header")?.getBoundingClientRect();
+      const headline = document.querySelector("h1")?.getBoundingClientRect();
+      const last = [...document.querySelectorAll("main p")]
+        .at(-1)
+        ?.getBoundingClientRect();
+      const held = [...document.querySelectorAll("span")]
+        .find((span) => span.textContent === "2 held until their hours")
+        ?.parentElement?.getBoundingClientRect();
+      return {
+        above: (headline?.top ?? 0) - (header?.bottom ?? 0),
+        below: (held?.top ?? 0) - (last?.bottom ?? 0),
+      };
+    });
+    expect(Math.abs(above - below / 2)).toBeLessThanOrEqual(4);
+  });
+
   it("keeps focus on its control when Show them at the foot of All clear brings the tabs back", async () => {
     view = await open(listOf(asksAt(evening).slice(0, 2)), evening);
     const { page } = view;
