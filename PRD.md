@@ -41,8 +41,8 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 
 - One text box holds the rules in plain English.
 - On save, the service lists the hashtags and any time windows it read from the rules, and shows them back.
-- Saving re-sorts every open ask, while the account's daily cap on model calls lasts. Cards keep their old hashtags until that finishes. Cards the cap leaves out keep them until it resets.
-- Once the cap is spent, saving the rules is refused until it resets. Saving an empty box still works, since it needs no model call.
+- Saving re-sorts every open ask, while the account's daily cap on model calls lasts. Each card keeps its old hashtags until its new sort is stored. An ask the cap leaves out keeps its old sort, or none, at least until the cap resets at the start of the next UTC day.
+- Once the cap is spent, saving the rules is refused until it resets, and nothing is saved. Saving an empty box still works and re-sorts every open ask, since it needs no model call.
 - Time windows use the user's time zone, taken from the browser on save.
 - A new account starts with example rules in the box. With the box empty there are no hashtags, and every ask appears in Everything.
 - Only the signed-in user can read or change the rules.
@@ -74,8 +74,8 @@ Version 1 is a personal service with sign-up, in three parts: an MCP server, a s
 ### Back end
 
 - Serverless, with no always-on compute. The page polls for new asks.
-- An ask is never rejected or lost because sorting failed, or because the account reached its cap on model calls. It shows as unsorted and is retried.
-- One model call per ask does the sorting and returns a validated structure. One smaller call runs when rules are saved.
+- An ask is never rejected or lost because sorting failed, or because the account reached its cap on model calls. It keeps its old sort, or shows as unsorted if it has none, and is retried. Past the cap, a retry makes no model call until the cap resets.
+- One model call per ask does the sorting and returns a validated structure, with a second try if the first fails. One smaller call runs when rules are saved, unless the box is empty.
 - Time windows are applied in code when the page loads, not by the model.
 - When an ask is replaced, both versions stay in the store. A retried ask is matched by its content and is not stored twice.
 
