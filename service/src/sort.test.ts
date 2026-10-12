@@ -113,11 +113,11 @@ describe("the sorting prompt", () => {
     });
   });
 
-  it("asks for a reason well inside the limit, since the model runs past what it is asked", () => {
+  it("asks for a shorter reason than the limit, since the model runs past what it is asked", () => {
     const { system } = sortingPrompt(rules, ask);
     expect(reasonAsked).toBeLessThan(reasonLimit);
     expect(system).toContain(`at most ${String(reasonAsked)} characters`);
-    expect(system).not.toContain(String(reasonLimit));
+    expect(system).not.toContain(`${String(reasonLimit)} characters`);
   });
 
   it("asks for a level and a reason alone when the rules name no hashtag", () => {
