@@ -75,6 +75,7 @@ export function useDismissing(): Dismissing {
           return;
         }
         setNote("dismissed");
+        window.clearTimeout(pending.timer);
         pending.timer = window.setTimeout(pending.due, undoMs);
       }, undoMs);
     }

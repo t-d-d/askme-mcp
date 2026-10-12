@@ -695,7 +695,12 @@ describe("dismissing", () => {
     await expect
       .poll(() => sentTo(opened, askChangePaths.dismissed))
       .toEqual(["both", "session"]);
-    await page.clock.runFor(undoMs + 500);
+    await page.clock.runFor(undoMs - 500);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual([
+      "both",
+      "session",
+    ]);
+    await page.clock.runFor(1000);
     await expect
       .poll(() => sentTo(opened, askChangePaths.dismissed))
       .toEqual(["both", "session", "neither"]);
@@ -705,6 +710,21 @@ describe("dismissing", () => {
       "session",
       "neither",
     ]);
+  });
+
+  it("sends a held dismissal at once when the page is closed over the note that an earlier one failed", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither), {
+      clock: true,
+      change: failingFor("both"),
+    });
+    const { page } = opened;
+    await failWhileAnotherWaits(opened);
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent("pagehide")),
+    );
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both", "session"]);
   });
 
   it("lets the ask go when the API no longer has it", async () => {
