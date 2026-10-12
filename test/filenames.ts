@@ -18,13 +18,14 @@ const withoutExtension = (path: string): string =>
   declaration.test(path)
     ? path.replace(declaration, "")
     : path.slice(0, path.length - extname(path).length);
-const names = (path: string): string[] => {
+const entries = (path: string): string[] => {
   const parts = path.split("/");
-  return [
-    ...parts.map((_, end) => parts.slice(0, end + 1).join("/")),
-    withoutExtension(path),
-  ];
+  return parts.map((_, end) => parts.slice(0, end + 1).join("/"));
 };
+const names = (path: string): string[] => [
+  ...entries(path),
+  withoutExtension(path),
+];
 
 // A group of names as one string, whatever order its names come in.
 const together = (group: Iterable<string>): string =>
@@ -65,18 +66,21 @@ export function clashes(paths: readonly string[]): string[][] {
   }
   const groups = [...spellings.values()].filter((spelt) => spelt.size > 1);
   // A.md beside a.md clashes twice, as A.md and a.md, and as A and a. A
-  // group of files whose names without their extensions make up another
-  // group says nothing that group does not, so it is left out.
+  // group of files is left out when their names without extensions make up
+  // another group, and no folder or file on the disk has one of those names.
+  // The other group then says the same thing.
   const files = new Set(paths);
+  const onDisk = new Set(paths.flatMap(entries));
   const listed = new Set(groups.map(together));
+  const repeats = (spelt: Set<string>): boolean => {
+    const bare = [...spelt].map(withoutExtension);
+    return (
+      [...spelt].every((name) => files.has(name)) &&
+      listed.has(together(bare)) &&
+      !bare.some((name) => onDisk.has(name))
+    );
+  };
   return groups
-    .filter((spelt) => {
-      const bare = together(
-        [...spelt].map((name) =>
-          files.has(name) ? withoutExtension(name) : name,
-        ),
-      );
-      return bare === together(spelt) || !listed.has(bare);
-    })
+    .filter((spelt) => !repeats(spelt))
     .map((spelt) => [...spelt].map(visible));
 }
