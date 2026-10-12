@@ -42,6 +42,13 @@ export const resolveTool: ToolDefinition<
   ].join(" "),
   input: resolveInput,
   output: resolveOutput,
+  // No rate limit, as the owner decided in issue #121. Only an ask's first
+  // close writes, so these calls raise the version at most once for each
+  // ask, and the daily cap limits the asks. Any other call reads at most two
+  // items and changes nothing. One that loses a race to another close of
+  // the same ask also sends a refused transaction. A counter would add a
+  // write to every call, a refused one included, so a flood would cost more
+  // with a limit than without one.
   async run({ id }, { caller, log, store }) {
     const { accountId } = caller;
     const found = await store.resolveAsk(accountId, id, new Date());
