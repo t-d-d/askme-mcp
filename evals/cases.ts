@@ -280,6 +280,23 @@ export const cases: EvalCase[] = [
     expected: { hashtags: [["shop"]], level: "high" },
   },
   {
+    // Names a passkey, but nothing waits on it.
+    name: "a passkey to set up when it suits",
+    group: "core",
+    area: "shop",
+    ask: {
+      summary: "Add a passkey to the shop's admin account when it suits you?",
+      area: shop,
+      spokenDetail:
+        "The shop's admin site now lets you sign in with a passkey instead of a password. You can add one from the account page whenever it suits you.",
+      sessionLink: session(210),
+    },
+    expected: {
+      hashtags: [["shop"], ["admin"], ["shop", "admin"]],
+      level: "low",
+    },
+  },
+  {
     name: "a domain about to lapse",
     group: "core",
     area: "shop",
@@ -403,6 +420,20 @@ export const cases: EvalCase[] = [
       sessionLink: session(302),
     },
     expected: { hashtags: [["family"]], level: "high" },
+  },
+  {
+    // A sign-in code runs out within minutes, though the ask does not say.
+    name: "a sign-in code for the school's payment site",
+    group: "core",
+    area: "family",
+    ask: {
+      summary: "What's the code the school's payment site just texted you?",
+      area: family,
+      spokenDetail:
+        "I'm paying the twelve pounds for Maya's aquarium trip on the school's payment site. It has just texted a six digit sign in code to your phone. Tell me the code in the session and I'll finish paying.",
+      sessionLink: session(311),
+    },
+    expected: { hashtags: [["family"], ["family", "admin"]], level: "high" },
   },
   {
     name: "a school run swap",
