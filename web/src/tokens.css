@@ -18,10 +18,12 @@
   /* Type: one family, bundled with the site */
   --font: "Bricolage Grotesque Variable", sans-serif;
 
-  /* "clear." is 2.1 times as wide as its type. On a screen too narrow for
-     it at 146px, the headline shrinks with the screen, so the word keeps
-     the side padding inside a card, with a pixel or two to spare. */
-  --size-all-clear: min(146px, (100vw - 2 * var(--space-inside-card)) / 2.12);
+  /* "clear." is 2.1 times as wide as its type. Where All clear's column
+     is too narrow for it at 146px, the headline shrinks with the column,
+     so the word stays inside its side padding, with a pixel or two to
+     spare. The column is a container (AllClear.module.css), so 100cqi is
+     the width inside its padding, without the screen's scroll bar. */
+  --size-all-clear: min(146px, 100cqi / 2.12);
   --size-headline: 42px;
   --size-top-ask-wide: 48px;
   --size-title: 31px;

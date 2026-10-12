@@ -106,19 +106,21 @@ const lineWidths = (page: OpenPage["page"], text: string) =>
 const sidePadding = 22;
 
 // Where the All clear headline's words start and end, across its lines.
+// A headline with no lines gets edges that fail any check.
 const headlineEdges = (page: OpenPage["page"]) =>
-  page.evaluate(async () => {
-    await document.fonts.ready;
-    const headline = document.querySelector("h1");
-    if (headline === null) return { left: 0, right: Infinity };
-    const range = document.createRange();
-    range.selectNodeContents(headline);
-    const lines = [...range.getClientRects()];
-    return {
-      left: Math.min(...lines.map(({ left }) => left)),
-      right: Math.max(...lines.map(({ right }) => right)),
-    };
-  });
+  page
+    .getByRole("heading", { name: "All clear." })
+    .evaluate(async (headline) => {
+      await document.fonts.ready;
+      const range = document.createRange();
+      range.selectNodeContents(headline);
+      const lines = [...range.getClientRects()];
+      if (lines.length === 0) return { left: -Infinity, right: Infinity };
+      return {
+        left: Math.min(...lines.map(({ left }) => left)),
+        right: Math.max(...lines.map(({ right }) => right)),
+      };
+    });
 
 describe.each([
   ["a phone", phone],
