@@ -19,7 +19,7 @@ export function SampleTopCard() {
       </p>
       <div className={styles.buttons}>
         <div className={styles.main}>
-          <span className={styles.label}>See pull request</span>
+          <span className={styles.label}>Pull request</span>
           <span className={styles.site}>github.com</span>
         </div>
         <div className={styles.listen}>

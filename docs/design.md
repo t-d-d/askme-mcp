@@ -96,7 +96,7 @@ One family: Bricolage Grotesque, the variable font, served from the site itself.
 | Spoken text | 18px | 1.5 | 400 | 0 |
 | Row summary, button label | 17px | 1.26 | 550 for a summary, 650 for a button | 0 |
 | Tabs, links, body | 16px | 1.45 | 400, or 600 for a control | 0 |
-| Notes, the held line | 15px | 1.4 | 400, or 600 for a label | 0 |
+| Notes, the held and lapsed lines | 15px | 1.4 | 400, or 600 for a label | 0 |
 | Pills, ages, site names | 13px to 14px | 1.3 | 400, or 600 in a pill | 0 |
 
 Lines of running text stay under 80 characters. At desktop width the spoken text has a maximum width of 34rem.
@@ -143,9 +143,20 @@ A hashtag can be limited to hours. An ask outside its hours is held back.
 - When nothing is held, the line is not there.
 - It also shows on the All clear screen, at the foot.
 
+### The lapsed line
+
+An agent can say when its ask stops mattering. Once that time has passed, the ask is lapsed. It is not closed, and it is held back behind a line of its own, which looks like the held line.
+
+- When any asks have lapsed, one line sits under the held line, or directly under the tabs when nothing is held: an hourglass, "2 have lapsed", and a "Show them" control. With one, it says "1 has lapsed".
+- After "Show them" the line reads "Showing 2 lapsed asks", and the control reads "Hide them". The lapsed asks come after every other ask, longest waiting first. Each opens and dismisses like any other.
+- An ask outside its hours stays held until its time has passed. Then it counts as lapsed, not held.
+- When nothing has lapsed, the line is not there.
+- It also shows on the All clear screen, at the foot, under the held line.
+- At desktop width it sits beside the held line, at the right of the tabs.
+
 ### The sorting line
 
-Saving the rules sorts every open ask again, and an ask can be left behind. One line says how sorting stands. It looks like the held line, with no clock and no control, and sits under the tabs, below the held line when both show.
+Saving the rules sorts every open ask again, and an ask can be left behind. One line says how sorting stands. It looks like the held line, with no clock and no control, and sits under the tabs, below the held and lapsed lines when they show.
 
 - While the daily limit is reached: "Today's sorting limit is reached. It resets at 01:00." The time is in the person's time zone.
 - Otherwise, while any asks are being sorted: "Sorting 40 asks with your rules".
@@ -156,7 +167,7 @@ Saving the rules sorts every open ask again, and an ask can be left behind. One 
 
 The first ask in the list. White, with its hashtag pills, how long it has waited, the summary in large type, and a row of buttons.
 
-- **Main button.** Strong fill. Two lines: what it does, then the site it leads to. It opens the action link, or the session link when there is no action link.
+- **Main button.** Strong fill. Two lines: what the link is, then the site it leads to. It opens the action link, or the session link when there is no action link.
 - **Listen.** Tint fill, a speaker icon.
 - **Session.** Tint fill, a speech-bubble icon. Shown only when the ask has both links.
 - Tapping the summary opens the card.
@@ -167,12 +178,14 @@ askme knows only the link's address, so the label comes from its shape.
 
 | Link | Label |
 | --- | --- |
-| A GitHub pull request | See pull request |
-| A GitHub issue | See issue |
+| A GitHub pull request | Pull request |
+| A GitHub issue | Issue |
 | Any other action link | Go to, then the site's name |
 | The session link | Reply in the session |
 
 The second line is always the site's name, such as github.com. The list of recognised shapes can grow. It never uses words the agent supplied.
+
+A recognised shape's label names what the link opens, with no verb. The button only ever opens a page, so a word such as "See" adds nothing, and the shorter label stays on one line beside the Listen and session buttons.
 
 ### List rows
 
@@ -207,8 +220,8 @@ Shown when nothing is waiting and the account has had at least one ask.
 
 - "All clear." at 146px. On a screen narrower than 517px, such as a phone held upright, it takes two lines. On a screen 517px wide or more, such as at desktop width, it fits on one line inside the side padding.
 - On a screen narrower than 354px, "clear." does not fit at 146px inside the 22px side padding. There the headline shrinks with the screen, so "clear." keeps 22px on each side. At 320px wide it is 130px.
-- The headline and the two lines under it sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the held line. On a screen too short for that, 26px stays above them.
-- They stay where they are while a note shows at the foot of the screen. The held line moves up out of the note's way. On a screen too short for that, they move up too, or the screen scrolls further, until 26px stays between the last line and the held line or the note.
+- The headline and the two lines under it sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the first line at the foot, the held line or the lapsed line. On a screen too short for that, 26px stays above them.
+- They stay where they are while a note shows at the foot of the screen. The held and lapsed lines move up out of the note's way. On a screen too short for that, they move up too, or the screen scrolls further, until 26px stays between the last line and the held line, the lapsed line or the note.
 - The two lines under the headline balance their line breaks, so a line that wraps never leaves a word or two on their own.
 - A fixed line in ink: "Your agents are getting on with it."
 - A second line in `--text-2` that changes on each visit:
@@ -218,7 +231,7 @@ Shown when nothing is waiting and the account has had at least one ask.
   - Look out of the window.
   - Finish that cup of tea.
   - Nothing to see here. Lovely.
-- No buttons. The held line sits at the foot when asks are held.
+- No buttons. The held line sits at the foot when asks are held, and the lapsed line under it when asks have lapsed.
 
 ### New account
 
@@ -249,14 +262,16 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 - A button names its action: "Save rules", "Show them", "Send sample asks".
 - An action keeps its name. The tab says Everything, so nothing else calls it "All".
 - Times are short: "Just now", "4 min", "1 h", "2 d". The top card says "Waiting 4 min".
+- A time of day is on the 24-hour clock, in the person's time zone, as in "It resets at 01:00".
 
 | Moment | Words |
 | --- | --- |
 | A poll fails | Not connected. Trying again. |
-| The daily cap is reached | You've reached today's limit. It resets tomorrow. |
+| The daily cap is reached | You've reached today's limit. It resets at 01:00. |
 | Too many presses | Slow down a little. Try again in a few seconds. |
 | Reading the rules fails | askme couldn't read your rules just now. Your text is saved. Try again. |
 | A dismissal fails | That didn't go through. The ask is back. |
+| Asks have lapsed | 2 have lapsed |
 | Asks are being sorted | Sorting 40 asks with your rules |
 | Sorting stopped for some asks | 3 asks couldn't be sorted. Saving your rules tries again. |
 | The daily sorting limit is reached | Today's sorting limit is reached. It resets at 01:00. |
@@ -264,7 +279,7 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 
 ## Movement
 
-- Movement answers something the person did: a card slides away on a swipe, a row dims when opened, the held asks appear when shown.
+- Movement answers something the person did: a card slides away on a swipe, a row dims when opened, the held or lapsed asks appear when shown.
 - An open card and the rules sit over the list, and Connect your agents over the rules. A screen that sits higher slides in from the right over the one it opens from, and slides out to the right to show the one under it, in 250ms. Nothing can be tapped while it moves. When the browser draws its own movement for Back, as a phone's may on a swipe, the screen changes at once.
 - Nothing moves by itself, and nothing loops.
 - When the person's device asks for reduced motion, changes happen at once.

@@ -17,9 +17,10 @@ import { browserSpeech } from "./speech";
 import { Tabs, type TabsHandle } from "./Tabs";
 import { useAsks } from "./useAsks";
 import { useDismissing } from "./useDismissing";
+import { useLineFocus } from "./useLineFocus";
 import { useListPlace } from "./useListPlace";
 import { useOpening } from "./useOpening";
-import { inListOrder } from "./waiting";
+import { inListOrder, lapsedAsks } from "./waiting";
 
 // The main screen: the person's open asks, or when none are waiting, All
 // clear, or for an account that has never had an ask, how to begin. The list
@@ -37,14 +38,20 @@ import { inListOrder } from "./waiting";
 // again. A hashtag the rules no longer name has no tab, but keeps its
 // colour on the asks that still carry it.
 //
+// The list is in order as of the last poll, so it follows the clock as asks
+// near the time they lapse (waiting.ts).
+//
 // An ask with a hashtag outside its hours is held back, on every tab, as of
-// the last poll. The held line under the tabs counts the tab's held asks
-// and shows them, or hides them again. With every ask held and hidden the
-// list is all clear, and the line sits at its foot. If its control has focus
-// as the line moves, the control in its new place takes it. If the line goes
-// with none in its place, the selected tab takes focus, or with no tabs, as
-// the list is all clear, the All clear headline. Once nothing is held, held
-// asks are hidden again when they are next held. A held ask dismissed here
+// the last poll. So is an ask whose time has passed, which is lapsed, and
+// counts as lapsed, not held, whatever its hours. The held line under the
+// tabs counts the tab's held asks and shows them, or hides them again, and
+// the lapsed line under it does the same for the lapsed asks. With every ask
+// held or lapsed and hidden the list is all clear, and the lines sit at its
+// foot. If a line's control has focus as the line moves, the control in its
+// new place takes it. If the line goes with none in its place, the selected
+// tab takes focus, or with no tabs, as the list is all clear, the All clear
+// headline. Once nothing is held, held asks are hidden again when they are
+// next held, and lapsed asks the same. A held or lapsed ask dismissed here
 // is still held until askme drops it, so Undo brings it back shown. A former
 // hashtag has no hours, so it holds nothing back.
 //
@@ -59,25 +66,12 @@ export function Asks({ card }: { card: string | null }) {
   const { data, receivedAt, polledAt, failed } = useAsks();
   const [chosen, choose] = useState<Tab>(everything);
   const [showingHeld, showHeld] = useState(false);
+  const [showingLapsed, showLapsed] = useState(false);
   const [speak] = useState(browserSpeech);
   const { opened, markOpened } = useOpening();
   const { dismissed, note, dismiss, undo } = useDismissing();
-  // The held line is drawn anew as it moves, so its control goes and another
-  // comes in the same render. The ref callback stays the same between
-  // renders, so React calls its cleanup only as a control goes, while it
-  // still has focus, and calls it again only as one comes. The control that
-  // takes focus clears the flag, so StrictMode in development, which runs the
-  // cleanup and the call a second time, leaves the flag clear.
-  const heldHadFocus = useRef(false);
-  const keepHeldFocus = useCallback((control: HTMLButtonElement) => {
-    if (heldHadFocus.current) {
-      heldHadFocus.current = false;
-      control.focus();
-    }
-    return () => {
-      if (control === document.activeElement) heldHadFocus.current = true;
-    };
-  }, []);
+  const heldFocus = useLineFocus();
+  const lapsedFocus = useLineFocus();
   const headline = useRef<HTMLHeadingElement>(null);
   const tabsHadFocus = useRef(false);
   const tabs = useRef<TabsHandle>(null);
@@ -107,22 +101,31 @@ export function Asks({ card }: { card: string | null }) {
     data === undefined ? [] : [...hashtags, ...data.formerHashtags];
   // Counted over the list as polled, so an ask dismissed here still counts
   // until askme drops it, and Undo brings it back as it was.
+  const lapsed = useMemo(
+    () => lapsedAsks(data?.asks ?? [], polledAt),
+    [data, polledAt],
+  );
   const held = useMemo(
     () =>
       heldAsks(
-        data?.asks ?? [],
+        (data?.asks ?? []).filter(({ id }) => !lapsed.has(id)),
         data?.hashtags ?? [],
         data?.timeZone,
         polledAt,
       ),
-    [data, polledAt],
+    [data, lapsed, polledAt],
   );
   if (showingHeld && held.size === 0) showHeld(false);
+  if (showingLapsed && lapsed.size === 0) showLapsed(false);
   const waiting = (list: readonly PageAsk[]) =>
-    showingHeld ? list : list.filter(({ id }) => !held.has(id));
+    list.filter(
+      ({ id }) =>
+        (showingHeld || !held.has(id)) && (showingLapsed || !lapsed.has(id)),
+    );
   const open = card === null ? undefined : asks.find(({ id }) => id === card);
   useLayer(open === undefined ? layers.list : layers.card);
-  // An open card keeps the list's tab, though every ask behind it is held.
+  // An open card keeps the list's tab, though every ask behind it is held or
+  // lapsed.
   const allClear =
     open === undefined &&
     data?.everAsked === true &&
@@ -133,38 +136,62 @@ export function Asks({ card }: { card: string | null }) {
       : everything;
   if (tab !== chosen) choose(tab);
   const onThisTab = onTab(asks, tab);
-  const shown = inListOrder(waiting(onThisTab));
+  const shown = inListOrder(waiting(onThisTab), polledAt);
   const heldHere = onThisTab.filter(({ id }) => held.has(id)).length;
+  const lapsedHere = onThisTab.filter(({ id }) => lapsed.has(id)).length;
   const list = useListPlace(
     open?.id,
     shown.map(({ id }) => id),
     headline,
   );
-  const heldLine = (atFoot: boolean) => (
-    <Held
-      count={heldHere}
-      showing={showingHeld}
-      atFoot={atFoot}
-      onToggle={() => {
-        showHeld(!showingHeld);
-      }}
-      ref={keepHeldFocus}
-    />
+  const anyHeld = heldHere > 0 || lapsedHere > 0;
+  // The held line, and the lapsed line under it. At the foot of All clear,
+  // the first of them keeps the screen's space above it.
+  const heldLines = (atFoot: boolean) => (
+    <>
+      {heldHere > 0 && (
+        <Held
+          by="hours"
+          count={heldHere}
+          showing={showingHeld}
+          atFoot={atFoot}
+          onToggle={() => {
+            showHeld(!showingHeld);
+          }}
+          ref={heldFocus.keep}
+        />
+      )}
+      {lapsedHere > 0 && (
+        <Held
+          by="lapse"
+          count={lapsedHere}
+          showing={showingLapsed}
+          atFoot={atFoot && heldHere === 0}
+          onToggle={() => {
+            showLapsed(!showingLapsed);
+          }}
+          ref={lapsedFocus.keep}
+        />
+      )}
+    </>
   );
   const noted = note !== null;
   // The tabs also go when a card opens, so this moves focus only onto All
-  // clear, and only in the render the tabs went in. A held line's control
-  // that goes with no other to take its place hands focus on in the same
-  // way, or to the selected tab while there are tabs, and to none that comes
-  // later. With a card open there is neither, so focus is left alone.
+  // clear, and only in the render the tabs went in. A line's control that
+  // goes with no other to take its place hands focus on in the same way, or
+  // to the selected tab while there are tabs, and to none that comes later.
+  // With a card open there is neither, so focus is left alone.
   useLayoutEffect(() => {
-    if (allClear && (tabsHadFocus.current || heldHadFocus.current)) {
+    // Both are taken, so both flags clear.
+    const heldLost = heldFocus.lostFocus();
+    const lapsedLost = lapsedFocus.lostFocus();
+    const lineHadFocus = heldLost || lapsedLost;
+    if (allClear && (tabsHadFocus.current || lineHadFocus)) {
       headline.current?.focus();
-    } else if (heldHadFocus.current) {
+    } else if (lineHadFocus) {
       tabs.current?.focusSelected();
     }
     tabsHadFocus.current = false;
-    heldHadFocus.current = false;
   });
 
   // The note stays in one place in the tree, whichever screen shows, so a
@@ -197,7 +224,9 @@ export function Asks({ card }: { card: string | null }) {
                 onBackWithFocus={tabsBackWithFocus}
                 ref={tabs}
               />
-              {heldHere > 0 && heldLine(false)}
+              {anyHeld && (
+                <div className={styles.lines}>{heldLines(false)}</div>
+              )}
             </div>
           )}
           {failed && (
@@ -218,7 +247,7 @@ export function Asks({ card }: { card: string | null }) {
           ) : data.everAsked ? (
             <>
               <AllClear noted={noted} ref={headline} />
-              {allClear && heldHere > 0 && heldLine(true)}
+              {allClear && anyHeld && heldLines(true)}
             </>
           ) : (
             <NewAccount />
