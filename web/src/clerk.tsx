@@ -2,7 +2,12 @@
 // screens, so at the 100-account limit of a development instance it is
 // Clerk's screen that refuses a sign-up. The page only asks Clerk who is
 // signed in, and for a session token to send to its API.
-import { ClerkProvider, useAuth as useClerkAuth, useClerk } from "@clerk/react";
+import {
+  ClerkProvider,
+  useAuth as useClerkAuth,
+  useClerk,
+  useUser,
+} from "@clerk/react";
 import { useMemo, type ReactNode } from "react";
 import { z } from "zod";
 import { AuthContext, type Auth } from "./auth";
@@ -17,19 +22,27 @@ const publishableKey = z
 
 function FromClerk({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
+  const { user } = useUser();
   const clerk = useClerk();
+  const email = user?.primaryEmailAddress?.emailAddress ?? null;
   const auth = useMemo<Auth>(
     () => ({
       status: !isLoaded ? "loading" : isSignedIn ? "signed-in" : "signed-out",
       getToken: () => getToken(),
+      email,
       signIn: () => {
         void clerk.redirectToSignIn();
       },
       signUp: () => {
         void clerk.redirectToSignUp();
       },
+      // Given a callback, Clerk runs it in place of sending the browser to
+      // its after-sign-out address, so the page is not loaded again.
+      signOut: () => {
+        void clerk.signOut(() => undefined);
+      },
     }),
-    [isLoaded, isSignedIn, getToken, clerk],
+    [isLoaded, isSignedIn, getToken, email, clerk],
   );
   return <AuthContext value={auth}>{children}</AuthContext>;
 }

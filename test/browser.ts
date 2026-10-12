@@ -11,6 +11,7 @@ import { z } from "zod";
 import { sinceParam, type AsksAnswer } from "../shared/page-api";
 import {
   askedForKey,
+  emailKey,
   sessionChangedEvent,
   sessionKey,
   spokenKey,
@@ -48,6 +49,8 @@ export interface OpenPage {
 export interface PageOptions {
   // Signed in with this session token. Signed out when it is not set.
   session?: string;
+  // The signed-in person's email address. Left out, Clerk has none for them.
+  email?: string;
   // The page's API: each path's answer as JSON, a status alone, or an
   // answer worked out for each call. A path with no answer gets a 404.
   api?: Record<string, unknown>;
@@ -227,6 +230,14 @@ export async function openPage(
         localStorage.setItem(key, token);
       },
       [sessionKey, options.session] as const,
+    );
+  }
+  if (options.email !== undefined) {
+    await context.addInitScript(
+      ([key, email]) => {
+        localStorage.setItem(key, email);
+      },
+      [emailKey, options.email] as const,
     );
   }
   const page = await context.newPage();
