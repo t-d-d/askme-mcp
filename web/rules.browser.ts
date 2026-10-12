@@ -370,6 +370,40 @@ describe("the rules screen", () => {
     ]);
   });
 
+  it("drops the cap note once the cap resets, with no reload, and keeps the text", async () => {
+    const changed = `${text}\n\n#family is home.`;
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      email,
+      timeZone: "Europe/London",
+      clock: new Date("2026-10-12T15:00:00Z"),
+      api: {
+        [pagePaths.rules]: rulesApi(
+          saved,
+          () =>
+            new Status(429, {
+              code: "cap_reached",
+              class: "do not retry",
+              message: "Saving these rules needs model calls.",
+            }),
+        ),
+        [pagePaths.asks]: list,
+      },
+    });
+    const { page } = view;
+    const capNote = page
+      .getByRole("status")
+      .filter({ hasText: "You've reached today's limit. It resets at 01:00." });
+    await page.getByRole("textbox").fill(changed);
+    await page.getByRole("button", { name: "Save rules" }).click();
+    await capNote.waitFor();
+    await page.clock.pauseAt(new Date("2026-10-12T23:59:59Z"));
+    expect(await capNote.count()).toBe(1);
+    await page.clock.runFor(2000);
+    await expect.poll(() => capNote.count()).toBe(0);
+    expect(await page.getByRole("textbox").inputValue()).toBe(changed);
+  });
+
   it("saves the text, says it is reading the rules, then shows the hashtags read", async () => {
     const bodies: (string | null)[] = [];
     view = await openRules(

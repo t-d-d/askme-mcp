@@ -20,6 +20,7 @@ import {
   samplesPath,
   timeZoneLimit,
 } from "../shared/page-api";
+import { noon, stopClockAt } from "../test/clock";
 import { storedItems } from "../test/dynamodb";
 import { fakes, testModelKey } from "../test/fakes";
 import { runSorts } from "../test/sorts";
@@ -494,16 +495,6 @@ const officeHours = {
   days: ["mon", "tue", "wed", "thu", "fri"],
   from: "08:00",
   to: "18:00",
-};
-
-// The middle of a minute and of a UTC day. With the clock stopped here, a
-// test's calls are all counted in the same minute and the same day as the
-// counts it filled, however close the real clock is to the end of either.
-const noon = new Date("2026-10-11T12:00:30.000Z");
-
-// Stops the clock at a moment, for the service and the token alike.
-const stopClockAt = (moment: Date) => {
-  vi.useFakeTimers({ toFake: ["Date"], now: moment });
 };
 
 describe("the rules", () => {

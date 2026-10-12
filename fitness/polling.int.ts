@@ -9,6 +9,7 @@ import { callerOf, type AccountId } from "../service/src/identity";
 import { pollLimit } from "../service/src/rate";
 import { keys } from "../service/src/store/keys";
 import { pagePaths } from "../shared/page-api";
+import { stopClockAt } from "../test/clock";
 import {
   readActions,
   recordDatabase,
@@ -188,12 +189,9 @@ describe("fitness: a counter leaves the version alone (table-design.md)", () => 
 });
 
 describe("fitness: the poll endpoint has its own rate limit (polling.md)", () => {
-  // Ten seconds into a minute, so the window has fifty seconds left. Only
-  // the date is faked, and it stands still until a test moves it.
+  // Ten seconds into a minute, so the window has fifty seconds left. Each
+  // test stops the clock there.
   const start = new Date("2026-10-11T09:30:10.000Z");
-  beforeAll(() => {
-    vi.useFakeTimers({ toFake: ["Date"], now: start });
-  });
   afterAll(() => {
     vi.useRealTimers();
   });
@@ -205,7 +203,7 @@ describe("fitness: the poll endpoint has its own rate limit (polling.md)", () =>
   }
 
   it("refuses a poll over the limit as rate_limited, saying how long to wait", async () => {
-    vi.setSystemTime(start);
+    stopClockAt(start);
     const sub = newAccount();
     await pollToTheLimit(sub);
     const response = await poll(sub);
@@ -219,7 +217,7 @@ describe("fitness: the poll endpoint has its own rate limit (polling.md)", () =>
   });
 
   it("stores its count under its own prefix, and nothing else", async () => {
-    vi.setSystemTime(start);
+    stopClockAt(start);
     const sub = newAccount();
     await poll(sub);
     await poll(sub);
@@ -233,16 +231,16 @@ describe("fitness: the poll endpoint has its own rate limit (polling.md)", () =>
   });
 
   it("answers again in the next minute", async () => {
-    vi.setSystemTime(start);
+    stopClockAt(start);
     const sub = newAccount();
     await pollToTheLimit(sub);
     expect((await poll(sub)).status).toBe(429);
-    vi.setSystemTime(new Date("2026-10-11T09:31:00.000Z"));
+    stopClockAt(new Date("2026-10-11T09:31:00.000Z"));
     expect((await poll(sub)).status).toBe(200);
   });
 
   it("counts no poll whose version is not a whole number", async () => {
-    vi.setSystemTime(start);
+    stopClockAt(start);
     const sub = newAccount();
     expect((await poll(sub, "abc")).status).toBe(400);
     expect(await storedItems(inject("databaseEndpoint"), "askme", sub)).toEqual(
@@ -251,7 +249,7 @@ describe("fitness: the poll endpoint has its own rate limit (polling.md)", () =>
   });
 
   it("does not limit an agent's asks", async () => {
-    vi.setSystemTime(start);
+    stopClockAt(start);
     const sub = newAccount();
     await pollToTheLimit(sub);
     expect((await poll(sub)).status).toBe(429);

@@ -104,6 +104,7 @@ One family: Bricolage Grotesque, the variable font, served from the site itself.
 | Tabs, links, body | 16px | 1.45 | 400, or 600 for a control | 0 |
 | Notes, the held and lapsed lines | 15px | 1.4 | 400, or 600 for a label | 0 |
 | Pills, ages, site names | 13px to 14px | 1.3 | 400, or 600 in a pill | 0 |
+| A long site name on the top card's main button | 11px | 1.3 | 400 | 0 |
 
 Lines of running text stay under 80 characters. At desktop width the spoken text has a maximum width of 34rem.
 
@@ -192,6 +193,8 @@ askme knows only the link's address, so the label comes from its shape.
 
 The second line is always the site's name, such as github.com. The list of recognised shapes can grow. It never uses words the agent supplied.
 
+On the top card, a site's name of more than 15 characters, such as dash.cloudflare.com, is set at 11px. It then stays whole on one line beside the Listen and session buttons on a 360px phone. The name is never cut short with an ellipsis. Its end matters most, since github.com.example.net is not github.com. A name too long for one line even at 11px, such as console.aws.amazon.com, wraps onto a second line.
+
 A recognised shape's label names what the link opens, with no verb. The button only ever opens a page, so a word such as "See" adds nothing, and the shorter label stays on one line beside the Listen and session buttons.
 
 Any other link gets "Open". It is a verb because askme has nothing to name. It cannot say what the link is, and the second line already names the site. One short word stays on one line however long the site's name is.
@@ -246,10 +249,12 @@ Shown when nothing is waiting and the account has had at least one ask.
 
 Shown when the account has never had an ask. A white card says "Your agents can ask here.", explains in two sentences, and offers "Connect your agents" in ink and "Send sample asks" in `--neutral-tint`.
 
+When a press of "Send sample asks" does not go through, one short note under the button says why, in the words below. The daily cap's note goes once the cap resets at the next midnight UTC, with no reload.
+
 ### Rules
 
 - One text box, with a label above it that says what to write.
-- "Save rules" is ink when the text has changed, or when some asks couldn't be sorted and the daily limit is not reached. Otherwise it is `--neutral-tint`. Under it, one short note gives the state: "Saved.", "Reading your rules.", "Sorting your asks again." for a save of unchanged rules, or what went wrong.
+- "Save rules" is ink when the text has changed, or when some asks couldn't be sorted and the daily limit is not reached. Otherwise it is `--neutral-tint`. Under it, one short note gives the state: "Saved.", "Reading your rules.", "Sorting your asks again." for a save of unchanged rules, or what went wrong. The daily cap's note goes once the cap resets at the next midnight UTC, with no reload, as it does under "Send sample asks".
 - Below, what askme read from the rules: each hashtag's pill with its hours, or "Any time". This list changes only when a save finishes.
 - A last note names the time zone and says that saving changed rules re-sorts every open ask, and saving them unchanged sorts again any that couldn't be sorted.
 - At the foot, under a hairline: the person's email address in `--text-3`, and "Sign out" at the right in ink, underlined, like "Show them". "Sign out" stays on the address's line, and a long address wraps beside it. With no email address, "Sign out" stands alone. The screen is taller than a phone, so the foot is reached by scrolling.
@@ -258,7 +263,7 @@ Shown when the account has never had an ask. A white card says "Your agents can 
 
 ### Connect your agents
 
-The server address in a read-only box with a Copy button, steps for Claude as a numbered list, a button for Cursor, and "Send sample asks" for someone with no agent yet. The demo notice is at the foot. The header has only "All asks", which goes back. There is no Rules link.
+The server address in a read-only box with a Copy button, steps for Claude as a numbered list, a button for Cursor, and "Send sample asks" for someone with no agent yet, with its note as on the new account card. The demo notice is at the foot. The header has only "All asks", which goes back. There is no Rules link.
 
 ### Signed out
 

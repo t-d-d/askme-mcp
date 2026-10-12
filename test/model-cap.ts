@@ -1,31 +1,11 @@
 // The daily cap on model calls (ADR 21), for the integration tier: a test
 // can spend an account's cap with one write, where the service would take
 // thousands of calls, and read how many calls the account has made today.
-import { inject, onTestFinished, vi } from "vitest";
+import { inject } from "vitest";
 import type { AccountId } from "../service/src/identity";
 import { modelCallLimit, windowOf } from "../service/src/rate";
 import { keys } from "../service/src/store/keys";
 import { putItem, storedItems } from "./dynamodb";
-
-// Starts the clock, for the service and the test alike, at noon UTC today,
-// and lets it run on from there, so no test crosses midnight between
-// spending the cap and the call the cap refuses. Called inside a test.
-export function startAtNoon(): void {
-  const now = new Date();
-  vi.useFakeTimers({
-    toFake: ["Date"],
-    now: Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate(),
-      12,
-    ),
-    shouldAdvanceTime: true,
-  });
-  onTestFinished(() => {
-    vi.useRealTimers();
-  });
-}
 
 // The UTC day the service counts a call made now in.
 const today = () => windowOf(new Date(), modelCallLimit.windowMinutes);

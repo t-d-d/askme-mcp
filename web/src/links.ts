@@ -12,6 +12,14 @@ export function siteOf(link: string): string {
   return new URL(link).hostname.replace(/^www\./u, "");
 }
 
+// Whether a site's name is long enough to take smaller type on the top
+// card's main button, so it stays whole on one line beside the Listen and
+// session buttons. Fifteen characters fit at the usual size on a narrow
+// phone.
+export function longSite(site: string): boolean {
+  return site.length > 15;
+}
+
 // The shapes askme recognises: a GitHub pull request or issue, by number.
 const shapes = [
   { kind: "pull", label: "Pull request" },

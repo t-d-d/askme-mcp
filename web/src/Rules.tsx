@@ -11,10 +11,11 @@ import { Refusal } from "./load";
 import type { AskFirst } from "./SignedIn";
 import { hoursText } from "./hours";
 import { colourOf, tagColour } from "./palette";
-import { resetTime } from "./resets";
+import { resetsAt, resetTime } from "./resets";
 import styles from "./Rules.module.css";
 import { capSpentUntil, sortingState } from "./sorting";
 import { elsewhere, followToList } from "./toList";
+import { useAfter } from "./useAfter";
 import { useAsks } from "./useAsks";
 import { browserTimeZone, useRules } from "./useRules";
 
@@ -34,9 +35,14 @@ const leaving = "Leave without saving your rules?";
 // behind the rules (ADR 22). The screen polls the list, as the list does,
 // to know when asks stopped and when the limit is reached. A save refused
 // at the limit keeps the text in the box, and says when the limit resets.
+// That note goes once the limit resets, with no reload.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const auth = useAuth();
   const { loaded, save } = useRules();
+  useAfter(
+    capped(save.error) ? resetsAt(save.submittedAt) : undefined,
+    save.reset,
+  );
   const { data, failed } = loaded;
   const listed = useAsks();
   const boxId = useId();
@@ -258,6 +264,9 @@ function Footnote({
   );
 }
 
+const capped = (error: Error | null) =>
+  error instanceof Refusal && error.code === "cap_reached";
+
 // One short note under the button, giving the state.
 function Note({
   failed,
@@ -303,7 +312,7 @@ function Note({
       </p>
     );
   }
-  if (error instanceof Refusal && error.code === "cap_reached") {
+  if (capped(error)) {
     return (
       <p className={styles.note} role="status">
         You&apos;ve reached today&apos;s limit. It resets at{" "}

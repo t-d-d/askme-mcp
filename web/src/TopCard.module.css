@@ -89,6 +89,11 @@
   overflow-wrap: anywhere;
 }
 
+/* A long name takes smaller type, so it stays whole on one line. */
+.site[data-long] {
+  font-size: var(--size-site-long);
+}
+
 /* Listen and the session: a tint fill with an icon in the ink. */
 .icon {
   display: flex;

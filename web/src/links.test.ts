@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { actionLabel, destinations, sessionLabel, siteOf } from "./links";
+import {
+  actionLabel,
+  destinations,
+  longSite,
+  sessionLabel,
+  siteOf,
+} from "./links";
 
 describe("the site a link leads to", () => {
   it.each([
@@ -16,6 +22,23 @@ describe("the site a link leads to", () => {
   it("shows a host in another script as the browser spells it, so it cannot pass for another", () => {
     // A Cyrillic letter that looks like the Latin i.
     expect(siteOf("https://g\u0456thub.com/a")).toBe("xn--gthub-n2e.com");
+  });
+});
+
+describe("a long site name", () => {
+  it.each(["github.com", "claude.ai", "docs.google.com"])(
+    "is not %s, of 15 characters or fewer",
+    (site) => {
+      expect(longSite(site)).toBe(false);
+    },
+  );
+
+  it.each([
+    "admin.google.com",
+    "dash.cloudflare.com",
+    "console.aws.amazon.com",
+  ])("is %s, of more than 15 characters", (site) => {
+    expect(longSite(site)).toBe(true);
   });
 });
 

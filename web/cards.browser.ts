@@ -20,6 +20,8 @@ import {
   type PageOptions,
 } from "../test/browser";
 
+type Locator = ReturnType<OpenPage["page"]["locator"]>;
+
 const phone = { width: 390, height: 844 };
 const session = "test-session-token";
 const minute = 60_000;
@@ -29,6 +31,7 @@ const pullRequest = "https://github.com/t-d-d/askme-mcp/pull/12";
 const issue = "https://github.com/t-d-d/askme-mcp/issues/7";
 const ticket = "https://linear.app/askme/issue/ASK-3";
 const googleDoc = "https://docs.google.com/document/d/1AbC/edit";
+const cloudflare = "https://dash.cloudflare.com/a1b2/example.com/dns";
 const sessionLink = "https://claude.ai/code/session_01AbC";
 
 const ask = (
@@ -78,6 +81,12 @@ const googleDocAndSession = ask(
   "Sign off the launch notes?",
   40 * minute,
   { actionLink: googleDoc, sessionLink },
+);
+const cloudflareAndSession = ask(
+  "domain",
+  "Renew the shop's domain?",
+  40 * minute,
+  { actionLink: cloudflare, sessionLink },
 );
 
 let view: OpenPage | undefined;
@@ -170,6 +179,30 @@ async function tabTo(
   throw new Error("Tab never reached the control.");
 }
 
+// The top card on a narrow phone, with Listen and the session beside the
+// main button, which leave the main button at its narrowest.
+async function narrowCard(top: PageAsk) {
+  const { page } = await open(listOf(top), {
+    screen: { width: 360, height: phone.height },
+  });
+  const card = page.getByRole("article");
+  await card.getByRole("button", { name: "Listen" }).waitFor();
+  await card
+    .getByRole("link", { name: /^Reply in the session on claude\.ai/u })
+    .waitFor();
+  return card;
+}
+
+// How many lines an element's text takes, in the page's own font.
+const lineCount = (element: Locator) =>
+  element.evaluate(async (each) => {
+    await document.fonts.ready;
+    const range = document.createRange();
+    range.selectNodeContents(each);
+    const rects = [...range.getClientRects()];
+    return new Set(rects.map(({ top }) => Math.round(top))).size;
+  });
+
 const cardIsOpen = (opened: OpenPage) =>
   opened.page.evaluate(() => window.location.hash.startsWith("#ask/"));
 
@@ -216,32 +249,43 @@ describe("the top card's buttons", () => {
     expect((await main.innerText()).split("\n")).toEqual([label, site]);
   });
 
-  // Listen and the session beside it leave the main button at its narrowest.
   it.each([
     ["a pull request's", both, pullRequest],
     ["any other link's", googleDocAndSession, googleDoc],
   ])(
     "keep %s label on one line on a narrow phone, beside both icon buttons",
     async (_, top, link) => {
-      const { page } = await open(listOf(top), {
-        screen: { width: 360, height: phone.height },
-      });
-      const card = page.getByRole("article");
-      await card.getByRole("button", { name: "Listen" }).waitFor();
-      await card
-        .getByRole("link", { name: /^Reply in the session on claude\.ai/u })
-        .waitFor();
-      const lines = await card
-        .locator(`a[href="${link}"] span`)
-        .first()
-        .evaluate(async (label) => {
-          await document.fonts.ready;
-          const range = document.createRange();
-          range.selectNodeContents(label);
-          const rects = [...range.getClientRects()];
-          return new Set(rects.map(({ top }) => Math.round(top))).size;
-        });
-      expect(lines).toBe(1);
+      const card = await narrowCard(top);
+      const label = card.locator(`a[href="${link}"] span`).first();
+      expect(await lineCount(label)).toBe(1);
+    },
+  );
+
+  // A site's name of more than 15 characters is set smaller, so a name as
+  // long as dash.cloudflare.com fits whole on one line (docs/design.md).
+  it.each([
+    {
+      site: "docs.google.com",
+      top: googleDocAndSession,
+      link: googleDoc,
+      size: "13px",
+    },
+    {
+      site: "dash.cloudflare.com",
+      top: cloudflareAndSession,
+      link: cloudflare,
+      size: "11px",
+    },
+  ])(
+    "keep $site whole on one line on a narrow phone, beside both icon buttons, at $size",
+    async ({ site, top, link, size }) => {
+      const card = await narrowCard(top);
+      const name = card.locator(`a[href="${link}"] span`).nth(1);
+      expect(await name.innerText()).toBe(site);
+      expect(await lineCount(name)).toBe(1);
+      expect(
+        await name.evaluate((each) => getComputedStyle(each).fontSize),
+      ).toBe(size);
     },
   );
 
