@@ -43,8 +43,8 @@ const icons: Record<HeldBy, ReactNode> = {
 // line"): how many asks are held back until their hours, or how many have
 // lapsed, and a control to show them, or once shown, how many are showing,
 // and a control to hide them again. It sits under the tabs, or at the foot
-// of All clear (Asks.tsx). The ref is the control's, and the control is described by
-// the line's words, so two lines' controls can be told apart.
+// of All clear (Asks.tsx). The ref is the control's, and the control is
+// described by the line's words, so two lines' controls can be told apart.
 export function Held({
   by,
   count,

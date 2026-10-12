@@ -281,9 +281,9 @@ describe("the sorting line on All clear", () => {
       await page.getByRole("button", { name: "Dismiss" }).click();
       await page.getByRole("heading", { name: "All clear." }).waitFor();
       await page.getByRole("button", { name: "Undo" }).waitFor();
-      const { last, held: sorting, note } = await underTheNote(page, stopped);
+      const { last, foot, note } = await underTheNote(page, stopped);
       expect(last).toBeLessThanOrEqual(note);
-      expect(sorting).toBeLessThanOrEqual(note);
+      expect(foot).toBeLessThanOrEqual(note);
       // The lines move up, but not over All clear's last line.
       expect(
         (await allClearGaps(page, "1 held until its hours")).below,
