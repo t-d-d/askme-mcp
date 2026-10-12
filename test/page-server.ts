@@ -3,6 +3,13 @@
 //
 // The gate cannot reach Clerk (ADR 9), so the page is built with the
 // stand-in in test/page/fake-clerk.tsx in place of web/src/clerk.tsx.
+//
+// The page is built with React's development code, so StrictMode runs in
+// every browser test. Some tests see a bug only because it runs. Vite
+// picks React's code by the NODE_ENV the run starts with, and Vitest sets
+// that to "test" only when it is unset, so a run started with
+// NODE_ENV=production would get React's production code without the define
+// below.
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,6 +37,7 @@ export default async function setup(
     root: web,
     logLevel: "warn",
     build: { outDir, emptyOutDir: true },
+    define: { "process.env.NODE_ENV": JSON.stringify("development") },
     resolve: { alias: [{ find: /^\.\/clerk$/u, replacement: fakeClerk }] },
   });
   const server = await preview({
