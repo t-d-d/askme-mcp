@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { age, inListOrder, longestWaitingFirst, waiting } from "./asks";
+import { age, inListOrder, longestWaitingFirst, waiting } from "./waiting";
 
 const now = Date.parse("2026-10-11T12:00:00.000Z");
 const ago = (ms: number) => new Date(now - ms).toISOString();
