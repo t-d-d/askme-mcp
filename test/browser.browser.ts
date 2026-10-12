@@ -25,6 +25,8 @@ describe("openPage", () => {
           ran();
         }
       });
+      // The route closes the browser, which may happen before the page
+      // answers this call.
       const opened = open.page
         .evaluate(() => {
           window.open("https://example.com/", "_blank");
@@ -35,6 +37,7 @@ describe("openPage", () => {
       await new Promise((settled) => setTimeout(settled, 100));
     } finally {
       process.off("unhandledRejection", record);
+      await open.close();
     }
     expect(late).toEqual([]);
   });
