@@ -7,7 +7,9 @@ import { callerOf, type AccountId } from "../service/src/identity";
 import { keys } from "../service/src/store/keys";
 import { askLifetimeDays, createStore } from "../service/src/store/store";
 import { pagePaths } from "../shared/page-api";
+import { handler as sorter } from "../service/src/sorter";
 import { storedItems } from "../test/dynamodb";
+import { fakes } from "../test/fakes";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, origin, refusalOf } from "../test/mcp";
@@ -71,6 +73,30 @@ async function listed(sub: string) {
 }
 
 const version = async (sub: string) => (await listed(sub)).version;
+
+const putRules = async (sub: string, text: string) =>
+  invoke(
+    handler,
+    new Request(`${origin}${pagePaths.rules}`, {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${await issuer.sessionToken({ claims: { sub } })}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ text }),
+    }),
+  );
+
+// Saves the rules, with the model reading the hashtags given.
+async function saveRules(sub: string, text: string, hashtags: string[]) {
+  fakes.model.reply({ json: { hashtags } });
+  const response = await putRules(sub, text);
+  expect(response.status).toBe(200);
+}
+
+// Runs the sorts handed on so far, as Lambda would.
+const runSorts = () =>
+  fakes.lambda.drain((payload) => sorter(payload, { awsRequestId: "sort-1" }));
 
 describe("fitness: every change raises the version (table-design.md)", () => {
   it("raises it on posting", async () => {
@@ -140,6 +166,47 @@ describe("fitness: every change raises the version (table-design.md)", () => {
     } finally {
       await client.close();
     }
+  });
+
+  it("raises it when a sort result arrives, and leaves it alone when the ask closed first", async () => {
+    const sub = newAccount();
+    const client = await connect(handler, {
+      token: await issuer.token({ claims: { sub } }),
+    });
+    try {
+      await saveRules(sub, "#home is the house.", ["home"]);
+      const id = await postWith(client, ask);
+      expect(await version(sub)).toBe(2);
+      fakes.model.reply({
+        json: { hashtags: ["home"], level: "high", reason: "Friday." },
+      });
+      await runSorts();
+      expect(await version(sub)).toBe(3);
+
+      const closed = await postWith(client, { ...ask, summary: "Closed" });
+      await client.callTool({ name: "resolve", arguments: { id: closed } });
+      expect(await version(sub)).toBe(5);
+      // The closed ask's sort finds it gone, and asks no model.
+      const calls = fakes.model.calls.length;
+      await runSorts();
+      expect(fakes.model.calls).toHaveLength(calls);
+      expect(await version(sub)).toBe(5);
+      expect(id).not.toBe(closed);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("raises it on saving the rules, whether or not the model could read them", async () => {
+    const sub = newAccount();
+    await saveRules(sub, "#home is the house.", ["home"]);
+    expect(await version(sub)).toBe(1);
+    fakes.model.reply({ status: 502 });
+    const response = await putRules(sub, "#home and #garden.");
+    expect(
+      z.object({ readFailed: z.boolean() }).parse(await response.json()),
+    ).toEqual({ readFailed: true });
+    expect(await version(sub)).toBe(2);
   });
 
   it("leaves it alone when an ask is refused", async () => {

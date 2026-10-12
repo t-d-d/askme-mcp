@@ -23,6 +23,7 @@ const ask = (id: string, summary: string): PageAsk => ({
   summary,
   spokenDetail: `The spoken detail of ${summary}`,
   postedAt: new Date().toISOString(),
+  sort: null,
 });
 
 const first = ask("a", "Merge the fix for checkout rounding? Tests pass.");
@@ -55,7 +56,12 @@ const settle = (view: OpenPage) => view.page.waitForTimeout(250);
 
 describe("fitness: new ask appears (polling.md)", () => {
   let view: OpenPage;
-  const list = fakeList({ version: 1, everAsked: true, asks: [first] });
+  const list = fakeList({
+    version: 1,
+    everAsked: true,
+    hashtags: [],
+    asks: [first],
+  });
   beforeAll(async () => {
     view = await open(list);
     await view.page.getByRole("article").waitFor();
@@ -69,7 +75,12 @@ describe("fitness: new ask appears (polling.md)", () => {
   });
 
   it("shows a new ask within two poll intervals, with no reload", async () => {
-    list.set({ version: 2, everAsked: true, asks: [first, second] });
+    list.set({
+      version: 2,
+      everAsked: true,
+      hashtags: [],
+      asks: [first, second],
+    });
     await view.page.clock.fastForward(pollMs);
     await view.page.clock.fastForward(pollMs);
     await view.page
@@ -92,7 +103,12 @@ describe("fitness: new ask appears (polling.md)", () => {
 
 describe("fitness: quiet when hidden (polling.md)", () => {
   let view: OpenPage;
-  const list = fakeList({ version: 1, everAsked: true, asks: [first] });
+  const list = fakeList({
+    version: 1,
+    everAsked: true,
+    hashtags: [],
+    asks: [first],
+  });
   beforeAll(async () => {
     view = await open(list);
     await view.page.getByRole("article").waitFor();
@@ -131,7 +147,12 @@ describe("fitness: quiet when hidden (polling.md)", () => {
 
 describe("a poll after another screen", () => {
   let view: OpenPage;
-  const list = fakeList({ version: 1, everAsked: true, asks: [first] });
+  const list = fakeList({
+    version: 1,
+    everAsked: true,
+    hashtags: [],
+    asks: [first],
+  });
   beforeAll(async () => {
     view = await open(list);
     await view.page.getByRole("article").waitFor();

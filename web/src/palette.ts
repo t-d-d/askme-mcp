@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import type { Hashtag } from "../../shared/page-api";
 
 // The eight hashtag colours of docs/design.md, in the order new hashtags take
 // them. White on every strong, and each ink on its tint, is at least 4.5 to 1.
@@ -26,6 +27,40 @@ export const unsorted: HashtagColour = {
   tint: "var(--neutral-tint)",
   ink: "var(--text-2)",
 };
+
+// An ask sorted into none of the account's hashtags belongs to no part of
+// the person's life, so it is neutral, in ink (docs/design.md, "Colour
+// rules").
+export const neutral: HashtagColour = {
+  strong: "var(--ink)",
+  tint: "var(--neutral-tint)",
+  ink: "var(--ink)",
+};
+
+const inOrder: readonly HashtagColour[] = Object.values(palette);
+
+// A hashtag takes the next colour in the table when it first appears, and
+// keeps it. The service numbers each hashtag by the place it first appeared
+// in the account's rules. A ninth hashtag starts the table again.
+export function colourOf(place: number): HashtagColour {
+  return inOrder[place % inOrder.length] ?? neutral;
+}
+
+// The colour of each of the account's hashtags, by name.
+export function hashtagColours(
+  hashtags: readonly Hashtag[],
+): ReadonlyMap<string, HashtagColour> {
+  return new Map(hashtags.map(({ name, colour }) => [name, colourOf(colour)]));
+}
+
+// A sorted ask takes the colour of its first hashtag, in the rules' order.
+export function sortedColour(
+  sort: { hashtags: readonly string[] },
+  colours: ReadonlyMap<string, HashtagColour>,
+): HashtagColour {
+  const [first] = sort.hashtags;
+  return (first === undefined ? undefined : colours.get(first)) ?? neutral;
+}
 
 // The only custom properties an inline style may set (ADR 14).
 declare module "react" {

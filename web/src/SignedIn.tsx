@@ -2,11 +2,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Asks } from "./Asks";
 import { Connect } from "./Connect";
+import { Rules } from "./Rules";
+
+type Screen = "asks" | "connect" | "rules";
 
 // The page is static files with no router (ADR 5), so its screens are
-// named in the address's fragment: #connect, and anything else for the
-// list. Links between them are real links, and Back works.
-function useScreen(): "asks" | "connect" {
+// named in the address's fragment: #connect, #rules, and anything else for
+// the list. Links between them are real links, and Back works.
+function useScreen(): Screen {
   const [hash, setHash] = useState(() => window.location.hash);
   useEffect(() => {
     const follow = () => {
@@ -18,7 +21,7 @@ function useScreen(): "asks" | "connect" {
       window.removeEventListener("hashchange", follow);
     };
   }, []);
-  return hash === "#connect" ? "connect" : "asks";
+  return hash === "#connect" ? "connect" : hash === "#rules" ? "rules" : "asks";
 }
 
 // A failed load shows at once, and the page's own timers try again, so
@@ -33,7 +36,18 @@ export function SignedIn() {
   const [queries] = useState(newQueries);
   return (
     <QueryClientProvider client={queries}>
-      {useScreen() === "connect" ? <Connect /> : <Asks />}
+      <Shown screen={useScreen()} />
     </QueryClientProvider>
   );
+}
+
+function Shown({ screen }: { screen: Screen }) {
+  switch (screen) {
+    case "asks":
+      return <Asks />;
+    case "connect":
+      return <Connect />;
+    case "rules":
+      return <Rules />;
+  }
 }

@@ -9,11 +9,13 @@ import {
 import {
   Answering,
   answerPoll,
+  computedColour,
   openPage,
   Status,
   type OpenPage,
 } from "../test/browser";
 import { cursorInstallLink } from "./src/cursor";
+import { palette } from "./src/palette";
 import { pollMs } from "./src/poll";
 
 const phone = { width: 390, height: 844 };
@@ -32,12 +34,14 @@ const ask = (id: string, summary: string, waited: number) => ({
   summary,
   spokenDetail: `The spoken detail of ${summary}`,
   postedAt: ago(waited),
+  sort: null,
 });
 
 // Five asks, in no order: the oldest goes on the top card.
 const five: AsksAnswer = {
   version: 5,
   everAsked: true,
+  hashtags: [],
   asks: [
     ask("d", "Renew the shop's domain for a year, or let it lapse?", 0),
     ask("a", "Merge the fix for checkout rounding? Tests pass.", 31 * minute),
@@ -50,6 +54,7 @@ const five: AsksAnswer = {
 const empty = (everAsked: boolean): AsksAnswer => ({
   version: everAsked ? 9 : 0,
   everAsked,
+  hashtags: [],
   asks: [],
 });
 
@@ -65,7 +70,11 @@ const allClearLines = [
 const open = (asks: AsksAnswer | Status, viewport = phone) =>
   openPage(inject("pageUrl"), viewport, {
     session,
-    api: { [pagePaths.asks]: asks, [pagePaths.connection]: connection },
+    api: {
+      [pagePaths.asks]: asks,
+      [pagePaths.connection]: connection,
+      [pagePaths.rules]: { text: "", hashtags: [], readFailed: false },
+    },
   });
 
 const scrollsSideways = (page: OpenPage["page"], width: number) =>
@@ -125,10 +134,27 @@ describe.each([
     expect(await tab.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("links to Connect your agents from the header", async () => {
-    expect(
-      await view.page.getByRole("link", { name: "Connect agents" }).isVisible(),
-    ).toBe(true);
+  // On a phone the header has one control, which opens the rules, and
+  // the rules screen links on to Connect your agents. At desktop width the
+  // header has both as text links (docs/design.md, "Header").
+  it("links to the rules from the header, and to Connect your agents from the header or the rules", async () => {
+    const { page } = view;
+    const rules = page.getByRole("link", { name: "Rules" });
+    const connect = page.getByRole("link", { name: "Connect agents" });
+    expect(await rules.isVisible()).toBe(true);
+    expect(await rules.getAttribute("href")).toBe("#rules");
+    if (viewport === desktop) {
+      expect(await connect.isVisible()).toBe(true);
+    } else {
+      expect(await connect.isVisible()).toBe(false);
+      await rules.click();
+      await page
+        .getByRole("heading", { name: "Your rules", exact: true })
+        .waitFor();
+      expect(await connect.isVisible()).toBe(true);
+      await page.getByRole("link", { name: "All asks" }).click();
+      await page.getByRole("article").waitFor();
+    }
   });
 
   it("scrolls only up and down", async () => {
@@ -282,11 +308,13 @@ describe("another account signing in on the same page", () => {
   const first: AsksAnswer = {
     version: 3,
     everAsked: true,
+    hashtags: [],
     asks: [ask("a", "Merge the fix for checkout rounding? Tests pass.", 5)],
   };
   const second: AsksAnswer = {
     version: 3,
     everAsked: true,
+    hashtags: [],
     asks: [ask("b", "Swap Saturday's school run with the Okafors?", 5)],
   };
 
@@ -392,5 +420,112 @@ describe.each([
     await view.page
       .getByRole("heading", { name: "Your agents can ask here." })
       .waitFor();
+  });
+});
+
+describe("sorted asks", () => {
+  const sortedAsk = (
+    id: string,
+    summary: string,
+    waited: number,
+    sort: { hashtags: string[]; level: "high" | "normal" | "low" } | null,
+  ) => ({ ...ask(id, summary, waited), sort });
+
+  const sorted: AsksAnswer = {
+    version: 7,
+    everAsked: true,
+    hashtags: [
+      { name: "work", colour: 0 },
+      { name: "shop", colour: 1 },
+      { name: "family", colour: 2 },
+    ],
+    asks: [
+      sortedAsk("a", "Swap Saturday's school run?", 40 * minute, {
+        hashtags: ["family"],
+        level: "low",
+      }),
+      // The service gives an ask's hashtags in the rules' order.
+      sortedAsk("b", "Merge the fix for checkout rounding?", 4 * minute, {
+        hashtags: ["work", "shop"],
+        level: "high",
+      }),
+      sortedAsk("c", "Renew the shop's domain?", 0, null),
+      sortedAsk("d", "Which date format should the export use?", 12 * minute, {
+        hashtags: ["work"],
+        level: "normal",
+      }),
+      sortedAsk("e", "Read the newsletter draft?", 20 * minute, {
+        hashtags: [],
+        level: "normal",
+      }),
+    ],
+  };
+
+  let view: OpenPage;
+  beforeAll(async () => {
+    view = await open(sorted);
+    await view.page.getByRole("article").waitFor();
+  });
+  afterAll(async () => {
+    await view.close();
+  });
+
+  it("orders the list by level, then by how long each ask has waited, with asks not sorted yet last", async () => {
+    const { page } = view;
+    expect(await page.getByRole("article").innerText()).toContain(
+      "Merge the fix for checkout rounding?",
+    );
+    const rows = await page.getByRole("listitem").allInnerTexts();
+    expect(rows.map((row) => row.split("\n")[0])).toEqual([
+      "Read the newsletter draft?",
+      "Which date format should the export use?",
+      "Swap Saturday's school run?",
+      "Renew the shop's domain?",
+    ]);
+  });
+
+  it("shows the top card's hashtags in their colours, in the rules' order", async () => {
+    const card = view.page.getByRole("article");
+    const pill = (name: string) => card.getByText(name, { exact: true });
+    expect(await card.innerText()).not.toContain("Not sorted yet");
+    const [shop, work] = await Promise.all(
+      ["#shop", "#work"].map((name) =>
+        pill(name).evaluate((element) => {
+          const style = getComputedStyle(element);
+          return { tint: style.backgroundColor, ink: style.color };
+        }),
+      ),
+    );
+    const page = view.page;
+    expect(shop).toEqual({
+      tint: await computedColour(page, palette.orange.tint),
+      ink: await computedColour(page, palette.orange.ink),
+    });
+    expect(work).toEqual({
+      tint: await computedColour(page, palette.blue.tint),
+      ink: await computedColour(page, palette.blue.ink),
+    });
+    const text = await card.innerText();
+    expect(text.indexOf("#work")).toBeLessThan(text.indexOf("#shop"));
+  });
+
+  it("shows each row's first hashtag in its colour, and no pill for an ask in no hashtag", async () => {
+    const rows = view.page.getByRole("listitem");
+    const tint = (row: number, name: string) =>
+      rows
+        .nth(row)
+        .getByText(name, { exact: true })
+        .evaluate((element) => getComputedStyle(element).backgroundColor);
+    expect(await tint(1, "#work")).toBe(
+      await computedColour(view.page, palette.blue.tint),
+    );
+    expect(await tint(2, "#family")).toBe(
+      await computedColour(view.page, palette.purple.tint),
+    );
+    const unsortedRow = await rows.nth(3).innerText();
+    expect(unsortedRow).toContain("Not sorted yet");
+    const noHashtag = await rows.nth(0).innerText();
+    expect(noHashtag).not.toContain("#");
+    expect(noHashtag).not.toContain("Not sorted yet");
   });
 });

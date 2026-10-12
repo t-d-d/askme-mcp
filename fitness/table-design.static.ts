@@ -84,13 +84,17 @@ describe("fitness: no index, no scan (table-design.md)", () => {
     expect(await reported(code, servicePath)).toContain("askme/no-scan");
   });
 
+  // Every action is named in full, so none can stand for a scan, and no
+  // DynamoDB action is one. Actions on other services, such as reading the
+  // model's key, cannot touch the table.
   it("gives the service no right to scan", () => {
     const actions = (definition().provider.iam?.role.statements ?? [])
       .filter((statement) => statement.Effect === "Allow")
       .flatMap((statement) => [statement.Action].flat());
-    expect(actions.length).toBeGreaterThan(0);
+    const table = actions.filter((action) => action.startsWith("dynamodb:"));
+    expect(table.length).toBeGreaterThan(0);
     for (const action of actions) {
-      expect(action).toMatch(/^dynamodb:[A-Za-z]+$/u);
+      expect(action).toMatch(/^[a-z0-9-]+:[A-Za-z]+$/u);
       expect(action).not.toMatch(/scan/iu);
     }
   });
@@ -109,6 +113,8 @@ describe("fitness: one key builder (table-design.md)", () => {
     "export const k = (day: string) => ({ sk: `USAGE#${day}` });\n",
     "export const k = (w: string) => ({ sk: `POLL#${w}` });\n",
     "export const k = (w: string) => ({ sk: `RATE#${w}` });\n",
+    "export const k = (w: string) => ({ sk: `SAVE#${w}` });\n",
+    "export const k = (w: string) => ({ sk: `SORT#${w}` });\n",
   ])("refuses a key written by hand: %s", async (code) => {
     expect(await reported(code, servicePath)).toContain(
       "askme/no-hand-built-key",

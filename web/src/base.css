@@ -26,6 +26,7 @@ body {
 
 /* Buttons and fields take the page's type, not the browser's. */
 button,
-input {
+input,
+textarea {
   font: inherit;
 }

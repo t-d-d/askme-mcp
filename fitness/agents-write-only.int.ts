@@ -264,9 +264,14 @@ describe("fitness: an agent's token reads nothing from the page's API (agents-wr
       issuer.sessionToken({ claims: { aud: "client_test" } }),
     ]);
 
-  it("finds the page's routes", () => {
+  it("finds the page's routes, the rules and their hashtags among them", () => {
     expect(pageRoutes).toEqual(
-      expect.arrayContaining(["GET /api/asks", "GET /api/connection"]),
+      expect.arrayContaining([
+        "GET /api/asks",
+        "GET /api/connection",
+        "GET /api/rules",
+        "PUT /api/rules",
+      ]),
     );
   });
 

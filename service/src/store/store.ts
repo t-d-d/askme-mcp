@@ -23,8 +23,17 @@ import {
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
+import { awsClientConfig } from "../aws";
 import type { AccountId } from "../identity";
-import { askLimit, pollLimit, secondsLeft, windowOf } from "../rate";
+import {
+  askLimit,
+  pollLimit,
+  rulesSaveLimit,
+  secondsLeft,
+  sortRetryLimit,
+  windowOf,
+} from "../rate";
+import { levels, type Sort } from "../sort";
 import { fingerprint } from "./fingerprint";
 import { keys, type Key } from "./keys";
 
@@ -69,6 +78,21 @@ export interface NewAsk {
   replaces?: string;
 }
 
+// What sorting decided about an ask, with the version of the rules it read
+// (ADR 13), so a sort made with older rules can be told apart.
+const sortSchema = z.object({
+  hashtags: z.array(z.string()),
+  level: z.enum(levels),
+  reason: z.string(),
+  rulesVersion: z.number().int().nonnegative(),
+  sortedAt: z.iso.datetime(),
+});
+
+export type StoredSort = z.output<typeof sortSchema>;
+
+// A sort as the sorter hands it in, with the rules version it read.
+export type NewSort = Sort & { rulesVersion: number };
+
 const storedAskSchema = z.object({
   id: z.string(),
   summary: z.string(),
@@ -80,6 +104,8 @@ const storedAskSchema = z.object({
   postedAt: z.iso.datetime(),
   // When DynamoDB may delete the item, in seconds since the epoch.
   expiresAt: z.number().int(),
+  // Absent until the ask is sorted.
+  sort: sortSchema.optional(),
 });
 
 export type StoredAsk = Omit<z.output<typeof storedAskSchema>, "expiresAt">;
@@ -114,6 +140,44 @@ const dedupeSchema = z.object({
   askId: z.string(),
   expiresAt: z.number().int(),
 });
+
+// The account's rules: the text the person wrote, the hashtags read from
+// it in the order the rules give them, and every hashtag the account has
+// had, in the order each first appeared, which keeps each one's colour
+// (docs/design.md). The version goes up on every save. When the last save
+// could not be read, the hashtags are the ones read before it.
+const rulesSchema = z.object({
+  text: z.string(),
+  hashtags: z.array(z.string()),
+  seen: z.array(z.string()),
+  version: z.number().int().nonnegative(),
+  readFailed: z.boolean(),
+});
+
+export type AccountRules = z.output<typeof rulesSchema>;
+
+// The rules of an account that has never saved any: an empty box, and no
+// hashtags.
+const noRules: AccountRules = {
+  text: "",
+  hashtags: [],
+  seen: [],
+  version: 0,
+  readFailed: false,
+};
+
+// Rules as a save hands them in: the text, and the hashtags read from it,
+// or none when the rules could not be read.
+export interface NewRules {
+  text: string;
+  hashtags?: string[];
+}
+
+// An open ask, with the account's rules, for the sorter.
+export interface AskToSort {
+  ask: StoredAsk;
+  rules: AccountRules;
+}
 
 const metaSchema = z.object({
   version: z.number().int().nonnegative(),
@@ -159,6 +223,36 @@ export interface Store {
   // Counts a call to the ask tool against the account's limit for the
   // minute.
   countAsk(account: AccountId, now: Date): Promise<Counted>;
+  // The account's rules.
+  rules(account: AccountId): Promise<AccountRules>;
+  // Saves the rules text, and the hashtags read from it when there are
+  // some. With none, the old hashtags stay, and the rules are marked as not
+  // read.
+  saveRules(
+    account: AccountId,
+    rules: NewRules,
+    now: Date,
+  ): Promise<AccountRules>;
+  // Counts a save of the rules against the account's limit for the minute.
+  countRulesSave(account: AccountId, now: Date): Promise<Counted>;
+  // An open ask and the account's rules, or undefined when the ask is not
+  // open.
+  askToSort(
+    account: AccountId,
+    askId: string,
+    now: Date,
+  ): Promise<AskToSort | undefined>;
+  // Stores what sorting decided on an open ask. False when the ask is no
+  // longer open, or already holds a sort made with newer rules.
+  recordSort(
+    account: AccountId,
+    askId: string,
+    sort: NewSort,
+    now: Date,
+  ): Promise<boolean>;
+  // Counts a poll's request to sort an ask again against the account's
+  // limit for the minute.
+  countSortRetry(account: AccountId, now: Date): Promise<Counted>;
   close(): void;
 }
 
@@ -211,17 +305,7 @@ export function createStore(config: {
   endpoint?: string | undefined;
 }): Store {
   const { tableName: TableName, endpoint } = config;
-  // In production the client finds its region and credentials in Lambda's
-  // environment. The local DynamoDB of the tests accepts any.
-  const client = new DynamoDBClient(
-    endpoint === undefined
-      ? {}
-      : {
-          endpoint,
-          region: "us-east-1",
-          credentials: { accessKeyId: "local", secretAccessKey: "local" },
-        },
-  );
+  const client = new DynamoDBClient(awsClientConfig(endpoint));
   const db = DynamoDBDocumentClient.from(client, {
     marshallOptions: { removeUndefinedValues: true },
   });
@@ -325,6 +409,17 @@ export function createStore(config: {
     return Item === undefined
       ? { version: 0, everAsked: false }
       : metaSchema.parse(Item);
+  }
+
+  async function readRules(account: AccountId): Promise<AccountRules> {
+    const { Item } = await db.send(
+      new GetCommand({
+        TableName,
+        Key: keys.rules(account),
+        ConsistentRead: true,
+      }),
+    );
+    return Item === undefined ? noRules : rulesSchema.parse(Item);
   }
 
   // The item under one key, unless it is missing or has expired.
@@ -571,6 +666,114 @@ export function createStore(config: {
         (window) => keys.askCount(account, window),
         askLimit.asks,
         askLimit.windowMinutes,
+        now,
+      );
+    },
+
+    rules: readRules,
+
+    // Each save starts from the rules as they are, and is written only if
+    // no other save landed in between, so no hashtag drops out of seen.
+    async saveRules(account, { text, hashtags }, now) {
+      for (let tries = 0; ; tries += 1) {
+        const current = await readRules(account);
+        const read = hashtags ?? current.hashtags;
+        const next: AccountRules = {
+          text,
+          hashtags: read,
+          seen: [
+            ...current.seen,
+            ...read.filter((name) => !current.seen.includes(name)),
+          ],
+          version: current.version + 1,
+          readFailed: hashtags === undefined,
+        };
+        try {
+          await write(account, [
+            {
+              Put: {
+                TableName,
+                Item: {
+                  ...keys.rules(account),
+                  ...next,
+                  savedAt: now.toISOString(),
+                },
+                ConditionExpression:
+                  current.version === 0
+                    ? "attribute_not_exists(sk)"
+                    : "version = :current",
+                ...(current.version === 0
+                  ? {}
+                  : {
+                      ExpressionAttributeValues: {
+                        ":current": current.version,
+                      },
+                    }),
+              },
+            },
+          ]);
+          return next;
+        } catch (error) {
+          // Another save landed after this one read the rules.
+          if (!conditionFailed(error) || tries >= 4) throw error;
+        }
+      }
+    },
+
+    async countRulesSave(account, now) {
+      return countIn(
+        (window) => keys.rulesSaveCount(account, window),
+        rulesSaveLimit.saves,
+        rulesSaveLimit.windowMinutes,
+        now,
+      );
+    },
+
+    async askToSort(account, askId, now) {
+      const open = await stored(
+        keys.openAsk(account, askId),
+        storedAskSchema,
+        now,
+      );
+      if (open === undefined) return undefined;
+      return {
+        ask: storedAskSchema.omit({ expiresAt: true }).parse(open),
+        rules: await readRules(account),
+      };
+    },
+
+    // The sort is written only onto an ask that is still open, and never
+    // over one made with newer rules.
+    async recordSort(account, askId, sort, now) {
+      try {
+        await write(account, [
+          {
+            Update: {
+              TableName,
+              Key: keys.openAsk(account, askId),
+              UpdateExpression: "SET #sort = :sort",
+              ConditionExpression:
+                "attribute_exists(sk) AND (attribute_not_exists(#sort) OR #sort.rulesVersion <= :rulesVersion)",
+              ExpressionAttributeNames: { "#sort": "sort" },
+              ExpressionAttributeValues: {
+                ":sort": { ...sort, sortedAt: now.toISOString() },
+                ":rulesVersion": sort.rulesVersion,
+              },
+            },
+          },
+        ]);
+        return true;
+      } catch (error) {
+        if (conditionFailed(error)) return false;
+        throw error;
+      }
+    },
+
+    async countSortRetry(account, now) {
+      return countIn(
+        (window) => keys.sortRetryCount(account, window),
+        sortRetryLimit.retries,
+        sortRetryLimit.windowMinutes,
         now,
       );
     },

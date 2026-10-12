@@ -4,7 +4,12 @@ import { afterAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 import { storedItems } from "../test/dynamodb";
 import { callerOf, type AccountId } from "./src/identity";
-import { askLimit, pollLimit } from "./src/rate";
+import {
+  askLimit,
+  pollLimit,
+  rulesSaveLimit,
+  sortRetryLimit,
+} from "./src/rate";
 import { keys } from "./src/store/keys";
 import {
   askLifetimeDays,
@@ -532,5 +537,210 @@ describe("the asks since a version", () => {
       everAsked: false,
       asks: [],
     });
+  });
+});
+
+describe("the rules", () => {
+  const now = new Date("2026-10-11T09:30:00.000Z");
+
+  it("are empty, with no hashtags, for an account that never saved any", async () => {
+    expect(await store.rules(account())).toEqual({
+      text: "",
+      hashtags: [],
+      seen: [],
+      version: 0,
+      readFailed: false,
+    });
+  });
+
+  it("keep the text and the hashtags read from it, and raise the version", async () => {
+    const owner = account();
+    const saved = await store.saveRules(
+      owner,
+      { text: "#work first, then #shop.", hashtags: ["work", "shop"] },
+      now,
+    );
+    expect(saved).toEqual({
+      text: "#work first, then #shop.",
+      hashtags: ["work", "shop"],
+      seen: ["work", "shop"],
+      version: 1,
+      readFailed: false,
+    });
+    expect(await store.rules(owner)).toEqual(saved);
+    expect(await versionOf(owner)).toBe(1);
+  });
+
+  it("keep the new text and the old hashtags when the rules could not be read", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      { text: "#work first.", hashtags: ["work"] },
+      now,
+    );
+    const saved = await store.saveRules(
+      owner,
+      { text: "#work first, then #family." },
+      now,
+    );
+    expect(saved).toEqual({
+      text: "#work first, then #family.",
+      hashtags: ["work"],
+      seen: ["work"],
+      version: 2,
+      readFailed: true,
+    });
+    expect(await versionOf(owner)).toBe(2);
+  });
+
+  it("remember every hashtag in the order it first appeared, so its colour stays", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      { text: "#work, #shop", hashtags: ["work", "shop"] },
+      now,
+    );
+    await store.saveRules(owner, { text: "", hashtags: [] }, now);
+    const saved = await store.saveRules(
+      owner,
+      { text: "#family, #shop, #work", hashtags: ["family", "shop", "work"] },
+      now,
+    );
+    expect(saved.hashtags).toEqual(["family", "shop", "work"]);
+    expect(saved.seen).toEqual(["work", "shop", "family"]);
+  });
+
+  it("lose no hashtag when two saves arrive together", async () => {
+    const owner = account();
+    await Promise.all([
+      store.saveRules(owner, { text: "#work", hashtags: ["work"] }, now),
+      store.saveRules(owner, { text: "#shop", hashtags: ["shop"] }, now),
+    ]);
+    const rules = await store.rules(owner);
+    expect(rules.version).toBe(2);
+    expect([...rules.seen].sort()).toEqual(["shop", "work"]);
+  });
+});
+
+describe("a sort result", () => {
+  const now = new Date("2026-10-11T09:30:00.000Z");
+  const sort = {
+    hashtags: ["work"],
+    level: "high" as const,
+    reason: "The electrician is waiting.",
+    rulesVersion: 1,
+  };
+
+  it("is stored on the open ask, and the list shows it", async () => {
+    const owner = account();
+    const { id } = await postNew(owner, ask, now);
+    expect(await store.recordSort(owner, id, sort, now)).toBe(true);
+    expect((await store.openAsks(owner, now)).asks).toEqual([
+      {
+        id,
+        ...ask,
+        postedAt: now.toISOString(),
+        sort: { ...sort, sortedAt: now.toISOString() },
+      },
+    ]);
+    expect(await versionOf(owner)).toBe(2);
+  });
+
+  it("changes nothing when the ask has closed", async () => {
+    const owner = account();
+    const { id } = await postNew(owner, ask, now);
+    await store.resolveAsk(owner, id, now);
+    const before = await storedItems(endpoint, tableName, owner);
+    expect(await store.recordSort(owner, id, sort, now)).toBe(false);
+    expect(await storedItems(endpoint, tableName, owner)).toEqual(before);
+  });
+
+  it("changes nothing for an id the account has no ask for", async () => {
+    const owner = account();
+    expect(await store.recordSort(owner, "no-such-ask", sort, now)).toBe(false);
+    expect(await storedItems(endpoint, tableName, owner)).toEqual([]);
+  });
+
+  it("does not replace a sort made with newer rules", async () => {
+    const owner = account();
+    const { id } = await postNew(owner, ask, now);
+    await store.recordSort(owner, id, { ...sort, rulesVersion: 3 }, now);
+    expect(
+      await store.recordSort(
+        owner,
+        id,
+        { ...sort, level: "low", rulesVersion: 2 },
+        now,
+      ),
+    ).toBe(false);
+    const [stored] = (await store.openAsks(owner, now)).asks;
+    expect(stored?.sort?.rulesVersion).toBe(3);
+  });
+});
+
+describe("an ask to sort", () => {
+  const now = new Date("2026-10-11T09:30:00.000Z");
+
+  it("is the open ask with the account's rules", async () => {
+    const owner = account();
+    const rules = await store.saveRules(
+      owner,
+      { text: "#work", hashtags: ["work"] },
+      now,
+    );
+    const { id } = await postNew(owner, ask, now);
+    expect(await store.askToSort(owner, id, now)).toEqual({
+      ask: { id, ...ask, postedAt: now.toISOString() },
+      rules,
+    });
+  });
+
+  it("is nothing when the ask has closed, or was never posted", async () => {
+    const owner = account();
+    const { id } = await postNew(owner, ask, now);
+    await store.resolveAsk(owner, id, now);
+    expect(await store.askToSort(owner, id, now)).toBeUndefined();
+    expect(await store.askToSort(owner, "no-such-ask", now)).toBeUndefined();
+  });
+});
+
+describe.each([
+  [
+    "saving the rules",
+    rulesSaveLimit.saves,
+    "countRulesSave",
+    "rulesSaveCount",
+  ],
+  [
+    "retrying a sort",
+    sortRetryLimit.retries,
+    "countSortRetry",
+    "sortRetryCount",
+  ],
+] as const)("the rate counter for %s", (_, limit, method, key) => {
+  const minute = new Date("2026-10-11T09:30:10.000Z");
+
+  it("counts up to the limit in a minute, then refuses with the seconds left", async () => {
+    const owner = account();
+    for (let n = 0; n < limit; n += 1) {
+      expect(await store[method](owner, minute)).toEqual({ counted: true });
+    }
+    expect(await store[method](owner, minute)).toEqual({
+      counted: false,
+      secondsLeft: 50,
+    });
+  });
+
+  it("keeps one item a minute under its own prefix, and leaves the version alone", async () => {
+    const owner = account();
+    await store[method](owner, minute);
+    expect(await storedItems(endpoint, tableName, owner)).toEqual([
+      {
+        ...keys[key](owner, "2026-10-11T09:30"),
+        count: 1,
+        expiresAt: Date.parse("2026-10-11T10:31:00.000Z") / 1000,
+      },
+    ]);
+    expect(await versionOf(owner)).toBe(0);
   });
 });

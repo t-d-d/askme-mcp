@@ -8,13 +8,19 @@ import type {
 import type { z } from "zod";
 import { refusal, Refused, retryBudget } from "./errors";
 import { askScope, type Caller } from "./identity";
+import type { SortRequests } from "./jobs";
 import { createLogger, errorClass, type Logger } from "./log";
 import type { Store } from "./store/store";
 
-export interface ToolContext {
+// What a tool works with: the store, and the sorter it hands new asks to.
+export interface ToolServices {
+  store: Store;
+  sorts: SortRequests;
+}
+
+export interface ToolContext extends ToolServices {
   caller: Caller;
   log: Logger;
-  store: Store;
 }
 
 export interface ToolDefinition<
@@ -65,7 +71,7 @@ export function addTool<Input extends z.ZodObject, Output extends z.ZodObject>(
   server: McpServer,
   tool: ToolDefinition<Input, Output>,
   caller: Caller,
-  store: Store,
+  services: ToolServices,
 ): void {
   const log = createLogger(caller.requestId);
   const at = { accountId: caller.accountId, tool: tool.name };
@@ -94,7 +100,11 @@ export function addTool<Input extends z.ZodObject, Output extends z.ZodObject>(
         );
       }
       try {
-        const answer = await tool.run(parsed.data, { caller, log, store });
+        const answer = await tool.run(parsed.data, {
+          caller,
+          log,
+          ...services,
+        });
         if (answer instanceof Refused) {
           return refusal(answer.code, answer.message);
         }

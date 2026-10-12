@@ -42,6 +42,25 @@ export const events = [
   // A poll came over the account's limit for the minute, and was refused
   // with rate_limited. Expected, so logged at info.
   "poll-limited",
+  // The service could not hand an ask it stored to the sorter. The ask is
+  // kept, unsorted, and a later poll asks again. Logged at warn.
+  "sort-request-failed",
+  // A poll found an ask still unsorted a while after it was posted, and
+  // asked for it to be sorted again.
+  "sort-retried",
+  // An ask was sorted, and its sort stored.
+  "ask-sorted",
+  // The model gave no reply that fitted, after every try, so the ask stays
+  // unsorted until a poll asks again. Logged at warn.
+  "sort-failed",
+  // The rules were saved, and the hashtags read from them.
+  "rules-saved",
+  // The rules were saved, but the model could not read them, so the old
+  // hashtags stay. Logged at warn.
+  "rules-read-failed",
+  // A save of the rules came over the account's limit for the minute, and
+  // was refused with rate_limited. Expected, so logged at info.
+  "rules-limited",
   // Something failed that the service did not expect. Logged at error.
   "request-failed",
 ] as const;
