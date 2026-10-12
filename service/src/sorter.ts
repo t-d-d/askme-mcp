@@ -1,7 +1,7 @@
 // The sort function (PRD, "Back end"): it sorts one ask after the service
 // has stored it and answered, so posting never waits on the model. The ask
 // tool hands it each new ask, and a poll hands it any ask still unsorted a
-// while after it was posted.
+// while after it was stored.
 //
 // A sort that fails leaves the ask unsorted and is logged at warn. The ask
 // is kept and shown as not sorted yet, and a later poll asks again. The

@@ -102,6 +102,10 @@ const storedAskSchema = z.object({
   sessionLink: z.string().optional(),
   replaces: z.string().optional(),
   postedAt: z.iso.datetime(),
+  // When the item was stored. A replacing ask keeps the posting time of the
+  // ask it replaces (ADR 13), but is stored when it is posted. Absent on an
+  // ask stored before the store recorded it.
+  storedAt: z.iso.datetime().optional(),
   // When DynamoDB may delete the item, in seconds since the epoch.
   expiresAt: z.number().int(),
   // Absent until the ask is sorted.
@@ -546,7 +550,13 @@ export function createStore(config: {
       const put = (since: Pick<OpenItem, "postedAt" | "expiresAt">) => ({
         Put: {
           TableName,
-          Item: { ...keys.openAsk(account, id), id, ...ask, ...since },
+          Item: {
+            ...keys.openAsk(account, id),
+            id,
+            ...ask,
+            ...since,
+            storedAt: now.toISOString(),
+          },
           ConditionExpression: "attribute_not_exists(sk)",
         },
       });

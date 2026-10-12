@@ -36,9 +36,9 @@ export interface PageContext {
   log: Logger;
 }
 
-// How long after posting an ask may stay unsorted before a poll asks for it
-// to be sorted again. A sort takes seconds, so this is long enough that a
-// poll does not ask again while the first sort is still running.
+// How long after it was stored an ask may stay unsorted before a poll asks
+// for it to be sorted again. A sort takes seconds, so this is long enough
+// that a poll does not ask again while the first sort is still running.
 export const sortRetryAfterMs = 60_000;
 
 // The most asks one poll asks again for, so a poll is never held up long.
@@ -103,8 +103,11 @@ const rulesView = (rules: AccountRules) =>
   });
 
 // Asks the sort function again for asks still unsorted a while after they
-// were posted, as when sorting failed (PRD, "Back end"). Each one counts
-// against the account's limit, so polling cannot spend the model's budget.
+// were stored, as when sorting failed (PRD, "Back end"). Not posted: a
+// replacing ask keeps the posting time of the one it replaces, so it would
+// be asked for again while its first sort runs. An ask stored before the
+// store recorded when counts from its posting time. Each one counts against
+// the account's limit, so polling cannot spend the model's budget.
 async function retryUnsorted(
   account: AccountId,
   asks: StoredAsk[],
@@ -115,7 +118,8 @@ async function retryUnsorted(
     .filter(
       (ask) =>
         ask.sort === undefined &&
-        now.getTime() - Date.parse(ask.postedAt) >= sortRetryAfterMs,
+        now.getTime() - Date.parse(ask.storedAt ?? ask.postedAt) >=
+          sortRetryAfterMs,
     )
     .slice(0, sortRetriesPerPoll);
   // Asked for together, so a slow Lambda holds the poll up once, not once

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { colourOf, hashtagColours, palette, sortedColour } from "./palette";
+import { everything } from "./tab";
+import {
+  askColour,
+  colourOf,
+  hashtagColours,
+  palette,
+  unsorted,
+} from "./palette";
 
 const inOrder = Object.values(palette);
 
@@ -31,14 +38,28 @@ describe("the colour of an ask", () => {
     { name: "shop", colour: 1 },
   ]);
 
-  it("is its first hashtag's", () => {
-    expect(sortedColour({ hashtags: ["shop", "work"] }, colours)).toEqual(
+  it("is its first hashtag's on Everything", () => {
+    expect(
+      askColour({ hashtags: ["shop", "work"] }, everything, colours),
+    ).toEqual(palette.orange);
+  });
+
+  it("is the tab's on a hashtag's own tab, whatever its first hashtag", () => {
+    expect(askColour({ hashtags: ["work", "shop"] }, "shop", colours)).toEqual(
       palette.orange,
+    );
+    expect(askColour({ hashtags: ["work"] }, "work", colours)).toEqual(
+      palette.blue,
     );
   });
 
+  it("is none when it is not sorted yet, on any tab", () => {
+    expect(askColour(null, everything, colours)).toEqual(unsorted);
+    expect(askColour(null, "work", colours)).toEqual(unsorted);
+  });
+
   it("is ink when it was sorted into no hashtag", () => {
-    expect(sortedColour({ hashtags: [] }, colours)).toEqual({
+    expect(askColour({ hashtags: [] }, everything, colours)).toEqual({
       strong: "var(--ink)",
       tint: "var(--neutral-tint)",
       ink: "var(--ink)",
@@ -46,8 +67,8 @@ describe("the colour of an ask", () => {
   });
 
   it("is ink when its hashtag has left the rules", () => {
-    expect(sortedColour({ hashtags: ["family"] }, colours).strong).toBe(
-      "var(--ink)",
-    );
+    expect(
+      askColour({ hashtags: ["family"] }, everything, colours).strong,
+    ).toBe("var(--ink)");
   });
 });
