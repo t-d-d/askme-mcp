@@ -145,7 +145,7 @@ describe("fitness: a person can sign in and out on the live page (test-tiers.md)
         .click({ timeout: stepMs })
         .catch(failsWith(page, "The header showed no way to the rules."));
       // The address is used as it is, never built on (test-tiers.md).
-      const account = page.getByText(testAddress);
+      const account = page.getByText(testAddress, { exact: true });
       await account
         .waitFor({ timeout: stepMs })
         .catch(
