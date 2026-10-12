@@ -77,12 +77,19 @@ async function openNewAccount(
     hash = "",
     clock = false,
     postedAnyway = false,
-  }: { hash?: string; clock?: boolean; postedAnyway?: boolean } = {},
+    timeZone,
+  }: {
+    hash?: string;
+    clock?: boolean | Date;
+    postedAnyway?: boolean;
+    timeZone?: string;
+  } = {},
 ): Promise<OpenPage> {
   let sent = false;
   return openPage(`${inject("pageUrl")}${hash}`, phone, {
     session,
     clock,
+    ...(timeZone === undefined ? {} : { timeZone }),
     api: {
       [pagePaths.asks]: new Answering((url) =>
         answerPoll(url, sent ? withSamples : newAccount),
@@ -215,29 +222,41 @@ describe("a new account", () => {
     ).toHaveLength(1);
   });
 
+  // The cap resets at the next midnight UTC: that evening west of UTC, the
+  // next morning east of it.
   it.each([
-    [
-      "the daily cap",
-      "cap_reached",
-      "You've reached today's limit. It resets tomorrow.",
-    ],
-    [
-      "the rate limit",
-      "rate_limited",
-      "Slow down a little. Try again in a few seconds.",
-    ],
+    ["Europe/London", "01:00"],
+    ["America/New_York", "20:00"],
   ])(
-    "says when %s is reached, and when to try again",
-    async (_, code, words) => {
-      view = await openNewAccount(refusal(code));
+    "says when the daily cap is reached, and when it resets in %s",
+    async (timeZone, time) => {
+      view = await openNewAccount(refusal("cap_reached"), {
+        clock: new Date("2026-10-12T15:00:00Z"),
+        timeZone,
+      });
       const { page } = view;
       await samplesButton(page).click();
-      const note = page.getByRole("status").filter({ hasText: words });
+      const note = page.getByRole("status").filter({ hasText: "limit" });
       await note.waitFor();
+      expect(await note.innerText()).toBe(
+        `You've reached today's limit. It resets at ${time}.`,
+      );
       expect(await samplesButton(page).isEnabled()).toBe(true);
       expect(await scrollsSideways(page)).toBe(false);
     },
   );
+
+  it("says when the rate limit is reached, and when to try again", async () => {
+    view = await openNewAccount(refusal("rate_limited"));
+    const { page } = view;
+    await samplesButton(page).click();
+    await page
+      .getByRole("status")
+      .filter({ hasText: "Slow down a little. Try again in a few seconds." })
+      .waitFor();
+    expect(await samplesButton(page).isEnabled()).toBe(true);
+    expect(await scrollsSideways(page)).toBe(false);
+  });
 
   // A limit reached part way keeps the asks posted before it, so the list
   // is asked for again even when the press is refused.
@@ -303,12 +322,16 @@ describe("Connect your agents, for someone with no agent yet", () => {
   });
 
   it("stays, and says so, when the daily cap is reached", async () => {
-    view = await openNewAccount(refusal("cap_reached"), { hash: "#connect" });
+    view = await openNewAccount(refusal("cap_reached"), {
+      hash: "#connect",
+      clock: new Date("2026-10-12T15:00:00Z"),
+      timeZone: "Europe/London",
+    });
     const { page } = view;
     await samplesButton(page).click();
     await page
       .getByRole("status")
-      .filter({ hasText: "You've reached today's limit. It resets tomorrow." })
+      .filter({ hasText: "You've reached today's limit. It resets at 01:00." })
       .waitFor();
     expect(
       await page

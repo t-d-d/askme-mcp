@@ -1,4 +1,5 @@
 import { Refusal } from "./load";
+import { resetTime } from "./resets";
 import styles from "./SampleAsks.module.css";
 import { useSamples } from "./useSamples";
 
@@ -32,15 +33,24 @@ export function SampleAsks({
         Send sample asks
       </button>
       <p className={styles.note} role="status">
-        {send.error !== null && <Note error={send.error} />}
+        {send.error !== null && (
+          <Note error={send.error} pressedAt={send.submittedAt} />
+        )}
       </p>
     </div>
   );
 }
 
-function Note({ error }: { error: Error }) {
+// The daily cap resets at the next midnight UTC after the press, given in
+// this browser's time zone.
+function Note({ error, pressedAt }: { error: Error; pressedAt: number }) {
   if (error instanceof Refusal && error.code === "cap_reached") {
-    return <>You&apos;ve reached today&apos;s limit. It resets tomorrow.</>;
+    return (
+      <>
+        You&apos;ve reached today&apos;s limit. It resets at{" "}
+        {resetTime(pressedAt)}.
+      </>
+    );
   }
   if (error instanceof Refusal && error.code === "rate_limited") {
     return <>Slow down a little. Try again in a few seconds.</>;

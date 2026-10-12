@@ -249,11 +249,12 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 - A button names its action: "Save rules", "Show them", "Send sample asks".
 - An action keeps its name. The tab says Everything, so nothing else calls it "All".
 - Times are short: "Just now", "4 min", "1 h", "2 d". The top card says "Waiting 4 min".
+- A time of day is on the 24-hour clock, in the person's time zone, as in "It resets at 01:00".
 
 | Moment | Words |
 | --- | --- |
 | A poll fails | Not connected. Trying again. |
-| The daily cap is reached | You've reached today's limit. It resets tomorrow. |
+| The daily cap is reached | You've reached today's limit. It resets at 01:00. |
 | Too many presses | Slow down a little. Try again in a few seconds. |
 | Reading the rules fails | askme couldn't read your rules just now. Your text is saved. Try again. |
 | A dismissal fails | That didn't go through. The ask is back. |
