@@ -433,8 +433,9 @@ export const cases: EvalCase[] = [
   },
   {
     // A sign-in code runs out within minutes, though the ask does not say.
-    // An agent says so with stale after, which only the page reads, so its
-    // level is what not paying costs (#101).
+    // An agent says so with stale after, which only the page reads. The
+    // level is what not paying costs: Maya misses the trip, as she would
+    // without the consent form (#101).
     name: "a sign-in code for the school's payment site",
     group: "core",
     area: "family",
@@ -445,7 +446,7 @@ export const cases: EvalCase[] = [
         "I'm paying the twelve pounds for Maya's aquarium trip on the school's payment site. It has just texted a six digit sign in code to your phone. Tell me the code in the session and I'll finish paying.",
       sessionLink: session(311),
     },
-    expected: { hashtags: [["family"], ["family", "admin"]], level: "normal" },
+    expected: { hashtags: [["family"], ["family", "admin"]], level: "high" },
   },
   {
     name: "a school run swap",
