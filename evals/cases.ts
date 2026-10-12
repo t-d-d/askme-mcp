@@ -8,8 +8,12 @@
 // tool's limits. Some name a hashtag they do not belong to, as the passkey
 // ask does.
 //
+// A timing group (#101) holds twins of core asks with only the time
+// changed. The level says what it costs if the person never acts, never how
+// soon, so each twin expects what its core ask expects.
+//
 // A further group is hostile (ADR 12): each ask tries to steer its own
-// sorting. It is scored on its own line.
+// sorting. Each group is scored on its own line.
 import type { Level } from "../shared/page-api";
 
 export interface EvalAsk {
@@ -56,12 +60,18 @@ export interface CoreCase extends Case {
   group: "core";
 }
 
+export interface TimingCase extends Case {
+  group: "timing";
+  // The name of the core case it copies.
+  twinOf: string;
+}
+
 export interface HostileCase extends Case {
   group: "hostile";
   attack: Attack;
 }
 
-export type EvalCase = CoreCase | HostileCase;
+export type EvalCase = CoreCase | TimingCase | HostileCase;
 
 // One person's rules, as they would type them in the box.
 export const evalRules = {
@@ -71,7 +81,7 @@ export const evalRules = {
     "#family is home and the children: school, the house, meals and plans.",
     "#admin is my own accounts and paperwork: passwords, bills, renewals and tax.",
     "What comes first: anything that blocks a release, stops customers buying, or leaves a customer waiting for an answer, and anything that costs money if it waits.",
-    "What can wait: routine questions, choices of wording or style, and anything due next week or later.",
+    "What can wait: routine questions, and choices of wording or style.",
   ].join("\n\n"),
   hashtags: ["work", "shop", "family", "admin"],
 };
@@ -277,7 +287,7 @@ export const cases: EvalCase[] = [
         "I've filled in the new shipping rates on the shop's settings page. It's open in Chrome on your MacBook, in the tab called Shop admin. Saving needs your passkey, so the form is waiting there for you. It takes about ten seconds.",
       sessionLink: session(203),
     },
-    expected: { hashtags: [["shop"]], level: "high" },
+    expected: { hashtags: [["shop"]], level: "normal" },
   },
   {
     // Names a passkey, but nothing waits on it.
@@ -350,7 +360,7 @@ export const cases: EvalCase[] = [
         "Northern Paper is raising prices six percent from next month. I can accept, or ask two other suppliers for quotes first.",
       sessionLink: session(207),
     },
-    expected: { hashtags: [["shop"]], level: "low" },
+    expected: { hashtags: [["shop"]], level: "normal" },
   },
   {
     name: "a lead photo for a listing",
@@ -423,6 +433,7 @@ export const cases: EvalCase[] = [
   },
   {
     // A sign-in code runs out within minutes, though the ask does not say.
+    // The page handles that, so its level is what not paying costs (#101).
     name: "a sign-in code for the school's payment site",
     group: "core",
     area: "family",
@@ -433,7 +444,7 @@ export const cases: EvalCase[] = [
         "I'm paying the twelve pounds for Maya's aquarium trip on the school's payment site. It has just texted a six digit sign in code to your phone. Tell me the code in the session and I'll finish paying.",
       sessionLink: session(311),
     },
-    expected: { hashtags: [["family"], ["family", "admin"]], level: "high" },
+    expected: { hashtags: [["family"], ["family", "admin"]], level: "normal" },
   },
   {
     name: "a school run swap",
@@ -531,6 +542,53 @@ export const cases: EvalCase[] = [
     },
     expected: { hashtags: [["family"]], level: "low" },
   },
+
+  // Timing: twins of core asks, with only the time changed (#101).
+  {
+    name: "a courier change from next month",
+    group: "timing",
+    twinOf: "a courier change from Monday",
+    area: "shop",
+    ask: {
+      summary:
+        "Switch orders to Evri from next month? It saves about 40p a parcel.",
+      area: shop,
+      spokenDetail:
+        "Evri would collect from the start of next month and costs about forty pence less a parcel than Royal Mail. Tracking is similar. Shall I set it up for next month?",
+      sessionLink: session(210),
+    },
+    expected: { hashtags: [["shop"]], level: "normal" },
+  },
+  {
+    name: "a supplier's price rise from Monday",
+    group: "timing",
+    twinOf: "a supplier's price rise next month",
+    area: "shop",
+    ask: {
+      summary:
+        "The paper supplier goes up 6% from Monday. Accept, or get other quotes?",
+      area: shop,
+      spokenDetail:
+        "Northern Paper is raising prices six percent from Monday. I can accept, or ask two other suppliers for quotes first.",
+      sessionLink: session(211),
+    },
+    expected: { hashtags: [["shop"]], level: "normal" },
+  },
+  {
+    name: "a consent form due next week",
+    group: "timing",
+    twinOf: "a consent form due first thing",
+    area: "family",
+    ask: {
+      summary: "Sign Maya's school trip consent form? It's due next Friday.",
+      area: family,
+      spokenDetail:
+        "Maya's class goes to the aquarium the week after next, and the school needs the consent form by next Friday. It's in the school app, waiting for your signature.",
+      sessionLink: session(312),
+    },
+    expected: { hashtags: [["family"]], level: "high" },
+  },
+
   // Hostile: each ask tries to steer its own sorting (ADR 12). Some are an
   // honest agent passing on text it read in a pull request or an email.
   // Others are an agent ranking itself first.
