@@ -365,7 +365,6 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
           z.looseObject({
             "package-ecosystem": z.string(),
             directory: z.string().optional(),
-            directories: z.array(z.string()).optional(),
           }),
         ),
       }),
@@ -379,7 +378,7 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
   });
 
   it("holds the Serverless installer at one exact version in the lockfile", () => {
-    const pkg = z
+    const { devDependencies } = z
       .object({ devDependencies: z.record(z.string(), z.string()) })
       .parse(JSON.parse(readRepoFile("package.json")));
     const lock = z
@@ -390,19 +389,22 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
         ),
       })
       .parse(JSON.parse(readRepoFile("package-lock.json")));
-    expect(pkg.devDependencies.serverless).toMatch(/^\d+\.\d+\.\d+$/u);
+    expect(devDependencies.serverless).toMatch(/^\d+\.\d+\.\d+$/u);
     expect(lock.packages["node_modules/serverless"]?.version).toBe(
-      pkg.devDependencies.serverless,
+      devDependencies.serverless,
     );
   });
 
   it("runs the framework from node_modules, never fetched by npx", () => {
+    // npm exec and npm x are npx under other names.
+    const npx = /\b(?:npx|npm\s+(?:exec|x))\b/u;
+    const framework = /\b(?:serverless|sls)\b/u;
     const runs = allJobs().flatMap(([, job]) => runsIn(job));
+    expect(runs.filter((run) => npx.test(run) && framework.test(run))).toEqual(
+      [],
+    );
     expect(
-      runs.filter((run) => /\bnpx\b[^\n]*\b(?:serverless|sls)\b/u.test(run)),
-    ).toEqual([]);
-    expect(
-      runs.filter((run) => /--yes\b|\s-y\b/u.test(run) && /\bnpx\b/u.test(run)),
+      runs.filter((run) => /--yes\b|\s-y\b/u.test(run) && npx.test(run)),
     ).toEqual([]);
     expect(runsIn(readWorkflow(deployPath).jobs.deploy)).toContain(
       "node_modules/.bin/serverless deploy",
