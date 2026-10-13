@@ -43,12 +43,17 @@ describe("fitness: every route checks a token (identity.md)", () => {
     expect(handlers).toEqual(["service/src/handler.handler"]);
   });
 
+  // The OPTIONS route answers a browser's preflight for the GET.
   it("leaves only the metadata open", () => {
     expect(
       Object.entries(routes)
         .filter(([, access]) => access === "public")
-        .map(([route]) => route),
-    ).toEqual(["GET /.well-known/oauth-protected-resource/mcp"]);
+        .map(([route]) => route)
+        .sort(),
+    ).toEqual([
+      "GET /.well-known/oauth-protected-resource/mcp",
+      "OPTIONS /.well-known/oauth-protected-resource/mcp",
+    ]);
   });
 
   // The service verifies tokens itself (ADR 6). An authorizer in front of it
