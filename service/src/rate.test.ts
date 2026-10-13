@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelCallLimit, secondsLeft, windowOf } from "./rate";
+import { rateLimits, secondsLeft, windowOf } from "./rate";
 
 const at = (time: string) => new Date(time);
 
@@ -35,7 +35,7 @@ describe("a rate window", () => {
       "2026-10-12T00:00:00.000Z",
       "2026-10-12T23:59:59.999Z",
     ]) {
-      expect(windowOf(at(time), modelCallLimit.windowMinutes)).toEqual({
+      expect(windowOf(at(time), rateLimits.modelCall.windowMinutes)).toEqual({
         name: "2026-10-12T00:00",
         endsAt: Date.parse("2026-10-13T00:00:00.000Z"),
       });

@@ -6,7 +6,7 @@ import { Refused, retryBudget } from "./errors";
 import { callerOf } from "./identity";
 import type { SortRequests } from "./jobs";
 import { createLogger } from "./log";
-import { askLimit } from "./rate";
+import { rateLimits } from "./rate";
 import {
   dailyAskCap,
   type Counted,
@@ -106,18 +106,17 @@ const storeAnswering = (
       sent.push(ask);
       return Promise.resolve(posting);
     },
-    countAsk: () => Promise.resolve(counted),
     resolveAsk: unused,
     markOpened: unused,
     dismissAsk: unused,
     openAsks: unused,
     asksSince: unused,
-    countPoll: unused,
+    // The ask tool counts against the ask limit, and no other.
+    countCall: (_, limit) =>
+      limit === "ask" ? Promise.resolve(counted) : unused(),
     rules: unused,
     saveRules: unused,
     resaveRules: unused,
-    countRulesSave: unused,
-    countModelCall: unused,
     modelCapSpent: unused,
     recordModelCapReset: unused,
     askToSort: unused,
@@ -216,7 +215,7 @@ describe("the ask tool's answer", () => {
       .object({ code: z.string(), message: z.string() })
       .parse(answer);
     expect(code).toBe("rate_limited");
-    expect(message).toContain(`${String(askLimit.asks)} asks a minute`);
+    expect(message).toContain(`${String(rateLimits.ask.limit)} asks a minute`);
     expect(message).toContain("Wait 23 seconds");
     expect(message).toContain(`at most ${String(retryBudget)} times`);
     expect(logged()).toContain("rate-limited");

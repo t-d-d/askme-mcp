@@ -19,7 +19,7 @@ import { askTool } from "../service/src/ask";
 import { codes, type Code } from "../service/src/errors";
 import { handler } from "../service/src/handler";
 import { callerOf, type AccountId } from "../service/src/identity";
-import { askLimit } from "../service/src/rate";
+import { rateLimits } from "../service/src/rate";
 import { createStore, dailyAskCap } from "../service/src/store/store";
 import { noon, stopClockAt } from "../test/clock";
 import {
@@ -127,8 +127,8 @@ const cases: { code: Code; provoke: () => Promise<unknown> }[] = [
     provoke: async () => {
       // The minute's calls, all counted already.
       const sub = newAccount();
-      for (let n = 1; n <= askLimit.asks; n += 1) {
-        await store.countAsk(accountId(sub), noon);
+      for (let n = 1; n <= rateLimits.ask.limit; n += 1) {
+        await store.countCall(accountId(sub), "ask", noon);
       }
       stopClockAt(noon);
       return call(sub, "ask", ask);
