@@ -1,42 +1,49 @@
-// The local DynamoDB a killed run leaves behind (#244). Vitest stops the
-// container in its teardown, which a killed run never reaches, so the next
-// run's setup removes it.
-import { execFile } from "node:child_process";
-import { hostname } from "node:os";
+// The local DynamoDB a killed run leaves behind (#244, #254). Vitest stops
+// the container in its teardown, which a killed run never reaches, so the
+// container stops by itself once its run has gone. It is tied to the run,
+// not to a process id or a hostname, which #254 found can mislead.
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 import { afterAll, describe, expect, inject, it } from "vitest";
-import {
-  alive,
-  image,
-  ownerLabels,
-  ownerOf,
-  removeOrphans,
-  type Owner,
-} from "./dynamodb";
 
 const run = promisify(execFile);
 
-// A process id above the largest Linux allows, and macOS's, so no process
-// holds it, as none holds a killed run's.
-const ended = 2 ** 22 + 1;
+// The integration tier's global setup in a process of its own, as a vitest
+// run has it. It writes the database's address once the database is ready,
+// and then waits to be killed.
+const setupScript = `
+import setup from ${JSON.stringify(new URL("dynamodb.ts", import.meta.url).href)};
+await setup({
+  provide: (key, value) => {
+    if (key === "databaseEndpoint") console.log(value);
+  },
+});
+setInterval(() => undefined, 60_000);
+`;
 
-// A container labelled as a run's database. It only sleeps, and removes
-// itself within a minute, so a test that is itself killed leaves nothing
-// running for long.
-async function startLabelled(owner: Owner): Promise<string> {
+const runs: ChildProcess[] = [];
+const containers: string[] = [];
+afterAll(async () => {
+  for (const child of runs) child.kill("SIGKILL");
+  if (containers.length > 0) {
+    await run("docker", ["rm", "--force", ...containers]).catch(
+      () => undefined,
+    );
+  }
+});
+
+// The container publishing the local DynamoDB at this address.
+async function containerAt(endpoint: string): Promise<string> {
+  const { port } = new URL(endpoint);
   const { stdout } = await run("docker", [
-    "run",
-    "--detach",
-    "--rm",
-    ...ownerLabels(owner),
-    "--entrypoint",
-    "sleep",
-    image,
-    "60",
+    "ps",
+    "--quiet",
+    "--no-trunc",
+    "--filter",
+    `publish=${port}`,
   ]);
-  const container = stdout.trim();
-  started.push(container);
-  return container;
+  return stdout.trim();
 }
 
 async function running(container: string): Promise<boolean> {
@@ -50,39 +57,52 @@ async function running(container: string): Promise<boolean> {
   return stdout.trim() !== "";
 }
 
-const started: string[] = [];
-afterAll(async () => {
-  if (started.length > 0) await run("docker", ["rm", "--force", ...started]);
-});
+// Starts a run in a process of its own, which leads its own process group,
+// and gives its process id once its database is ready, with the database's
+// container.
+async function startRun(): Promise<{ pid: number; container: string }> {
+  const child = spawn(
+    process.execPath,
+    ["--input-type=module", "--eval", setupScript],
+    { detached: true, stdio: ["ignore", "pipe", "pipe"] },
+  );
+  runs.push(child);
+  let errors = "";
+  child.stderr.on("data", (chunk: Buffer) => {
+    errors += chunk.toString("utf8");
+  });
+  const endpoint = await new Promise<string>((resolve, reject) => {
+    createInterface({ input: child.stdout }).once("line", resolve);
+    child.once("exit", () => {
+      reject(
+        new Error(`The run ended before its database was ready.\n${errors}`),
+      );
+    });
+  });
+  if (child.pid === undefined) throw new Error("The run has no process id.");
+  const container = await containerAt(endpoint);
+  containers.push(container);
+  return { pid: child.pid, container };
+}
 
 describe("a killed integration run's database", () => {
-  it("is removed when the next run starts, and no other run's is", async () => {
-    const [orphan, live, elsewhere] = await Promise.all([
-      startLabelled({ pid: ended, host: hostname() }),
-      startLabelled({ pid: process.pid, host: hostname() }),
-      // Another machine's process ids say nothing about this machine's, as
-      // where two machines share one Docker daemon.
-      startLabelled({ pid: ended, host: `${hostname()}-elsewhere` }),
-    ]);
+  it.each([
+    { killed: "the run", group: false },
+    // As when the run is killed with every process it started.
+    { killed: "the run and the Docker client it started", group: true },
+  ])(
+    "stops once $killed is killed, and no other run's does",
+    async ({ group }) => {
+      const { pid, container } = await startRun();
 
-    await removeOrphans();
+      process.kill(group ? -pid : pid, "SIGKILL");
 
-    expect(await running(orphan)).toBe(false);
-    expect(await running(live)).toBe(true);
-    expect(await running(elsewhere)).toBe(true);
-  }, 30_000);
-
-  it("is labelled with this run, which is still going", async () => {
-    const { port } = new URL(inject("databaseEndpoint"));
-    const { stdout } = await run("docker", [
-      "ps",
-      "--quiet",
-      "--filter",
-      `publish=${port}`,
-    ]);
-    const owner = await ownerOf(stdout.trim());
-
-    expect(owner.host).toBe(hostname());
-    expect(alive(owner.pid)).toBe(true);
-  }, 30_000);
+      await expect
+        .poll(() => running(container), { timeout: 15_000, interval: 250 })
+        .toBe(false);
+      const thisRun = await containerAt(inject("databaseEndpoint"));
+      expect(await running(thisRun)).toBe(true);
+    },
+    30_000,
+  );
 });
