@@ -66,9 +66,10 @@ document.addEventListener("visibilitychange", () => {
 // reached askme. Which asks are held is counted from then, so a held ask
 // is let go at its hours even while the page is not connected. With it, how
 // far the service's clock is ahead of this browser's as of that poll: as the
-// last poll that reached askme found it, counted on since then while polls
-// fail, or 0 before a poll has reached askme. And how far it was ahead when
-// the list was received, as that poll found it, to go with receivedAt.
+// last poll that reached askme found it, counted on from each poll to the
+// next while polls fail, or 0 before a poll has reached askme. And how far it
+// was ahead when the list was received, as that poll found it, to go with
+// receivedAt.
 export interface PolledAnswer extends Answer<AsksAnswer> {
   polledAt: number;
   serviceAhead: number;

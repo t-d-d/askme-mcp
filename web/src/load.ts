@@ -116,7 +116,9 @@ export function aheadSince(
 }
 
 // How far the service's clock was ahead of this browser's at a moment, and
-// how many times the page had been hidden or shown by then.
+// how many times the page had been hidden or shown by then, or by an earlier
+// moment, such as when the poll that found it was sent. An earlier count
+// only reads a step as hidden more often, which is the safe side.
 export interface Counted {
   serviceAhead: number;
   at: Moment;
