@@ -38,7 +38,9 @@ import { useOpening } from "./useOpening";
 //
 // The list is in order as of the last poll, and an ask lapses then, by the
 // service's clock, which gives the time each ask lapses. So the list follows
-// that clock as asks near their time (waiting.ts).
+// that clock as asks near their time (waiting.ts). Each ask's age counts to
+// when the list was last read, by the same clock, which gives the time the
+// ask was posted.
 //
 // An ask with a hashtag outside its hours is held back, on every tab, as of
 // the last poll. So is an ask whose time has passed, which is lapsed, and
@@ -204,6 +206,7 @@ export function Asks({
           ask={open}
           tab={tab}
           now={receivedAt}
+          serviceAhead={serviceAhead}
           colours={hashtagColours(coloured)}
           actions={actions}
           noted={noted}
@@ -241,6 +244,7 @@ export function Asks({
                 hashtags={coloured}
                 tab={tab}
                 now={receivedAt}
+                serviceAhead={serviceAhead}
                 actions={actions}
               />
             </main>
