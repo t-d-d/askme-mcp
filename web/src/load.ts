@@ -54,7 +54,7 @@ const httpDate = z
 // Milliseconds, negative when behind. The Date header is whole seconds,
 // set as the answer left, so this errs behind and a wait for one of the
 // service's moments never ends early. Nothing corrects it for a change to
-// the device's clock while polls fail, on purpose (useAsks.ts, issue 340).
+// the device's clock while polls fail, on purpose. useAsks.ts says why.
 export function serviceAhead(response: Response, receivedAt: number): number {
   const date = httpDate.safeParse(response.headers.get("date"));
   return date.success ? date.data - receivedAt : 0;

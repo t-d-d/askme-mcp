@@ -438,18 +438,18 @@ describe("the lapsed line", () => {
     expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
   });
 
-  // The trade-off chosen in issue 340: while polls fail, the page keeps the
-  // last poll's offset and does not notice the device's clock being set. A
-  // slow clock put right makes an ask lapse early by that much, until a poll
+  // A chosen trade-off: while polls fail, the page keeps the last poll's
+  // offset and does not notice the device's clock being set. A slow clock put
+  // right makes an ask lapse early by that much, and no more, until a poll
   // gets through.
   it("lapses an ask early by as much as a slow clock is put right while polls fail, and brings it back once a poll gets through", async () => {
     const lapses = evening.getTime() + 20 * minute;
     const serviceAhead = 3 * minute;
-    const pageAt = lapses - serviceAhead - 2 * minute;
+    const pageAt = lapses - serviceAhead - 5 * minute;
     const putRight = pageAt + serviceAhead;
+    const lapsesEarly = lapses - serviceAhead;
     let serviceNow = putRight;
-    let failing = false;
-    const dated = datedPolls(
+    const polls = failingPolls(
       () =>
         listOf(
           ask("a", schoolRun, family("low")),
@@ -460,30 +460,29 @@ describe("the lapsed line", () => {
     view = await openPage(inject("pageUrl"), phone, {
       session,
       clock: { stoppedAt: new Date(pageAt) },
-      api: {
-        [pagePaths.asks]: new Answering((url, authorization, sent) =>
-          failing ? new Status(503) : dated.answer(url, authorization, sent),
-        ),
-      },
+      api: { [pagePaths.asks]: polls.answering },
     });
     const { page } = view;
     const reads = (order: string[]) => async () =>
       (await summaries(page)).join("\n") === order.join("\n");
     await stepUntil(page, reads([passkey, schoolRun]), "the list to show");
-    failing = true;
+    polls.fail();
     await moveDeviceClock(page, serviceAhead);
     await page.clock.pauseAt(new Date(putRight + pollMs + 1000));
     await stepUntilShown(page, page.getByText("Not connected. Trying again."));
+    expect(await summaries(page)).toEqual([passkey, schoolRun]);
+    await page.clock.pauseAt(new Date(lapsesEarly + pollMs));
     await stepUntil(page, reads([schoolRun]), "the ask to lapse early");
     expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
-    failing = false;
-    serviceNow = putRight + 2 * pollMs + 1000;
+    polls.recover();
+    serviceNow = lapsesEarly + 2 * pollMs + 1000;
     await page.clock.pauseAt(new Date(serviceNow));
     await stepUntil(
       page,
       reads([passkey, schoolRun]),
       "the ask to come back once a poll gets through",
     );
+    expect(await page.getByText(/lapsed/u).count()).toBe(0);
   });
 
   it("sits at the foot of All clear when every ask has lapsed, and Show them brings the tabs back", async () => {

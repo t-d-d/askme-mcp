@@ -11,6 +11,7 @@ import {
   Answering,
   computedColour,
   datedPolls,
+  failingPolls,
   openPage,
   Status,
   stepUntil,
@@ -146,6 +147,53 @@ async function lineChangesAt({
   }
 }
 
+// The moment is by the service's clock. Polls fail after the first, so the
+// line moves on by the offset that poll gave.
+async function lineChangesAtWhilePollsFail({
+  moment,
+  serviceAhead,
+  list,
+  sortingUntil,
+  before,
+  after,
+}: {
+  moment: number;
+  serviceAhead: number;
+  list: (asks: AsksAnswer["asks"]) => AsksAnswer;
+  sortingUntil?: Date;
+  before: string;
+  after: string | null;
+}): Promise<void> {
+  const here = moment - serviceAhead;
+  const pageAt = here - 2 * minute;
+  const polls = failingPolls(
+    () => list([ask("a", "shop", sortingUntil)]),
+    () => pageAt + serviceAhead,
+  );
+  view = await openPage(inject("pageUrl"), phone, {
+    session,
+    clock: { stoppedAt: new Date(pageAt) },
+    timeZone: "Europe/London",
+    api: { [pagePaths.asks]: polls.answering },
+  });
+  const { page } = view;
+  await stepUntilShown(page, page.getByText(before, { exact: true }));
+  polls.fail();
+  await page.clock.pauseAt(new Date(pageAt + pollMs + 1000));
+  await stepUntilShown(page, page.getByText("Not connected. Trying again."));
+  expect(await page.getByText(before, { exact: true }).count()).toBe(1);
+  await page.clock.pauseAt(new Date(here + pollMs));
+  if (after === null) {
+    await stepUntil(
+      page,
+      async () => (await line(page).count()) === 0,
+      "the line to go",
+    );
+  } else {
+    await stepUntilShown(page, page.getByText(after, { exact: true }));
+  }
+}
+
 describe("the sorting line", () => {
   it("says how many asks are being sorted, under the tabs", async () => {
     view = await open(
@@ -263,6 +311,23 @@ describe("the sorting line", () => {
       });
     },
   );
+
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "turns an ask stopped when the service's time for it comes, on a clock a few minutes %s, while polls fail",
+    async (_, serviceAhead) => {
+      await lineChangesAtWhilePollsFail({
+        moment: later.getTime(),
+        serviceAhead,
+        list: listOf,
+        sortingUntil: later,
+        before: "Sorting 1 ask with your rules",
+        after: "1 ask couldn't be sorted. Saving your rules tries again.",
+      });
+    },
+  );
 });
 
 describe("the sorting line while today's sorting limit is reached", () => {
@@ -337,6 +402,22 @@ describe("the sorting line while today's sorting limit is reached", () => {
     "is gone when the service's day ends, on a clock a few minutes %s",
     async (_, serviceAhead) => {
       await lineChangesAt({
+        moment: Date.parse(resets),
+        serviceAhead,
+        list: capped,
+        before: "Today's sorting limit is reached. It resets at 01:00.",
+        after: null,
+      });
+    },
+  );
+
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "is gone when the service's day ends, on a clock a few minutes %s, while polls fail",
+    async (_, serviceAhead) => {
+      await lineChangesAtWhilePollsFail({
         moment: Date.parse(resets),
         serviceAhead,
         list: capped,
