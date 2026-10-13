@@ -27,6 +27,7 @@ import {
   ModelFailed,
   type CountedModel,
 } from "./model";
+import { emptyRules } from "./rules";
 import { createKeyReader } from "./secrets";
 import { parseSortReply, sortingPrompt, type Sort } from "./sort";
 import { createStore, type Store } from "./store/store";
@@ -83,7 +84,7 @@ export async function sortAsk(
   }
   let sort: Sort | undefined;
   let failure = "reply-rejected";
-  if (rules.text.trim() === "") {
+  if (emptyRules(rules.text)) {
     sort = emptyRulesSort;
   } else {
     const prompt = sortingPrompt(

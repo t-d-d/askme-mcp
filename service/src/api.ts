@@ -23,7 +23,7 @@ import { errorClass, type Logger } from "./log";
 import { CapReached, type CountedModel } from "./model";
 import { askLimit, modelCallLimit, pollLimit, rulesSaveLimit } from "./rate";
 import { mcpPath, type PageRoute } from "./routes";
-import { readRules } from "./rules";
+import { emptyRules, readRules } from "./rules";
 import { sendSamples } from "./samples";
 import {
   dailyAskCap,
@@ -320,7 +320,7 @@ async function saveRules(
     return rulesSaveRefusal(counted.secondsLeft);
   }
   const { text, timeZone } = input.data;
-  if (text.trim() !== "") {
+  if (!emptyRules(text)) {
     const resetsAt = await model.spent(account);
     if (resetsAt !== undefined) {
       log.info("rules-capped", { accountId: account });

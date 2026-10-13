@@ -39,10 +39,6 @@ const leaving = "Leave without saving your rules?";
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const auth = useAuth();
   const { loaded, save } = useRules();
-  useAfter(
-    capped(save.error) ? resetsAt(save.submittedAt) : undefined,
-    save.reset,
-  );
   const { data, failed } = loaded;
   const listed = useAsks();
   const boxId = useId();
@@ -52,6 +48,12 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
   // Whether the last save sent the text unchanged, after a reading that
   // succeeded, so askme sorts the asks again and reads nothing.
   const [resorting, setResorting] = useState(false);
+  // Once the limit resets, the refusal's note goes. The refused save sorted
+  // nothing, so no note says the asks are being sorted again either.
+  useAfter(capped(save.error) ? resetsAt(save.submittedAt) : undefined, () => {
+    setResorting(false);
+    save.reset();
+  });
   const text = draft ?? data?.text ?? "";
   const changed = data !== undefined && draft !== null && draft !== data.text;
   const capSpent =
