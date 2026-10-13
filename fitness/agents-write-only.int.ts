@@ -31,15 +31,12 @@ const serverInfo = {
   "io.modelcontextprotocol/serverInfo": { name: "askme", version: "1.0.0" },
 };
 
-// A refusal from the page's API: a code, its class and a message, and
-// nothing about the account.
 const refusalSchema = z.strictObject({
   code: z.string(),
   class: z.string(),
   message: z.string(),
 });
 
-// An id and a status, and nothing else (ADR 2).
 const idAndStatus = z.strictObject({
   id: z.string(),
   status: z.enum(["posted", "resolved"]),
@@ -58,7 +55,6 @@ const postAs = async (agent: Client, args: Record<string, string> = ask) =>
     (await agent.callTool({ name: "ask", arguments: args })).structuredContent,
   ).id;
 
-// What the page shows the account: the version, and the open asks' ids.
 async function pageOf(sub: string) {
   const response = await invoke(
     handler,
@@ -220,8 +216,6 @@ describe("fitness: ids cannot be guessed or borrowed (agents-write-only.md)", ()
 describe.each(eras)(
   "fitness: instructions are the same for all (agents-write-only.md), %s handshake",
   (era) => {
-    // What a client is told before it calls anything: the server's
-    // instructions, and each tool with its description and schemas.
     const toldTo = async (token: string) => {
       const client = await connect(handler, { token, era });
       const told = {
@@ -250,10 +244,9 @@ describe("fitness: an agent's token reads nothing from the page's API (agents-wr
     .filter(([, access]) => access === "page")
     .map(([route]) => route);
 
-  // A token that carries asks:create and nothing else, in the form Clerk
-  // gives agents, and in the form of a session token. Then an OpenID ID
-  // token, which Clerk can give an agent's OAuth client with no scope at
-  // all: it names its client as its audience, which a session token never
+  // asks:create alone, in the forms Clerk gives agents and as a session
+  // token. Then an OpenID ID token, which Clerk can give an agent's client
+  // with no scope: its audience is its client, which a session token never
   // has.
   const agentTokens = () =>
     Promise.all([
@@ -334,8 +327,6 @@ describe("fitness: an agent's token reads nothing from the page's API (agents-wr
     },
   );
 
-  // Sample asks would post into the account, as only the person may ask
-  // for from the page.
   it("posts no sample asks when an agent's token asks for them", async () => {
     const sub = newAccount();
     const before = await pageOf(sub);

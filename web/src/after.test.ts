@@ -22,8 +22,6 @@ describe("calling a function once a moment has passed", () => {
     expect(then).toHaveBeenCalledOnce();
   });
 
-  // A computer or phone that sleeps can hold timers back, so the clock can
-  // pass the moment with no timer due.
   it("calls it within a minute when the clock passes the moment with no timer due", () => {
     const then = vi.fn();
     after(midnight, then);

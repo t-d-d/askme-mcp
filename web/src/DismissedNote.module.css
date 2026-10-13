@@ -1,7 +1,4 @@
-/*
- * Drawn like the held line, pinned to the foot of the screen so it shows
- * wherever the person swiped.
- */
+/* Drawn like the held line. Fixed, so it shows wherever the person swiped. */
 .note {
   position: fixed;
   right: 0;

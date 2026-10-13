@@ -6,8 +6,6 @@ import {
 } from "../service/src/model";
 import { rateWaitMs, rateWaits, retryingOnRate } from "./model";
 
-// A model that answers each call with the next reply in the list, a thrown
-// error included, and keeps the time of every call it was sent.
 function fakeModel(replies: unknown[]) {
   const sentAt: number[] = [];
   const model: Model = {
@@ -42,7 +40,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("a call the provider refuses for rate (#303)", () => {
+describe("a call the provider refuses for rate", () => {
   it("is sent again after the first wait, and its reply comes back", async () => {
     const { model, sentAt } = fakeModel([refused(), { level: "high" }]);
     const reply = retryingOnRate(model).reply(request);
@@ -74,7 +72,7 @@ describe("a call the provider refuses for rate (#303)", () => {
   });
 });
 
-describe("calls the provider refuses for rate at the same moment (#312)", () => {
+describe("calls the provider refuses for rate at the same moment", () => {
   it("are not all sent again at the same moment", async () => {
     const randoms = [0, 0.25, 0.5, 0.75, 1 - Number.EPSILON];
     vi.spyOn(Math, "random").mockImplementation(() => randoms.shift() ?? 0);
@@ -91,7 +89,7 @@ describe("calls the provider refuses for rate at the same moment (#312)", () => 
   });
 });
 
-describe("each wait before a new try (#312)", () => {
+describe("each wait before a new try", () => {
   it("is at its most when the random part is at its top, and rateWaitMs covers every wait at its most", async () => {
     vi.spyOn(Math, "random").mockReturnValue(1 - Number.EPSILON);
     const { model, sentAt } = fakeModel(

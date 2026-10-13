@@ -1,6 +1,3 @@
-// The scores saved by the last run across the candidates, and the default
-// model they chose (PRD, "Stack": the model that sorts is chosen with the
-// eval set). The run itself is not in the gate, so this reads its file.
 import { describe, expect, it } from "vitest";
 import { defaultModel } from "../service/src/model";
 import { readRepoFile } from "../test/repo";
@@ -22,9 +19,7 @@ describe("the saved scores", () => {
     expect(rows.sort()).toEqual([...candidates].sort());
   });
 
-  // The table's group columns run from after Model to before All, each named
-  // with a capital, as the run writes them. Their order is not checked: each
-  // row follows the header's order, so a table in any order reads right.
+  // Order is not checked: each row follows the header's order.
   it("have a column for every group in the eval set, and no other group", () => {
     const header = (/^\| Model \|(.*)$/mu.exec(saved)?.[1] ?? "")
       .split("|")

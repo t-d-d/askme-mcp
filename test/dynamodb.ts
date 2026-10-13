@@ -1,10 +1,4 @@
-// Global setup for the integration tier: a real DynamoDB, run locally in
-// Docker (ADR 9), with the table made from the deployment definition, so the
-// atomic write and late expiry are the real store's. It listens on loopback
-// only, so the offline guard lets tests reach it.
-//
-// Where the Docker daemon is not running, as in a Claude cloud session, it is
-// started first.
+// Global setup for the integration tier: DynamoDB Local in Docker.
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import {
@@ -41,7 +35,7 @@ const tableName = "askme";
 
 const run = promisify(execFile);
 
-// A client for the local database. DynamoDB Local accepts any credentials.
+// DynamoDB Local accepts any credentials.
 export function localClient(endpoint: string): DynamoDBClient {
   return new DynamoDBClient({
     endpoint,
@@ -56,6 +50,7 @@ const dockerAnswers = () =>
     () => false,
   );
 
+// A cloud session starts with no Docker daemon running.
 async function dockerRunning(): Promise<void> {
   if (await dockerAnswers()) return;
   await new Promise<void>((resolve, reject) => {
@@ -117,25 +112,13 @@ async function ready(client: DynamoDBClient): Promise<void> {
   throw new Error("The local DynamoDB did not answer.", { cause: failure });
 }
 
-// The container's own command. DynamoDB Local runs in the background while
-// the shell reads its stdin, which the run holds open through the Docker
-// client it starts. When the run ends, however it ends, the stream closes:
-// the shell exits, and the container stops and is removed. When the client
-// is killed with the run, the daemon closes the stream itself.
-//
-// Nothing judges a run by its process id or its machine's hostname, so a
-// reused process id, a changed hostname or a second process namespace on
-// one Docker daemon (#254) can neither keep a container running nor stop
-// another run's. Two cases are accepted. A container started before this,
-// with the labels from #244 or none, is tied to no run, and one left
-// running needs one docker rm by hand. A run killed between making its
-// container and starting it leaves one that never started, which holds no
-// process, memory or port.
+// cat waits on stdin, which this run holds open through the docker client
+// it starts. However the run ends, the stream closes, the shell exits and
+// the container is removed. This ties the container to the run and not to a
+// process id or hostname, which another run on the daemon may share.
 const untilRunEnds =
   "java -jar DynamoDBLocal.jar -inMemory -sharedDb & cat > /dev/null";
 
-// Starts a local DynamoDB that runs no longer than this process, and gives
-// the container's id.
 async function startDatabase(): Promise<string> {
   // Made as a step of its own, so the image is pulled before anything waits
   // for the container to start.
@@ -160,8 +143,6 @@ async function startDatabase(): Promise<string> {
   return container;
 }
 
-// The address the container publishes DynamoDB Local on, once it has
-// started.
 async function publishedEndpoint(container: string): Promise<string> {
   for (let tries = 0; tries < 60; tries += 1) {
     const port = await run("docker", ["port", container, "8000/tcp"]).then(
@@ -201,8 +182,6 @@ export default async function setup(
   return stop;
 }
 
-// Every item stored under an account, read straight from the table, so a
-// test can see what is stored whatever the service would return.
 export async function storedItems(
   endpoint: string,
   table: string,
@@ -224,9 +203,6 @@ export async function storedItems(
   }
 }
 
-// Puts an item straight into the table, as a test's setup, such as a rate
-// counter already near its limit, which the store would take thousands of
-// calls to reach.
 export async function putItem(
   endpoint: string,
   table: string,
@@ -240,35 +216,29 @@ export async function putItem(
   }
 }
 
-// One call the service made to the database: the action, such as GetItem,
-// and the sort key of every item it names.
 export interface DatabaseCall {
   action: string;
   sortKeys: string[];
 }
 
 export interface DatabaseRecorder {
-  // The address to give the service in place of the database's.
   endpoint: string;
   calls: DatabaseCall[];
-  // Cancels the next transactions, as many as given, as real DynamoDB does
-  // when another transaction holds one of their items. The local DynamoDB
-  // runs one transaction at a time, so it never does this itself. A
-  // cancelled transaction is recorded, but never reaches it.
+  // Cancels the next `times` transactions as conflicts. DynamoDB Local runs
+  // one transaction at a time, so it never cancels one itself. A cancelled
+  // transaction is recorded but never reaches it.
   conflict(times: number, options?: Conflict): void;
   close(): Promise<void>;
 }
 
-// How the recorder cancels a transaction. Before it answers, meanwhile
-// runs, as the transaction that held the item would finish. With
-// conditionFailed, the answer also names a failed condition on the first
-// item, as when DynamoDB finds both at once.
+// meanwhile runs before the answer, as the transaction that held the item
+// would finish. conditionFailed also names a failed condition on the first
+// item, as DynamoDB does when it finds both at once.
 export interface Conflict {
   meanwhile?: () => Promise<unknown>;
   conditionFailed?: boolean;
 }
 
-// The actions that read the table.
 export const readActions = new Set([
   "GetItem",
   "BatchGetItem",
@@ -277,7 +247,6 @@ export const readActions = new Set([
   "TransactGetItems",
 ]);
 
-// Every sort key written as {"sk": {"S": "..."}} anywhere in a request.
 function sortKeysIn(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(sortKeysIn);
   if (typeof value !== "object" || value === null) return [];
@@ -292,18 +261,15 @@ function sortKeysIn(value: unknown): string[] {
 
 const transactionSchema = z.object({ TransactItems: z.array(z.unknown()) });
 
-// An error DynamoDB gives, which the SDK does not send again.
+// A 400, which the SDK does not retry.
 function refuse(outgoing: ServerResponse, body: object): void {
   outgoing.writeHead(400, { "content-type": "application/x-amz-json-1.0" });
   outgoing.end(JSON.stringify(body));
 }
 
-// DynamoDB's answer to a transaction that met another one on an item: it is
-// cancelled whole, with a reason for each of its items, in order. Which item
-// was held makes no difference to the store, so the last one is named, and
-// a failed condition, when asked for, is named on the first. A transaction
-// of one item then names only the failed condition, which is the answer the
-// store acts on.
+// DynamoDB gives a reason for each item, in order. Which item was held makes
+// no difference to the store, so the last is named. A one-item transaction
+// with conditionFailed names only the failed condition.
 function cancelled(
   outgoing: ServerResponse,
   request: unknown,
@@ -333,8 +299,6 @@ function cancelled(
   });
 }
 
-// The answer when the test's own meanwhile step failed: an error DynamoDB
-// gives for a bad request, which the SDK never retries.
 function meanwhileFailed(outgoing: ServerResponse): void {
   refuse(outgoing, {
     __type: "com.amazon.coral.validate#ValidationException",
@@ -342,9 +306,7 @@ function meanwhileFailed(outgoing: ServerResponse): void {
   });
 }
 
-// A stand-in for the database's address on loopback, which passes each
-// request on to the local DynamoDB and records what it asked for. A test
-// can then count the reads and writes behind one request to the service.
+// A loopback proxy to DynamoDB Local that records each call.
 export async function recordDatabase(
   endpoint: string,
 ): Promise<DatabaseRecorder> {
@@ -371,10 +333,8 @@ export async function recordDatabase(
       calls.push({ action: action ?? "", sortKeys: sortKeysIn(parsed) });
       if (action === "TransactWriteItems" && conflicts.left > 0) {
         conflicts.left -= 1;
-        // When meanwhile fails, the transaction is refused with an error
-        // the SDK does not send again, so the test sees the failure.
-        // Dropping the connection would make the SDK resend it, and it
-        // would go through as if nothing had met it.
+        // A failed meanwhile gets an error the SDK does not retry, so the
+        // test sees it. A dropped connection would be resent and go through.
         const { meanwhile, conditionFailed = false } = conflicts.options;
         void Promise.resolve()
           .then(meanwhile)

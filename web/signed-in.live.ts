@@ -1,9 +1,3 @@
-// After each deploy, the one test account signs in on the live page through
-// Clerk's own screens, as a person does, and the signed-in page loads its
-// list (ADR 16). The first run, and any run after the account is deleted,
-// signs it up. The run ends by signing out. The page only reads, so nothing
-// here writes to askme's store of its own. The service may still write to
-// answer those reads, as it does each poll's rate counter (ADR 20).
 import {
   chromium,
   type Browser,
@@ -16,18 +10,16 @@ import { z } from "zod";
 import { pagePaths } from "../shared/page-api";
 import { mcpUrl, pageUrl, phone } from "../test/live";
 
-// The one test account. Clerk's test mode verifies a +clerk_test address
-// with the code 424242, and sends it no email. Anyone may read the address:
-// the account holds nothing that matters (ADR 16).
+// Clerk's test mode verifies a +clerk_test address with the code 424242 and
+// sends no email. The address may be public, and is used as it is, never
+// built on: the instance holds only 100 accounts (ADR 16).
 const testAddress = "askme-live+clerk_test@example.com";
 const testCode = "424242";
 
-// How long one of Clerk's screens, or one answer from Clerk, may take.
 const stepMs = 30_000;
 
-// Clerk's screens start a sign-in or a sign-up with a POST to its Frontend
-// API, and Clerk answers there. Once Clerk has taken the address, the screen
-// asks for the code to be sent with a POST to the attempt it started.
+// Clerk's Frontend API. A screen starts an attempt with a POST to signIns or
+// signUps, then asks for the code to be sent with a POST under it.
 const signIns = "/v1/client/sign_ins";
 const signUps = "/v1/client/sign_ups";
 const sendCode = /\/prepare_(?:first_factor|verification)$/u;
@@ -54,8 +46,7 @@ const signUpAnswer = z.object({
 describe("fitness: a person can sign in on the live page (test-tiers.md)", () => {
   let browser: Browser | undefined;
   let page: Page;
-  // Every call the page, or a worker it starts, sends its own API during the
-  // run, as its method and path.
+  // Heard on the context, so calls from a worker the page starts count too.
   const apiCalls: string[] = [];
 
   beforeAll(async () => {
@@ -101,10 +92,8 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
     2 * stepMs,
   );
 
-  // On a phone the header has one control, which opens the rules
-  // (docs/design.md, "Header"), and the rules screen links on to Connect
-  // your agents (docs/design/mockup/rules.html). Opening the rules only
-  // reads them.
+  // On a phone the header links only to the rules, which link on to Connect
+  // your agents. Opening the rules only reads them.
   it(
     "shows the MCP address the deploy published under Connect your agents",
     async () => {
@@ -130,9 +119,7 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
     4 * stepMs,
   );
 
-  // Sign out sits at the foot of the rules (docs/design.md, "Rules"). Once
-  // Clerk has ended the session, a reload still finds nobody signed in, so
-  // the run leaves no session behind.
+  // The reload shows Clerk ended the session, so the run leaves none behind.
   it(
     "signs out from the rules and shows the signed-out page",
     async () => {
@@ -144,7 +131,6 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
         .getByRole("link", { name: "Rules", exact: true })
         .click({ timeout: stepMs })
         .catch(failsWith(page, "The header showed no way to the rules."));
-      // The address is used as it is, never built on (test-tiers.md).
       const account = page.getByText(testAddress, { exact: true });
       await account
         .waitFor({ timeout: stepMs })
@@ -165,9 +151,7 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
     4 * stepMs,
   );
 
-  // The page polled while signed in, and the first test saw the list that
-  // poll loaded. It sent nothing but reads, so the run made no write of its
-  // own to askme's store (ADR 20). This runs last, after every step above.
+  // Runs last, so it sees every call the steps above made (ADR 20).
   describe("fitness: the signed-in check sends the API only reads (test-tiers.md)", () => {
     it("sends the page's API nothing but reads", () => {
       const reads = Object.values(pagePaths).map((path) => `GET ${path}`);
@@ -177,9 +161,6 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
   });
 });
 
-// Signs in from the signed-out page, on Clerk's screens, and lands back on
-// the page. When Clerk says the account does not exist, it signs up with the
-// same address. Any other answer from Clerk fails the check.
 async function signIn(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Sign in" }).click();
   let attempt = await giveAddress(
@@ -221,18 +202,15 @@ async function signUp(page: Page): Promise<Attempt> {
   return attempt;
 }
 
-// An attempt that one of Clerk's screens started: Clerk's answer to it, and
-// Clerk's answer when the screen asks for the code to be sent, or undefined
-// if the screen did not ask within two steps' time: one for Clerk to answer
-// the attempt, one for the code screen to ask.
+// codeSent is undefined when the screen does not ask for the code within
+// two steps: one for Clerk to answer the attempt, one for the code screen.
 interface Attempt {
   answer: Response;
   codeSent: Promise<Response | undefined>;
 }
 
-// Gives the address on one of Clerk's screens, presses Continue, and returns
-// the attempt that starts. The wait for the code to be sent starts before
-// Continue is pressed, so a quick answer is not missed.
+// The wait for the code to be sent starts before Continue is pressed, so a
+// quick answer is not missed.
 async function giveAddress(
   page: Page,
   field: Locator,
@@ -267,10 +245,9 @@ async function giveAddress(
   return { answer, codeSent };
 }
 
-// Clerk's field for the code: one box, or one box per digit, where typing
-// into the first fills the rest. Clerk goes on once the last digit is in, so
-// the code is typed only after Clerk has sent it. Typed sooner, Clerk takes
-// the digits before the code exists and refuses them.
+// The field is one box, or one per digit that typing into the first fills.
+// Clerk takes the code once the last digit is in, and refuses digits typed
+// before it has sent the code.
 async function giveCode(
   page: Page,
   codeSent: Attempt["codeSent"],
@@ -303,7 +280,6 @@ async function landBack(page: Page): Promise<void> {
     .catch(failsWith(page, "Clerk did not send the page back after the code."));
 }
 
-// What Clerk said, and what to do when its bot check said it.
 function said(error: z.infer<typeof refusal>["errors"][number] | undefined) {
   const what = `${error?.code ?? "no code"}: ${error?.long_message ?? error?.message ?? "no message"}`;
   return /captcha|\bbot\b/iu.test(what)
@@ -311,7 +287,6 @@ function said(error: z.infer<typeof refusal>["errors"][number] | undefined) {
     : what;
 }
 
-// A step's failure, told with what the page showed at the time.
 function failsWith(page: Page, message: string) {
   return async (error: unknown): Promise<never> => {
     throw new Error(`${message} It showed: ${await screen(page)}`, {
@@ -320,7 +295,6 @@ function failsWith(page: Page, message: string) {
   };
 }
 
-// The words on the page, for a failure's message.
 async function screen(page: Page): Promise<string> {
   const words = await page
     .locator("body")

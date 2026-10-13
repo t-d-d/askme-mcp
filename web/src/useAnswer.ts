@@ -1,6 +1,3 @@
-// Loads one answer from the page's API once. When the load fails, the page
-// keeps what it has, says it is not connected, and tries again a few seconds
-// later, only while the page is visible (polling.md).
 import { useQuery } from "@tanstack/react-query";
 import type { z } from "zod";
 import { useAuth } from "./auth";
@@ -19,7 +16,8 @@ export function useAnswer<T>(path: string, schema: z.ZodType<T>): Answer<T> {
   const query = useQuery({
     queryKey: [path],
     queryFn: ({ signal }) => load(path, schema, getToken, signal),
-    // Loaded once. Only a failed load is tried again.
+    // Loaded once. Only a failed load is tried again, and only while the
+    // page is visible (polling.md).
     staleTime: Infinity,
     refetchInterval: ({ state }) =>
       state.status === "error" ? retryMs : false,

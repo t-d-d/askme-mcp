@@ -1,7 +1,3 @@
-// The error contract (ADR 11). Every refusal carries one of these codes, and
-// each code is marked retry or do not retry. A refusal is a tool result
-// marked as an error, so the model that called the tool reads it. The page's
-// API uses the same codes, as the body of an HTTP response.
 import type { CallToolResult } from "@modelcontextprotocol/server";
 
 export const codes = {
@@ -15,12 +11,10 @@ export const codes = {
 
 export type Code = keyof typeof codes;
 
-// How many times an agent may send the same call again after a retry code,
-// before it carries on without askme. The tool descriptions state it.
+// Resends an agent may make after a retry code before it carries on
+// without askme.
 export const retryBudget = 2;
 
-// A refusal a tool decides on as it runs, such as not_found. The tool
-// wrapper sends it on as a refusal.
 export class Refused {
   readonly code: Code;
   readonly message: string;
@@ -30,6 +24,8 @@ export class Refused {
   }
 }
 
+// A tool result marked as an error, so the model that called the tool reads
+// it.
 export function refusal(code: Code, message: string): CallToolResult {
   const body = { code, class: codes[code], message };
   return {
@@ -38,7 +34,6 @@ export function refusal(code: Code, message: string): CallToolResult {
   };
 }
 
-// The HTTP status of a refusal from the page's API, for each code.
 const statuses: Record<Code, number> = {
   invalid_input: 400,
   cap_reached: 429,

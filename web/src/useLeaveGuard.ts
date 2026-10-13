@@ -2,14 +2,9 @@ import { useEffect, type MouseEvent } from "react";
 import type { AskFirst } from "./screen";
 import { elsewhere } from "./toList";
 
-// Leaving a screen with unsaved text asks the question given first. The
-// screens ask when Back or a typed address changes the fragment, and the
-// browser asks before the tab closes.
-//
-// The screen's own links ask before the address changes, through away, so
-// staying adds nothing to the history. A link opened in a new tab or window
-// leaves nothing, so it does not ask. Anything else that leaves asks
-// through mayLeave. Once the person agrees, they are not asked again.
+// The screens ask when Back or a typed address changes the fragment, and the
+// browser asks as the tab closes. The screen's own links ask through away,
+// before the address changes, so staying adds nothing to the history.
 export function useLeaveGuard(
   changed: boolean,
   askFirst: AskFirst,

@@ -1,20 +1,17 @@
-// A stand-in for Clerk in the integration tier (ADR 9). It publishes a test
-// key on loopback and signs tokens with it, so they pass through the real
-// verification code. A second key, which it never publishes, signs tokens
-// that stand for another Clerk instance.
+// A stand-in for Clerk, whose tokens pass the real verification code.
 import { createServer } from "node:http";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { exportJWK, generateKeyPair, SignJWT, type JWTPayload } from "jose";
 
 export interface TokenOptions {
-  // The claims to set or replace. Undefined removes a claim.
+  // Undefined removes a claim.
   claims?: Partial<
     Record<keyof Claims, string | number | string[] | undefined>
   >;
   // Sign with a key this issuer does not publish.
   foreignKey?: boolean;
-  // The token's type header. Clerk's OAuth access tokens are "at+jwt".
+  // Clerk's OAuth access tokens are "at+jwt".
   typ?: string;
 }
 
@@ -33,12 +30,11 @@ interface Claims {
 export interface FakeIssuer {
   // The issuer's address, as CLERK_ISSUER holds it.
   issuer: string;
-  // An OAuth access token, as an agent holds after signing in.
+  // An OAuth access token, as an agent holds.
   token(options?: TokenOptions): Promise<string>;
-  // A session token, as the page holds once a person signs in. It names a
-  // session and carries no scope.
+  // As the page holds: it names a session and carries no scope.
   sessionToken(options?: TokenOptions): Promise<string>;
-  // While set, the key set answers 500, as an outage would.
+  // While set, the key set answers 500.
   failing: boolean;
   close(): Promise<void>;
 }

@@ -12,7 +12,6 @@ import {
 
 const weekdays = ["mon", "tue", "wed", "thu", "fri"] as const;
 
-// Rules never saved, as a new account has, with no time zone.
 const firstRules: AccountRules = {
   text: "#work is my day job, 8 to 6 on weekdays. #shop is my online shop.",
   hashtags: ["work", "shop"],

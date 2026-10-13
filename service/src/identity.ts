@@ -1,6 +1,4 @@
-// Identity (ADR 6). Clerk signs users in and is the OAuth server for agents.
-// The service only verifies the access tokens Clerk issues, and takes the
-// account from them.
+// Clerk issues every token (ADR 6). The service only verifies them.
 import {
   OAuthError,
   OAuthErrorCode,
@@ -11,12 +9,10 @@ import {
 import { createRemoteJWKSet, errors, jwtVerify } from "jose";
 import { z } from "zod";
 
-// The one scope an agent's token carries (ADR 2). It covers every tool.
+// The one scope. It covers every tool (ADR 2).
 export const askScope = "asks:create";
 
-// An account id, as only a verified token can give it (ADR 13). The brand is
-// a symbol this module keeps to itself, so no other code can make one, and
-// the store's keys take nothing else. Clerk's user ids are short and plain.
+// Only this module can make an AccountId, from a verified token (ADR 13).
 declare const accountBrand: unique symbol; // eslint-disable-line @typescript-eslint/no-unused-vars -- a symbol that exists only as a type, so no other module can name the brand
 const accountIdSchema = z
   .string()
@@ -25,16 +21,13 @@ const accountIdSchema = z
 
 export type AccountId = z.output<typeof accountIdSchema>;
 
-// An account id carried from a verified token to work the service does after
-// it has answered, such as sorting an ask it has just stored. Only the
-// service can start that work, and it hands on the id its own token check
-// gave, so the id still comes from a token (ADR 13).
+// For a job only the service queues, with the id its own token check gave,
+// so the id still comes from a token (ADR 13).
 export function jobAccount(value: unknown): AccountId {
   return accountIdSchema.parse(value);
 }
 
-// The claims the service reads from Clerk's OAuth access tokens. Clerk puts
-// the scopes in scp as a list, or in scope as one string, and reads either.
+// Clerk puts the scopes in scp as a list, or in scope as one string.
 const claimsSchema = z.object({
   sub: accountIdSchema,
   exp: z.number(),
@@ -43,11 +36,9 @@ const claimsSchema = z.object({
   scope: z.string().optional(),
 });
 
-// Who is calling: the account comes from the verified token and nowhere else.
 export interface Caller {
   accountId: AccountId;
   scopes: string[];
-  // API Gateway's id for the request, for the log lines it causes.
   requestId: string;
 }
 
@@ -56,14 +47,13 @@ const extraSchema = z.object({
   requestId: z.string().min(1),
 });
 
-// The verified caller, from what the token check handed to the MCP server.
 export function callerOf(authInfo: AuthInfo | undefined): Caller {
   const { accountId, requestId } = extraSchema.parse(authInfo?.extra);
   return { accountId, requestId, scopes: authInfo?.scopes ?? [] };
 }
 
-// jose errors that mean the token itself is bad, as opposed to the service
-// failing to fetch or read Clerk's keys.
+// jose errors that mean the token itself is bad, not that the keys could
+// not be fetched or read.
 const tokenFaults = [
   errors.JWSInvalid,
   errors.JWTInvalid,
@@ -76,9 +66,7 @@ const tokenFaults = [
   errors.JOSENotSupported,
 ];
 
-// A token refused for a fault of its own. The reason is jose's code for the
-// fault, with the claim that failed when one did, so a log line can say why
-// without holding the token.
+// reason is logged, so it never holds the token.
 export class TokenRejected extends OAuthError {
   readonly reason: string;
   constructor(reason: string) {
@@ -96,16 +84,13 @@ function reasonOf(error: errors.JOSEError): string {
     : error.code;
 }
 
-// The keys the issuer publishes. They are public, so the service holds no
-// Clerk secret. One set serves both kinds of token, and caches what it fetches.
+// The set caches what it fetches, so one set serves both kinds of token.
 export type KeySet = ReturnType<typeof createRemoteJWKSet>;
 
 export function keySet(issuer: string): KeySet {
   return createRemoteJWKSet(new URL("/.well-known/jwks.json", issuer));
 }
 
-// A token signed by the issuer and naming it as iss. A fault of the token's
-// own is a TokenRejected. Failing to fetch the keys is not, and is thrown on.
 async function signedByIssuer(
   token: string,
   keys: KeySet,
@@ -128,13 +113,9 @@ async function signedByIssuer(
   });
 }
 
-// Verifies Clerk's OAuth access tokens, which agents send.
-//
-// Each token must be signed by the issuer, name it as iss, be typed as an
-// OAuth access token (at+jwt), so a sign-in session token from the page is
-// refused, and name an account. The audience is not checked: Clerk's
-// "Include audience" setting is off, so its tokens carry none, and this
-// Clerk instance issues tokens for askme alone (issue #1).
+// Agents' tokens. The at+jwt type refuses the page's session tokens. The
+// audience is not checked: Clerk's "Include audience" setting is off, so its
+// tokens carry none, and this Clerk instance issues tokens for askme alone.
 export function tokenVerifier(
   issuer: string,
   keys: KeySet = keySet(issuer),
@@ -156,8 +137,6 @@ export function tokenVerifier(
   };
 }
 
-// A verified token that an agent was given. It may post asks and read
-// nothing (ADR 2), so the page's routes refuse it.
 export class AgentToken extends Error {
   constructor() {
     super("An agent's token cannot read anything from askme.");
@@ -165,20 +144,15 @@ export class AgentToken extends Error {
   }
 }
 
-// The claims the service reads from Clerk's session tokens, which the page
-// sends. Only a session token names a sign-in session, in sid.
+// Only a session token carries sid.
 const sessionClaimsSchema = z.object({
   sub: accountIdSchema,
   sid: z.string().min(1),
 });
 
-// Verifies the session tokens Clerk gives the page once a person signs in,
-// and gives the account they name.
-//
-// A token typed as an OAuth access token, or carrying a scope, is an
-// agent's: it is refused with AgentToken, whatever scope it holds. So is a
-// token with an audience, such as an OpenID ID token, which Clerk gives an
-// agent's OAuth client. Session tokens carry no scope and no audience.
+// The page's tokens. Session tokens carry no scope and no audience. An
+// audience marks a token such as the OpenID ID token Clerk gives an agent's
+// OAuth client.
 export function sessionVerifier(
   issuer: string,
   keys: KeySet = keySet(issuer),
@@ -203,8 +177,7 @@ export function sessionVerifier(
   };
 }
 
-// The protected resource metadata (RFC 9728) that a 401 points to. It names
-// Clerk as the authorisation server, so a client knows where to sign in.
+// RFC 9728 metadata, which a 401 points to.
 export function resourceMetadata(
   resource: URL,
   issuer: string,

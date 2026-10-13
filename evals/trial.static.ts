@@ -1,6 +1,3 @@
-// `npm run eval:trial` sorts every eval ask several times under a draft
-// wording (#270). It calls the real model, so it runs only by hand, and this
-// reads its source and its command.
 import { describe, expect, it } from "vitest";
 import { readRepoFile, scripts } from "../test/repo";
 import { tiers } from "../test/tiers";

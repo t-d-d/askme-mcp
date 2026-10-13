@@ -1,14 +1,13 @@
 // The decision records' fitness tables, and the fitness tests that answer
-// them, read from the repo's own files for static tests.
+// them.
 import { readRepoFile, repoFiles } from "./repo";
 import { tiers } from "./tiers";
 
 const recordPath = /^docs\/adr\/(\d{4})-[a-z0-9-]+\.md$/u;
 const constraintPath = /^docs\/constraints\/([a-z0-9-]+)\.md$/u;
 
-// Every decision record, by number, in order. Any Markdown file in
-// docs/adr/ but the index is a record, so one named against the pattern
-// throws instead of being left out.
+// Any Markdown file in docs/adr/ but the index is a record, so one named
+// against the pattern throws instead of being left out.
 export function records(): { record: number; path: string }[] {
   return repoFiles()
     .filter(
@@ -27,11 +26,8 @@ export function records(): { record: number; path: string }[] {
     .sort((a, b) => a.record - b.record);
 }
 
-// The checks in a record's "Fitness functions" table, in order. The table
-// opens with a header row whose first cell is Check, then a divider row.
-// Each row after those is one check, named in its first cell. A section or
-// a row laid out any other way throws, so no check is lost without a
-// failure.
+// A section or row laid out any other way throws, so no check is lost
+// without a failure.
 export function checksIn(text: string): string[] {
   const start = text.indexOf("\n## Fitness functions\n");
   if (start === -1) throw new Error("It has no Fitness functions section.");
@@ -58,7 +54,7 @@ export function checksIn(text: string): string[] {
   });
 }
 
-// Each constraint file, without its .md, and the records its History line
+// Each constraint's name, without .md, and the records its History line
 // names.
 export function constraintHistory(): Map<string, number[]> {
   const history = new Map<string, number[]>();
@@ -77,12 +73,10 @@ export function constraintHistory(): Map<string, number[]> {
   return history;
 }
 
-// Every fitness test in a test file of any tier, named as CLAUDE.md says,
-// `fitness: <check> (<file>.md)`. Only a describe's first argument counts,
-// either `describe(` or the second call of `describe.each(...)(`. A string
-// that only quotes a describe, as a static test may, does not. A describe
-// whose tests are all skipped or left as todo still counts, so a check
-// answered that way passes here.
+// Named as CLAUDE.md says. Only a describe's first argument counts, either
+// `describe(` or the second call of `describe.each(...)(`, so a string that
+// only quotes one, as a static test may, does not. A describe whose tests
+// are all skipped or todo still counts.
 const fitnessDescribe =
   /(?:(?<![\w"'`.])describe\(|\)\()\s*["'`]fitness: (.+?) \(([a-z0-9-]+)\.md\)/gu;
 
@@ -102,9 +96,8 @@ export function fitnessTests(): {
     );
 }
 
-// A check's name as a test may give it. A record's table names a check
-// without its article ("Idle poll is cheap"), and a describe name reads as
-// a sentence ("an idle poll is cheap"), so both drop a leading article and
-// compare in lower case.
+// A record's table names a check without its article ("Idle poll is
+// cheap"), and a describe name reads as a sentence ("an idle poll is
+// cheap").
 export const asNamed = (name: string): string =>
   name.toLowerCase().replace(/^(?:the|an|a) /u, "");

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { fakeStore } from "../../test/fake-store";
 import { captureLogs, lineText } from "../../test/logs";
 import { askTool, limits } from "./ask";
 import { Refused, retryBudget } from "./errors";
@@ -12,10 +13,8 @@ import {
   type Counted,
   type NewAsk,
   type Posting,
-  type Store,
 } from "./store/store";
 
-// The input schema as an agent's client receives it.
 const advertised = z
   .object({
     properties: z.record(z.string(), z.object({ description: z.string() })),
@@ -93,37 +92,21 @@ describe("the ask tool's description of its fields", () => {
   });
 });
 
-// A store that counts every call the same way, and answers every post the
-// same way. It keeps each ask it is asked to post.
 const storeAnswering = (
   posting: Posting,
   counted: Counted,
   sent: NewAsk[] = [],
-): Store => {
-  const unused = () => Promise.reject(new Error("Not used here."));
-  return {
+) =>
+  fakeStore({
     postAsk: (_, ask) => {
       sent.push(ask);
       return Promise.resolve(posting);
     },
-    resolveAsk: unused,
-    markOpened: unused,
-    dismissAsk: unused,
-    openAsks: unused,
-    asksSince: unused,
-    // The ask tool counts against the ask limit, and no other.
     countCall: (_, limit) =>
-      limit === "ask" ? Promise.resolve(counted) : unused(),
-    rules: unused,
-    saveRules: unused,
-    resaveRules: unused,
-    modelCapSpent: unused,
-    recordModelCapReset: unused,
-    askToSort: unused,
-    recordSort: unused,
-    close: () => undefined,
-  };
-};
+      limit === "ask"
+        ? Promise.resolve(counted)
+        : Promise.reject(new Error(`Counted against ${limit}.`)),
+  });
 
 const input = {
   summary: "Approve the plan",
@@ -138,7 +121,6 @@ const caller = callerOf({
   extra: { accountId: "user_1", requestId: "req-1" },
 });
 
-// A queue that keeps every sort it is sent, or takes none of them.
 const sorter = (refuses = false) => {
   const handed: { account: string; askIds: readonly string[] }[] = [];
   const sorts: SortRequests = {
@@ -166,7 +148,6 @@ const run = (
     sorts,
   });
 
-// What the store would post, if the call got that far.
 const posted: Posting = {
   kind: "posted",
   id: "AAAAAAAAAAAAAAAAAAAAAAAA",

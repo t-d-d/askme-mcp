@@ -1,5 +1,3 @@
-// The rules screen, with Clerk and the page's API faked on loopback
-// (ADR 9).
 import { afterEach, describe, expect, inject, it } from "vitest";
 import {
   pagePaths,
@@ -48,8 +46,6 @@ const saved: RulesAnswer = {
   timeZone: "Europe/London",
 };
 
-// What the screen shows for each hashtag askme read: its pill, then its
-// hours.
 const rows = (page: OpenPage["page"]) =>
   page
     .getByRole("region", { name: "askme read this from your rules" })
@@ -67,9 +63,6 @@ const list: AsksAnswer = {
   asks: [],
 };
 
-// An ask not sorted yet, which turns stopped at the time given by the
-// service's clock. It was posted half an hour before then unless another
-// time is given.
 const behindUntil = (
   sortingUntil: string,
   postedAt = new Date(Date.parse(sortingUntil) - 30 * minute).toISOString(),
@@ -83,8 +76,6 @@ const behindUntil = (
   sort: null,
 });
 
-// The open list with one ask behind the rules, posted an hour ago, whose
-// sorting stops or stopped a while from now.
 const behind = (offset: number): AsksAnswer => ({
   ...list,
   asks: [
@@ -95,8 +86,6 @@ const behind = (offset: number): AsksAnswer => ({
   ],
 });
 
-// The rules screen, with the rules answered by the given answer and saved
-// by the given one, and the open asks by the list given.
 async function openRules(
   rules: RulesAnswer | Answering,
   viewport = phone,
@@ -115,7 +104,6 @@ async function openRules(
   return view;
 }
 
-// Answers a load with the rules given, and a save with what the test says.
 const rulesApi = (
   loaded: RulesAnswer,
   onSave: (body: string | null) => unknown,
@@ -124,13 +112,7 @@ const rulesApi = (
     sent.method === "PUT" ? onSave(sent.body) : loaded,
   );
 
-// Opens the list in London on a page whose clock stands still two minutes
-// before a moment by the service's clock, which is serviceAhead ahead of
-// the page's, and waits for the sorting line to read as given. Then it opens
-// the rules, which have the list from the start, and finds Save rules
-// neutral until the first poll after the moment wakes it. Each poll's
-// answer gives the service's time in its Date header, as it is then,
-// because the page's clock moves only when the test moves it.
+// The moment is by the service's clock.
 async function wakesSaveRulesAt(
   moment: string,
   serviceAhead: number,
@@ -463,12 +445,8 @@ describe("the rules screen", () => {
     expect(await page.getByRole("textbox").inputValue()).toBe(changed);
   });
 
-  // The service counts the cap by its own clock, so the note goes when the
-  // service's day ends, even on a page whose clock is a few minutes out. The
-  // service refuses the save at 23:58 UTC on 12 October by its own clock,
-  // which its answer's Date header gives, two minutes before the cap
-  // resets. A clock three minutes fast reads 00:03 then, and one three
-  // minutes slow reads 23:57.
+  // The refusal's Date header puts the service's clock at 23:58 UTC, two
+  // minutes before the cap resets.
   it.each([
     ["fast", "2026-10-13T00:01:00Z", "2026-10-13T00:03:00Z"],
     ["slow", "2026-10-12T23:55:00Z", "2026-10-12T23:57:00Z"],
@@ -513,11 +491,6 @@ describe("the rules screen", () => {
     },
   );
 
-  // Asks that couldn't be sorted wake Save rules once today's sorting limit
-  // resets. The service counts the limit by its own clock, so the button
-  // wakes when the service's day ends, even on a page whose clock is a few
-  // minutes out. A clock three minutes fast reads 00:03 then, and one three
-  // minutes slow reads 23:57.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
@@ -538,12 +511,6 @@ describe("the rules screen", () => {
     },
   );
 
-  // An ask that couldn't be sorted wakes Save rules. The service gives the
-  // time an ask turns stopped by its own clock, so the button wakes when the
-  // service's time for it comes, even on a page whose clock is a few minutes
-  // out. For an ask that turns stopped at 18:30 UTC by the service's clock,
-  // a clock three minutes fast reads 18:33 then, and one three minutes slow
-  // reads 18:27.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
@@ -635,7 +602,6 @@ describe("the rules screen", () => {
     await page.getByRole("button", { name: "Save rules" }).click();
     await page.getByText("Reading your rules.").waitFor();
     await page.getByText("#family", { exact: true }).waitFor();
-    // With the time zone of this browser, which the hours use.
     expect(bodies).toEqual([
       JSON.stringify({
         text: `${text}\n\n#family is home.`,
@@ -719,8 +685,7 @@ describe("the rules screen", () => {
       .waitFor();
   });
 
-  // Only a save that did not go through offers to try again. A limit's
-  // note says when to try instead.
+  // A limit's note says when to try instead.
   it.each([
     [
       "rate_limited",
@@ -911,12 +876,8 @@ describe("the rules screen", () => {
   });
 
   // Chromium asks before a tab closes only on a page someone has used, and
-  // only once the page has told the browser it has a beforeunload listener.
-  // The page adds the listener just after the update that turns Save rules
-  // on, before the typing's task ends, and tells the browser. That notice
-  // can reach the browser after fill returns, but always before the page's
-  // answer to a later check, so the tab closes only once Save rules is seen
-  // to be on.
+  // only once the page has told it of a beforeunload listener. The page adds
+  // the listener as Save rules turns on, so the test waits for that first.
   it("asks before the tab closes with unsaved text", async () => {
     view = await openRules(saved);
     const { page } = view;
@@ -999,9 +960,6 @@ describe("signing out", () => {
     expect(await signOut.locator("..").innerText()).toBe("Sign out");
   });
 
-  // Opens the rules at phone width for an account with this address, and
-  // measures the foot: the address, Sign out beside it, and one line of
-  // the address's text.
   async function footFor(address: string) {
     view = await openPage(`${inject("pageUrl")}#rules`, phone, {
       session,
@@ -1028,16 +986,12 @@ describe("signing out", () => {
     return { page, named, line };
   }
 
-  // An address of a common length, such as a 23-letter Gmail address, fits
-  // on the line beside Sign out at phone width, and so does one a little
-  // longer.
+  // Longer than a common address, such as a 23-letter Gmail one.
   it("keeps an address of 30 characters on one line, with Sign out beside it", async () => {
     const { named, line } = await footFor("samantha.okonkwo-r@example.com");
     expect(named.height).toBeLessThan(2 * line);
   });
 
-  // A long address wraps in its own column, and Sign out stays on its line
-  // rather than dropping below it or pushing the page sideways.
   it("wraps a long address beside Sign out, with no sideways scroll", async () => {
     const { page, named, line } = await footFor(
       "samantha.okonkwo-richardson.accounts-payable@example-company.com",

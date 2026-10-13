@@ -1,18 +1,11 @@
-// Moving between screens (docs/design.md, "Movement"). A screen that sits
-// higher slides in from the right over the one it opens from, and slides out
-// to the right to show the one under it. The browser draws a picture of each
-// screen and moves the pictures (base.css), so nothing on either screen moves
-// by itself.
+// Slides between screens with view transitions. The motion is in base.css.
 import { useLayoutEffect } from "react";
 import { flushSync } from "react-dom";
 
-// How high each screen sits: the list at the foot, an ask's card and the
-// rules over it, and Connect your agents, which the rules link to, over the
-// rules.
 export const layers = { list: 0, card: 1, rules: 1, connect: 2 } as const;
 
-// The layer of the screen drawn last. A card's address can show the list,
-// as when its ask has gone, so each screen says what it is as it is drawn.
+// Each screen sets this as it draws, since a card's address can show the
+// list, as when its ask has gone.
 let drawn: number = layers.list;
 
 export function useLayer(layer: number): void {
@@ -21,27 +14,14 @@ export function useLayer(layer: number): void {
   });
 }
 
-// The slide under way, if one is.
 let underWay: ViewTransition | null = null;
 
-// The changes a slide holds while the browser draws the picture of the
-// screen being left, in the order they came, or null when no slide waits.
 let held: (() => void)[] | null = null;
 
-// Makes a change that may draw another screen, sliding if it does. The
-// change is made at once when the person's device asks for reduced motion,
-// when the browser cannot draw the pictures, and when it has drawn its own
-// movement already, as a phone's browser may on Back. A change while a slide
-// is under way is made at once too, and shows as part of that slide.
-//
-// A slide holds its change for about a frame, until the browser has drawn
-// the picture of the screen being left. A change that comes in that frame
-// joins the slide and is held behind it, so the changes are made in the
-// order they came and the picture shows the screen as it was before either.
-// When the browser has drawn its own movement for the change that joins,
-// the slide is skipped, and both changes are made at once.
-//
-// The page cannot be tapped while the screens move. Taps go to the pictures,
+// browserMoved: the browser has drawn its own movement, as a phone's may on
+// Back. A change in the frame before the browser has pictured the old screen
+// joins the slide, so the picture shows the screen as it was before either.
+// While a slide runs, taps go to the browser's pictures of the screens,
 // whatever the page's styles say.
 export function slide(change: () => void, browserMoved = false): void {
   if (held !== null) {
@@ -62,9 +42,7 @@ export function slide(change: () => void, browserMoved = false): void {
   const root = document.documentElement;
   const changes = [change];
   held = changes;
-  // The browser draws the new screen's picture once the changes return, so
-  // React draws them at once, and the slide's direction is worked out from
-  // the screen they leave drawn.
+  // The browser takes the new screen's picture as soon as this returns.
   const transition = document.startViewTransition(() => {
     held = null;
     flushSync(() => {

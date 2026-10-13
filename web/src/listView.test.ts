@@ -16,8 +16,6 @@ const work: Hashtag = {
 };
 const shop: Hashtag = { name: "shop", colour: 1 };
 
-// An ask sorted into hashtags, posted half an hour ago less its place, so
-// the first given has waited longest.
 const ask = (
   id: string,
   hashtags: string[] | null,
@@ -159,7 +157,6 @@ describe("held and lapsed asks", () => {
       "b",
       "a",
     ]);
-    // Showing held asks does not show a lapsed one.
     expect(ids(view({ answer, showingHeld: true }).shown)).toEqual(["b"]);
   });
 
@@ -255,7 +252,6 @@ describe("held and lapsed asks", () => {
       keepHeld: false,
       keepLapsed: false,
     });
-    // Hidden asks stay hidden.
     expect(view({ answer: held })).toMatchObject({
       keepHeld: false,
       keepLapsed: false,

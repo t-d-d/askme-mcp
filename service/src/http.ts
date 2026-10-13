@@ -1,7 +1,4 @@
-// The HTTP boundary (ADR 10). API Gateway's HTTP API hands the function a
-// version 2.0 event. This module parses it into a web Request, and turns the
-// Response back into the result API Gateway expects. It is the only module
-// that reads a request's body.
+// API Gateway's HTTP API sends version 2.0 events.
 import { z } from "zod";
 
 const eventSchema = z.object({
@@ -20,11 +17,9 @@ const eventSchema = z.object({
 });
 
 export interface Incoming {
-  // The route API Gateway matched, as "METHOD /path".
+  // As "METHOD /path".
   route: string;
-  // API Gateway's id for the request, which every log line carries.
   requestId: string;
-  // The address the caller used, such as https://abc.execute-api.us-east-1.amazonaws.com.
   origin: string;
   request: Request;
 }
@@ -57,8 +52,6 @@ export function incoming(event: unknown): Incoming | undefined {
   };
 }
 
-// A request's body as JSON, for its caller to parse with its own schema, or
-// undefined when it has none or it is not JSON.
 export async function jsonBody(request: Request): Promise<unknown> {
   try {
     return await request.json(); // eslint-disable-line no-restricted-syntax -- this module is where a body is read
@@ -67,8 +60,8 @@ export async function jsonBody(request: Request): Promise<unknown> {
   }
 }
 
-// The Authorization header, if the request has one. API Gateway joins a
-// repeated header with commas, and only the first counts.
+// API Gateway joins a repeated header with commas, and only the first
+// counts.
 export function authorizationOf(request: Request): string | undefined {
   return request.headers.get("authorization")?.split(",")[0];
 }

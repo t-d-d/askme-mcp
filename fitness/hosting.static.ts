@@ -28,7 +28,7 @@ const definition = () => readYaml("serverless.yml", definitionSchema);
 // The paths at which the page itself would be served.
 const pagePaths = new Set(["/", "/{proxy+}", "*"]);
 
-// The paths an HTTP event answers, written as "GET /" or as { path: "/" }.
+// An HTTP event is written as "GET /" or as { path: "/" }.
 function eventPaths(event: Record<string, unknown>): string[] {
   return Object.values(event).flatMap((value) => {
     if (typeof value === "string") return [value.split(" ").at(-1) ?? value];
@@ -114,18 +114,15 @@ describe("fitness: nothing runs continuously (hosting.md)", () => {
     "AWS::S3::BucketPolicy",
     "AWS::SNS::Subscription",
     "AWS::SNS::Topic",
-    // The sort queue is billed per request, but Lambda polls it for the
-    // sort function's trigger even while it is empty, and those requests
-    // are billed too. They are the one idle cost hosting.md allows. Its
-    // policy costs nothing.
+    // Lambda polls the queue even while it is empty, and those requests are
+    // billed: the one idle cost hosting.md allows.
     "AWS::SQS::Queue",
     "AWS::SQS::QueuePolicy",
   ]);
 
-  // An alarm is billed by the month, for each metric it reads, past
-  // CloudWatch's free ten. ADR 8 chose alarms knowing that, so they pass
-  // here while all of them together read ten metrics or fewer. Each new
-  // function adds two to the function-failures alarm.
+  // Alarms are billed for each metric they read past CloudWatch's free ten.
+  // ADR 8 chose them knowing that, so they pass while they read ten or
+  // fewer. Each new function adds two to the function-failures alarm.
   const alarm = (resource: z.infer<typeof resourceSchema>) =>
     resource.Type === "AWS::CloudWatch::Alarm";
   const freeAlarmMetrics = 10;
@@ -139,7 +136,6 @@ describe("fitness: nothing runs continuously (hosting.md)", () => {
       : metrics.filter((entry) => entry.MetricStat !== undefined).length;
   };
 
-  // A table costs nothing while idle only when it is billed per request.
   const onDemandTable = (resource: z.infer<typeof resourceSchema>) =>
     resource.Type === "AWS::DynamoDB::Table" &&
     resource.Properties?.BillingMode === "PAY_PER_REQUEST";

@@ -1,12 +1,3 @@
-// The store (ADR 13): the only code that reads or writes the table. Every
-// key comes from keys.ts, and every read is strongly consistent and checks
-// expiry itself, because DynamoDB removes expired items late (ADR 5).
-//
-// Two functions write. write() makes every change to asks or rules, and
-// raises the account's version in the same transaction, so the page learns
-// of it. count() adds to a rate counter, which changes nothing the page
-// shows, so it leaves the version alone and an idle poll stays idle
-// (ADR 18). Lint holds every other write out.
 import { randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
@@ -31,43 +22,27 @@ import { levels, type Sort } from "../sort";
 import { fingerprint } from "./fingerprint";
 import { keys, type Key } from "./keys";
 
-// Every ask is deleted a month after it is posted (PRD, "Accounts and
-// connection"). The page's demo notice says so.
+// The page's demo notice states this lifetime.
 export const askLifetimeDays = 30;
 
-// An ask identical to one the account posted this many minutes ago or less
-// is the same ask, and gets the first one's id (ADR 3).
 export const dedupeWindowMinutes = 10;
 
-// The most asks an account may post in a UTC day, which limits abuse (PRD,
-// "Accounts and connection").
+// Counted per UTC day.
 export const dailyAskCap = 100;
 
-// How long the table keeps a day's count after the day ends.
 const usageKeptDays = 3;
 
 const dayMs = 86_400_000;
 const minuteMs = 60_000;
 
-// A rate counter is kept an hour past its window, then DynamoDB may delete
-// it. It is only counted inside its own window, so it is never read after
-// it expires (ADR 18).
 const counterLifetimeMs = 3_600_000;
 
-// How many times write() sends a transaction that DynamoDB keeps cancelling
-// because another transaction holds one of its items. Every call to write()
-// conflicts with any other call to write() for the account at the same
-// moment, as each one raises the version on META, whatever else the two
-// change. A transaction refused for any other reason, such as a failed
-// condition, goes back to the caller at once, so one call sends at most
-// writeTries refused transactions. Before each retry it waits a random
-// time, up to a limit that starts at firstWaitMs and doubles, so that two
-// writes which met once are unlikely to meet again. All the waits together
-// are under 200ms.
+// Any two write() calls for one account at once conflict, because each
+// raises the version on META. write() retries only that conflict, so one
+// call sends at most writeTries refused transactions.
 export const writeTries = 4;
 const firstWaitMs = 25;
 
-// An ask as the agent sent it, once its schema has parsed it.
 export interface NewAsk {
   summary: string;
   area: string;
@@ -75,12 +50,9 @@ export interface NewAsk {
   actionLink?: string;
   sessionLink?: string;
   replaces?: string;
-  // How many minutes from posting until the ask stops mattering.
   staleAfterMinutes?: number;
 }
 
-// What sorting decided about an ask, with the version of the rules it read
-// (ADR 13), so a sort made with older rules can be told apart.
 const sortSchema = z.object({
   hashtags: z.array(z.string()),
   level: z.enum(levels),
@@ -91,7 +63,6 @@ const sortSchema = z.object({
 
 export type StoredSort = z.output<typeof sortSchema>;
 
-// A sort as the sorter hands it in, with the rules version it read.
 export type NewSort = Sort & { rulesVersion: number };
 
 const storedAskSchema = z.object({
@@ -103,18 +74,15 @@ const storedAskSchema = z.object({
   sessionLink: z.string().optional(),
   replaces: z.string().optional(),
   postedAt: z.iso.datetime(),
-  // When the item was stored. A replacing ask keeps the posting time of the
-  // ask it replaces (ADR 13), but is stored when it is posted.
+  // Differs from postedAt for a replacing ask, which keeps the postedAt of
+  // the ask it replaces.
   storedAt: z.iso.datetime(),
-  // When DynamoDB may delete the item, in seconds since the epoch.
+  // Seconds since the epoch, as DynamoDB's TTL reads it.
   expiresAt: z.number().int(),
-  // Absent until the ask is sorted.
   sort: sortSchema.optional(),
-  // When the person first followed one of the ask's links. Absent until
-  // then. The ask stays open (PRD, "The ask").
+  // When the person first followed one of the ask's links. The ask stays
+  // open.
   openedAt: z.iso.datetime().optional(),
-  // When the ask stops mattering, absent when its agent gave no time. It
-  // stays open after then (PRD, "Web page").
   lapsesAt: z.iso.datetime().optional(),
 });
 
@@ -122,58 +90,37 @@ export type StoredAsk = Omit<z.output<typeof storedAskSchema>, "expiresAt">;
 
 type OpenItem = z.output<typeof storedAskSchema>;
 
-// How an ask ended (PRD, "The ask"). An agent resolved it, the person
-// dismissed it, or a later ask replaced it.
 export type Ending = "resolved" | "dismissed" | "replaced";
 
-// A closed ask is the same ask, plus how and when it ended.
 const closedAskSchema = storedAskSchema.extend({
   endedAs: z.enum(["resolved", "dismissed", "replaced"] satisfies Ending[]),
   closedAt: z.iso.datetime(),
 });
 
-// What resolving an ask found: an open ask, which it closed, one that was
-// already closed, or no ask under that id in the account.
 export type Resolution = "resolved" | "already-closed" | "not-found";
 
-// What a change the person made to an ask came to: the ask changed; it was
-// already opened, or had closed, so nothing changed; or the account has no
-// ask under that id.
 export type Opening = "opened" | "unchanged" | "not-found";
 export type Dismissal = "dismissed" | "unchanged" | "not-found";
 
-// What posting an ask came to: a new ask, with whether it took over from an
-// open ask it named; a repeat of an ask posted in the last ten minutes, with
-// that ask's id; or a refusal, because the account has posted all its asks
-// for the day.
 export type Posting =
   | { kind: "posted"; id: string; replaced: boolean }
   | { kind: "matched"; id: string }
   | { kind: "over-cap"; resetsAt: Date };
 
-// The record that an ask was posted, kept while a repeat of it is matched.
 const dedupeSchema = z.object({
   askId: z.string(),
   expiresAt: z.number().int(),
 });
 
-// The account's rules: the text the person wrote, the hashtags read from
-// it in the order the rules give them, and every hashtag the account has
-// had, in the order each first appeared, which keeps each one's colour
-// (docs/design.md). The version goes up on every save, and savedAt says
-// when the last save was. When the last save could not be read, the
-// hashtags are the ones read before it.
-//
-// The hours are the windows read with the hashtags, absent when the rules
-// give no hashtag any, and the time zone is the one the browser that saved
-// the rules was in, which the hours use, absent until a save sends one.
+// view.ts colours a hashtag by its place in seen, so seen only grows, in
+// the order each hashtag first appeared. The hours use timeZone, the zone
+// of the browser that saved the rules.
 const rulesSchema = z.object({
   text: z.string(),
   hashtags: z.array(z.string()),
   seen: z.array(z.string()),
   version: z.number().int().nonnegative(),
   readFailed: z.boolean(),
-  // Absent until the rules are first saved.
   savedAt: z.iso.datetime().optional(),
   hours: z.array(hashtagWindow).min(1).optional(),
   timeZone: z.string().optional(),
@@ -181,16 +128,13 @@ const rulesSchema = z.object({
 
 export type AccountRules = z.output<typeof rulesSchema>;
 
-// The hours as the rules item holds them: absent when there are none.
 const windowsOf = (hours: HashtagWindow[] | undefined) =>
   hours === undefined || hours.length === 0 ? {} : { hours };
 
-// The rules of an account that has never saved any: the example rules,
-// already read (PRD, "Rules"). Their hashtags are seen, so each keeps its
-// colour once the person saves their own. They are not stored until a save,
-// and a save of them unchanged stores them at version 0 (ADR 22), so the
-// version stays at 0 until the first save that reads rules. They name no
-// time zone until a save sends one, so the page uses its own.
+// Read while an account has no rules item. Seeding seen keeps each example
+// hashtag's colour after the person saves their own rules. A save of them
+// unchanged stores them at version 0 (ADR 22), so the version stays at 0
+// until the first save that reads rules.
 const firstRules: AccountRules = {
   text: exampleRules.text,
   hashtags: [...exampleRules.reading.hashtags],
@@ -200,36 +144,25 @@ const firstRules: AccountRules = {
   ...windowsOf(exampleRules.reading.hours),
 };
 
-// Rules as a save hands them in: the text, the time zone of the browser
-// that saved them, and the hashtags read from it with their hours. Without
-// a time zone, the one saved before stays. Without hashtags, the rules
-// could not be read, and the hashtags and hours read before stay.
 export interface NewRules {
   text: string;
   timeZone?: string | undefined;
+  // Absent when the rules could not be read.
   hashtags?: string[];
-  // Read with the hashtags. With hashtags and no hours, every hashtag shows
-  // at any time.
   hours?: HashtagWindow[];
 }
 
-// An open ask, with the account's rules, for the sorter.
 export interface AskToSort {
   ask: StoredAsk;
   rules: AccountRules;
 }
 
-// The account marker. Once the cap on model calls refuses a call, it also
-// holds when the cap resets, the next midnight UTC (ADR 22).
 const metaSchema = z.object({
   version: z.number().int().nonnegative(),
   everAsked: z.boolean().optional(),
   modelCapResetsAt: z.iso.datetime().optional(),
 });
 
-// What the page shows: the account's open asks, the version they were read
-// at, whether the account has ever had an ask, and when the cap on model
-// calls last refused one, the time it resets.
 export interface AccountAsks {
   version: number;
   everAsked: boolean;
@@ -237,82 +170,56 @@ export interface AccountAsks {
   modelCapResetsAt?: string;
 }
 
-// A rate counter, as count() writes it.
 const counterSchema = z.object({
   count: z.number().int().nonnegative(),
   expiresAt: z.number().int(),
 });
 
-// What a poll gets when nothing changed since the version it carried.
 export interface Unchanged {
   version: number;
   unchanged: true;
 }
 
-// Whether a call was counted, or how long until its limit allows another.
 export type Counted =
   { counted: true } | { counted: false; secondsLeft: number };
 
 export interface Store {
-  // Stores a new ask and gives its id. When the ask names an open ask of the
-  // same account in replaces, it takes that ask's place, and that ask closes
-  // as replaced. Otherwise it is posted as new. An ask identical to one
-  // posted in the last ten minutes stores nothing and gives that one's id.
-  // An account over its daily cap stores nothing.
   postAsk(account: AccountId, ask: NewAsk, now: Date): Promise<Posting>;
-  // Closes an open ask as resolved.
   resolveAsk(account: AccountId, askId: string, now: Date): Promise<Resolution>;
-  // Marks an open ask as opened, the first time the person follows one of
-  // its links. It stays open.
   markOpened(account: AccountId, askId: string, now: Date): Promise<Opening>;
-  // Closes an open ask as dismissed by the person.
   dismissAsk(account: AccountId, askId: string, now: Date): Promise<Dismissal>;
   openAsks(account: AccountId, now: Date): Promise<AccountAsks>;
-  // The open asks, unless the version is still the one the page last saw.
   asksSince(
     account: AccountId,
     since: number | undefined,
     now: Date,
   ): Promise<AccountAsks | Unchanged>;
-  // Counts a call against one of the account's rate limits (rate.ts), in
-  // the window the call falls in. Each limit has its own counter.
   countCall(account: AccountId, limit: LimitName, now: Date): Promise<Counted>;
-  // The account's rules.
   rules(account: AccountId): Promise<AccountRules>;
-  // Saves the rules text and the time zone, and the hashtags read from it
-  // with their hours when there are some. With none, the old hashtags and
-  // hours stay, and the rules are marked as not read.
   saveRules(
     account: AccountId,
     rules: NewRules,
     now: Date,
   ): Promise<AccountRules>;
-  // Records a save of the text the rules already hold, whose last reading
-  // succeeded, with no new reading (ADR 22): when it was made, and the time
-  // zone. The rules version stays where it was, so no ask sorted with them
-  // falls behind. Undefined, with nothing saved, when the rules no longer
-  // hold that text read with success, as when another save landed first.
+  // Saves unchanged rules whose last reading succeeded without raising the
+  // rules version, so no ask sorted with them falls behind (ADR 22).
+  // Undefined, saving nothing, once another save has changed them.
   resaveRules(
     account: AccountId,
     rules: Pick<NewRules, "text" | "timeZone">,
     now: Date,
   ): Promise<AccountRules | undefined>;
-  // Whether the account has made every model call its cap allows in the UTC
-  // day. It reads the count, and counts nothing.
   modelCapSpent(account: AccountId, now: Date): Promise<boolean>;
-  // Records on META when the cap on model calls resets, raising the
-  // version, so every open page learns of it (ADR 22). False, with nothing
-  // written, when META already holds that time or a later one.
+  // False, writing nothing, when META already holds that time or a later
+  // one.
   recordModelCapReset(account: AccountId, resetsAt: Date): Promise<boolean>;
-  // An open ask and the account's rules, or undefined when the ask is not
-  // open.
   askToSort(
     account: AccountId,
     askId: string,
     now: Date,
   ): Promise<AskToSort | undefined>;
-  // Stores what sorting decided on an open ask. False when the ask is no
-  // longer open, or already holds a sort made with newer rules.
+  // False when the ask is no longer open, or already holds a sort made with
+  // newer rules.
   recordSort(
     account: AccountId,
     askId: string,
@@ -324,21 +231,18 @@ export interface Store {
 
 type Change = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
 
-// An id is the only handle on an ask, so it is long and random (ADR 2):
-// 144 bits, written in the characters a log line accepts.
+// The id is the only handle on an ask, so it is long and random (ADR 2).
+// base64url keeps it inside the id pattern in log.ts.
 const newAskId = () => randomBytes(18).toString("base64url");
 
 const seconds = (time: number) => Math.floor(time / 1000);
 
-// When a transaction was cancelled, the reason DynamoDB gave for each of its
-// changes, in order.
+// DynamoDB gives one reason for each change, in the transaction's order.
 const reasonCodes = (error: unknown): (string | undefined)[] | undefined =>
   error instanceof TransactionCanceledException
     ? (error.CancellationReasons ?? []).map((reason) => reason.Code)
     : undefined;
 
-// When a transaction was refused because a condition failed, whether each
-// of its changes, in order, was one whose condition failed.
 function failedChanges(error: unknown): boolean[] | undefined {
   const failed = reasonCodes(error)?.map(
     (code) => code === "ConditionalCheckFailed",
@@ -346,18 +250,13 @@ function failedChanges(error: unknown): boolean[] | undefined {
   return failed?.includes(true) === true ? failed : undefined;
 }
 
-// Whether a transaction was refused because one of its conditions failed,
-// as when another call closed the same ask first.
 const conditionFailed = (error: unknown) => failedChanges(error) !== undefined;
 
-// The start of the next UTC day, when a day's count starts again.
 const nextDay = (now: Date) =>
   Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
 
-// Whether a transaction was refused only because another transaction held
-// one of its items: an item names a conflict, and no item names anything
-// else. DynamoDB cancels it whole, so sending it again is safe. Any other
-// reason, such as a failed condition, goes back to the caller.
+// DynamoDB cancels a transaction whole, so one refused only for conflicts
+// is safe to send again.
 const conflicted = (error: unknown) => {
   const codes = reasonCodes(error) ?? [];
   return (
@@ -376,11 +275,8 @@ export function createStore(config: {
     marshallOptions: { removeUndefinedValues: true },
   });
 
-  // Every write to an account's items, as one transaction that also raises
-  // the account's version, so the page learns of it (ADR 13). It can also
-  // mark META: that the account has had an ask, or when the cap on model
-  // calls resets, which is written only over an earlier time, so a second
-  // refusal for the same reset fails its condition.
+  // Every change to asks or rules goes through here, and raises the version
+  // on META in the same transaction so the page learns of it (ADR 13).
   async function write(
     account: AccountId,
     changes: Change[],
@@ -428,10 +324,6 @@ export function createStore(config: {
     }
   }
 
-  // The update that adds one to a counter while it is under its limit, and
-  // sets when the item expires the first time it is counted. A rate counter
-  // makes it alone, through count(), and the day's count makes it as part of
-  // posting's transaction, through write().
   function counting(key: Key, limit: number, expiresAt: number) {
     return {
       TableName,
@@ -448,8 +340,8 @@ export function createStore(config: {
     };
   }
 
-  // Adds one to a rate counter, unless it has reached its limit. One
-  // conditional update, which never raises the version (ADR 18).
+  // A rate counter changes nothing the page shows, so it is written outside
+  // write() and leaves the version alone. An idle poll stays idle (ADR 18).
   async function count(
     key: Key,
     limit: number,
@@ -464,7 +356,6 @@ export function createStore(config: {
     }
   }
 
-  // The key of each limit's counter, which keys.ts builds.
   const counterKeys: Readonly<
     Record<LimitName, (account: AccountId, window: string) => Key>
   > = {
@@ -474,7 +365,6 @@ export function createStore(config: {
     modelCall: keys.modelCount,
   };
 
-  // Counts a call against a limit for the window it falls in.
   async function countIn(
     account: AccountId,
     name: LimitName,
@@ -516,10 +406,6 @@ export function createStore(config: {
     return Item === undefined ? firstRules : rulesSchema.parse(Item);
   }
 
-  // Writes the rules over the ones a save read, unless another save has
-  // landed since, which the version tells. The example rules a new account
-  // starts with are not stored, so they are the ones read while there is no
-  // rules item. A save of them unchanged stores them at version 0.
   async function replaceRules(
     account: AccountId,
     current: AccountRules,
@@ -537,7 +423,8 @@ export function createStore(config: {
     ]);
   }
 
-  // The item under one key, unless it is missing or has expired.
+  // Every read is strongly consistent (ADR 13). DynamoDB deletes expired
+  // items late, so every read checks expiry too (ADR 5).
   async function stored<Item extends { expiresAt: number }>(
     key: Key,
     schema: z.ZodType<Item>,
@@ -551,9 +438,7 @@ export function createStore(config: {
     return item.expiresAt > seconds(now.getTime()) ? item : undefined;
   }
 
-  // The changes that close an open ask, for one transaction: the open item
-  // goes, and a closed item takes its place, saying how the ask ended. The
-  // open item must still be there, so one ask cannot be closed twice.
+  // The condition on the open item stops one ask being closed twice.
   function closing(
     account: AccountId,
     ask: OpenItem,
@@ -582,11 +467,8 @@ export function createStore(config: {
     ];
   }
 
-  // The change that adds a posted ask to the day's count, made only while
-  // the count is under the cap. It is part of posting's transaction
-  // (ADR 13), where a rate counter is written alone, by count() (ADR 18).
-  // The count is named by its day, so it is counted against only on that
-  // day, before it expires.
+  // Unlike a rate counter, the day's count is raised inside posting's
+  // transaction, so only an ask that is stored counts (ADR 13).
   function countingTheDay(account: AccountId, now: Date): Change {
     return {
       Update: counting(
@@ -597,8 +479,6 @@ export function createStore(config: {
     };
   }
 
-  // Closes an open ask, saying how it ended, and answers whether it closed
-  // it, found it already closed, or found no ask under that id.
   async function closeAs(
     account: AccountId,
     askId: string,
@@ -650,10 +530,9 @@ export function createStore(config: {
     return found;
   }
 
-  // The open asks, with the version read before them, never alongside, so
-  // it is never newer than the list it comes with. A write that lands
-  // between the two reads raises the version again, and the page reads once
-  // more.
+  // META must be read before the asks, never alongside, so the version is
+  // never newer than the list. A write between the two reads raises it
+  // again, and the page reads once more.
   async function listed(
     account: AccountId,
     now: Date,
@@ -673,10 +552,8 @@ export function createStore(config: {
       const id = newAskId();
       const time = now.getTime();
       const record = keys.dedupe(account, fingerprint(ask));
-      // Every post makes these changes first, and in this order, so a
-      // refusal can be read by place (ADR 13). The dedupe record is written
-      // only if none is live, and holds the new ask's id. The day's count is
-      // raised only while under the cap.
+      // guarded() reads a refusal by place, so these come first and in this
+      // order.
       const guards: Change[] = [
         {
           Put: {
@@ -693,9 +570,8 @@ export function createStore(config: {
         },
         countingTheDay(account, now),
       ];
-      // The minutes are counted from this post, even for an ask that takes
-      // its posting time from the one it replaces, and only the time they
-      // come to is stored.
+      // Counted from this post, even when a replacing ask keeps an older
+      // postedAt.
       const { staleAfterMinutes, ...sent } = ask;
       const lapse =
         staleAfterMinutes === undefined
@@ -720,9 +596,6 @@ export function createStore(config: {
         },
       });
 
-      // The guards and the changes as one transaction. A guard that refuses
-      // decides the answer. A later change that refuses is left to the
-      // caller, as "refused".
       async function guarded(
         changes: Change[],
         posted: Posting,
@@ -756,8 +629,7 @@ export function createStore(config: {
               now,
             );
       if (old !== undefined) {
-        // The new ask has waited as long as the one it replaces, and goes
-        // when that one would have (ADR 13).
+        // A replacement keeps the old ask's age and expiry (ADR 13).
         const replacing = await guarded(
           [
             put({ postedAt: old.postedAt, expiresAt: old.expiresAt }),
@@ -765,8 +637,7 @@ export function createStore(config: {
           ],
           { kind: "posted", id, replaced: true },
         );
-        // Refused when the old ask closed after it was read, so this one is
-        // new.
+        // Refused when the old ask closed after it was read, so post as new.
         if (replacing !== "refused") return replacing;
       }
       const posting = await guarded(
@@ -789,8 +660,7 @@ export function createStore(config: {
       return closed === "closed" ? "resolved" : closed;
     },
 
-    // Only the first opening is written, and only onto an ask still open,
-    // so a repeat leaves the version alone.
+    // A repeat writes nothing, so it leaves the version alone.
     async markOpened(account, askId, now) {
       const key = keys.openAsk(account, askId);
       const open = await stored(key, storedAskSchema, now);
@@ -836,8 +706,6 @@ export function createStore(config: {
       return listed(account, now, await meta(account));
     },
 
-    // When the version is the one the page sent, nothing but the version is
-    // read (ADR 13).
     async asksSince(account, since, now) {
       const marker = await meta(account);
       if (marker.version === since) {
@@ -850,8 +718,8 @@ export function createStore(config: {
 
     rules: readRules,
 
-    // Each save starts from the rules as they are, and is written only if
-    // no other save landed in between, so no hashtag drops out of seen.
+    // Retried from a fresh read when another save lands first, so no
+    // hashtag drops out of seen.
     async saveRules(account, { text, timeZone, hashtags, hours }, now) {
       for (let tries = 0; ; tries += 1) {
         const current = await readRules(account);
@@ -879,8 +747,6 @@ export function createStore(config: {
       }
     },
 
-    // The rules stay as they are but for when they were saved and the time
-    // zone, and are written only if no other save landed in between.
     async resaveRules(account, { text, timeZone }, now) {
       for (let tries = 0; ; tries += 1) {
         const current = await readRules(account);
@@ -941,12 +807,9 @@ export function createStore(config: {
       };
     },
 
-    // The sort is written only onto an ask that is still open, and never
-    // over one made with newer rules: it is refused only when the stored
-    // sort was made with a later rules version. This states the same rule
-    // as sortedWithRules in view.ts, from the side of the write. A sort with
-    // the same version may still be written, as when a second job read the
-    // ask before the first one's sort was stored.
+    // The same rule as sortedWithRules in view.ts, from the write side. An
+    // equal rules version may overwrite, as when a second job read the ask
+    // before the first one's sort was stored.
     async recordSort(account, askId, sort, now) {
       try {
         await write(account, [

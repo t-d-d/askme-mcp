@@ -1,11 +1,8 @@
 import styles from "./DismissedNote.module.css";
 import type { DismissNote } from "./dismissing";
 
-// The note at the foot of the screen after a dismissal: "Dismissed." with
-// Undo while the dismissal waits to be sent, or, if sending it failed,
-// that the ask is back (docs/design.md, "Words"). It is drawn like the
-// held line. The region stays on the page, empty and hidden, so a screen
-// reader hears each note as it comes.
+// The region stays on the page, empty and hidden, so a screen reader hears
+// each note as it comes.
 export function DismissedNote({
   note,
   onUndo,

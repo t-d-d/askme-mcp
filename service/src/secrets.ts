@@ -1,15 +1,11 @@
-// The service's own key for the model, read from Parameter Store, where issue
-// #1 put it as a SecureString. It is read on first use and kept for the life
-// of the function, so it is never in the deployment definition or the
-// function's settings.
+// Read at run time, so the model key is never in the deployment definition
+// or the function's settings.
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { z } from "zod";
 import { awsClientConfig } from "./aws";
 
-// How long one read of the key may take in all, retries included. It is
-// shorter than any model call's time limit, which the read counts against.
-// A read that runs out is not kept, so the next call asks again rather than
-// wait on a Parameter Store that never answered.
+// Retries included. Shorter than any model call's time limit, which the
+// read counts against.
 export const keyReadTimeoutMs = 2000;
 
 const answerSchema = z.object({

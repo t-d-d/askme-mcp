@@ -1,8 +1,5 @@
-// A hashtag's hours, applied in code (PRD, "Back end"): which asks are held
-// back at a moment, and how the hours read on the rules screen. The model
-// only reads the windows from the rules. Whether one is open is worked out
-// here, from the wall clock in the time zone the rules were saved in, so it
-// follows the clocks when they change.
+// Hours are applied here, not by the model, on the wall clock of the time
+// zone the rules were saved in, so they follow the clocks when they change.
 import {
   endOfDay,
   weekdays,
@@ -11,8 +8,7 @@ import {
   type Weekday,
 } from "../../shared/page-api";
 
-// A moment as a clock on the wall shows it in one time zone: the day of the
-// week, and the minute of the day, from 0 at midnight.
+// minute counts from 0 at midnight.
 export interface WallClock {
   day: Weekday;
   minute: number;
@@ -20,8 +16,6 @@ export interface WallClock {
 
 export const minutesInDay = 24 * 60;
 
-// The wall clock at a moment, in a time zone or, without one, in this
-// browser's. Undefined in a time zone this browser does not know.
 export function wallClock(
   at: number,
   timeZone?: string,
@@ -59,19 +53,16 @@ export function wallClock(
   return { day, minute };
 }
 
-// The minute of the day a time on the 24-hour clock names, with 24:00 the
-// end of the day.
+// "24:00", the end of the day, gives minutesInDay.
 const minuteOf = (time: string) =>
   Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
 
-// The day before, as a window that runs past midnight opened on it.
 const dayBefore = (day: Weekday): Weekday =>
   weekdays[(weekdays.indexOf(day) + weekdays.length - 1) % weekdays.length] ??
   day;
 
-// Whether one window is open on the wall clock. It opens on its first
-// minute and closes on its last, and one that closes before it opens runs
-// past midnight, from the days it opens on.
+// from is inclusive and to exclusive. A window that closes before it opens
+// runs past midnight, from the days it opens on.
 function windowOpen({ days, from, to }: TimeWindow, clock: WallClock): boolean {
   const opens = minuteOf(from);
   const closes = minuteOf(to);
@@ -86,8 +77,6 @@ function windowOpen({ days, from, to }: TimeWindow, clock: WallClock): boolean {
   );
 }
 
-// Whether a hashtag's hours are open on the wall clock: when any of its
-// windows is, or always when it has none.
 export function isOpen(
   windows: readonly TimeWindow[],
   clock: WallClock,
@@ -95,12 +84,8 @@ export function isOpen(
   return windows.length === 0 || windows.some((one) => windowOpen(one, clock));
 }
 
-// The ids of the asks held back at a moment: each sorted into a hashtag
-// whose hours are closed then. A restriction wins, so one closed hashtag
-// holds an ask whatever its others say (PRD, "Decisions and reasons"). An
-// ask not sorted yet has no hashtag to hold it, and nor does one whose
-// hashtag has left the rules. Where the time zone is not one this browser
-// knows, nothing is held, so no ask is hidden by mistake.
+// A restriction wins (PRD, "Decisions and reasons"). An unknown time zone
+// holds nothing, so no ask is hidden by mistake.
 export function heldAsks(
   asks: readonly {
     id: string;
@@ -139,9 +124,6 @@ const listed = (words: readonly string[]) =>
     ? words.join("")
     : `${words.slice(0, -1).join(", ")} and ${words.at(-1) ?? ""}`;
 
-// The days a window opens on, in words: "Every day", "Weekdays",
-// "Weekends", a run of three or more as "Monday to Thursday", and any other
-// days one by one, as "Tuesdays and Thursdays".
 function daysText(days: readonly Weekday[]): string {
   const inOrder = weekdays.filter((day) => days.includes(day));
   const named = inOrder.join(" ");
@@ -160,8 +142,6 @@ function daysText(days: readonly Weekday[]): string {
   return listed(inOrder.map((day) => `${dayNames[day]}s`));
 }
 
-// A time on the 24-hour clock as the rules screen writes it: "8am",
-// "5:30pm", or "midnight" at either end of the day.
 function timeText(time: string): string {
   const minute = minuteOf(time);
   if (minute === 0 || minute === minutesInDay) return "midnight";
@@ -172,8 +152,6 @@ function timeText(time: string): string {
   return `${String(onDial)}${minutes}${hour < 12 ? "am" : "pm"}`;
 }
 
-// A hashtag's hours as the rules screen shows them: one line for each
-// window, or "Any time" when it has none (docs/design.md, "Rules").
 export function hoursText(windows: readonly TimeWindow[]): string[] {
   if (windows.length === 0) return ["Any time"];
   return windows.map(({ days, from, to }) => {

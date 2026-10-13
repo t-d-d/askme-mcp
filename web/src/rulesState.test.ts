@@ -21,8 +21,6 @@ const list: AsksAnswer = {
   asks: [],
 };
 
-// An ask behind the rules, which turns stopped at the time given by the
-// service's clock.
 const behindUntil = (at: number): AsksAnswer["asks"][number] => ({
   id: "a",
   summary: "Renew the shop's domain?",
@@ -33,11 +31,8 @@ const behindUntil = (at: number): AsksAnswer["asks"][number] => ({
   sort: null,
 });
 
-// The list with one ask whose sorting has stopped.
 const stopped: AsksAnswer = { ...list, asks: [behindUntil(now - minute)] };
-// The list with one ask still being sorted.
 const sorting: AsksAnswer = { ...list, asks: [behindUntil(now + minute)] };
-// The list while today's limit is reached.
 const capped = (asks: AsksAnswer): AsksAnswer => ({
   ...asks,
   modelCapResetsAt: new Date(now + 60 * minute).toISOString(),
@@ -57,8 +52,6 @@ const capSave: RefusalNote = {
   goesAt: now + 60 * minute,
 };
 
-// The list as polled now, with the service's clock as this browser's
-// unless given.
 const polled = (
   data: AsksAnswer,
   more: Partial<RulesStateInput["listed"]> = {},
@@ -70,8 +63,6 @@ const polled = (
   ...more,
 });
 
-// The screen with its rules loaded and saved as the service holds them,
-// no text typed, no save made, and an empty list polled now.
 const input = (more: Partial<RulesStateInput> = {}): RulesStateInput => ({
   loaded: { data: rules, failed: false },
   listed: polled(list),
@@ -228,7 +219,6 @@ describe("whether Save rules is awake", () => {
   });
 });
 
-// Each note in the order the screen picks them: the first that holds shows.
 describe("the note under Save rules", () => {
   it("says the page is not connected when the rules cannot be loaded, before all else", () => {
     expect(
@@ -414,8 +404,6 @@ describe("the note under Save rules", () => {
   });
 });
 
-// After a save of unchanged text, its note stands until a poll that came
-// back after the save finds asks stopped again, or the limit reached.
 describe("the note after a save of unchanged text", () => {
   const savedAt = now - minute;
   const after = (

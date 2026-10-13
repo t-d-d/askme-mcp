@@ -1,5 +1,3 @@
-// The page signs people in through Clerk in production, and through a
-// stand-in in the gate, which cannot reach Clerk (ADR 9).
 import { describe, expect, it } from "vitest";
 import { deployPath, readRepoFile, readWorkflow } from "../test/repo";
 

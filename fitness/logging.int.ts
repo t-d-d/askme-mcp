@@ -12,8 +12,8 @@ import { invoke } from "../test/lambda";
 import { captureLogs, lineText } from "../test/logs";
 import { connect, eras, mcpUrl, origin, refusalOf } from "../test/mcp";
 
-// A string no code would write by itself. It goes into every field an agent
-// writes, and into tokens, and must never reach a log line.
+// Goes into every field an agent writes and into tokens, and must never
+// reach a log line.
 const marker = "Zq7MarkerXv";
 
 const ask = {
@@ -46,7 +46,7 @@ afterAll(async () => {
 });
 
 describe("fitness: no content reaches the output (logging.md)", () => {
-  // First, while no key has been fetched: the service cannot reach Clerk.
+  // Must run first, while no key has been fetched.
   it("runs the path where the identity service is down", async () => {
     issuer.failing = true;
     try {
@@ -227,7 +227,6 @@ describe("fitness: no content reaches the output (logging.md)", () => {
     const { opened, dismissed } = askChangePaths;
     expect((await change(opened, JSON.stringify({ id }))).status).toBe(204);
     expect((await change(dismissed, JSON.stringify({ id }))).status).toBe(204);
-    // An id that is the marker, one that holds it, and a body that is it.
     expect((await change(opened, JSON.stringify({ id: marker }))).status).toBe(
       404,
     );

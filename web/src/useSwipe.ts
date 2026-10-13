@@ -1,19 +1,10 @@
-// Swiping a card or a row sideways dismisses it (docs/design.md, "The open
-// card"). The element follows the finger, and goes once it has travelled a
-// good way. A shorter drag puts it back. A drag that starts up or down is a
-// scroll, and is left to the browser.
-//
-// Where the element is while it follows the finger is data from the
-// gesture, so it is set on the element itself (ADR 14). The rest is in the
-// element's stylesheet: touch-action, and the movement back, which marks
-// the drag with a data-dragging attribute.
+// The drag's position is set on the element as data from the gesture
+// (ADR 14). touch-action and the slide back are in the stylesheet, which
+// keys on data-dragging.
 import { useCallback, useRef, type MouseEvent, type PointerEvent } from "react";
 
-// How far, in pixels, the pointer moves before the page decides whether
-// the person is swiping or scrolling.
 const decideAfterPx = 8;
 
-// The share of its width an element must travel to be dismissed.
 const dismissShare = 0.35;
 
 interface Drag {
@@ -28,8 +19,8 @@ export interface Swipe {
   onPointerMove: (event: PointerEvent<HTMLElement>) => void;
   onPointerUp: (event: PointerEvent<HTMLElement>) => void;
   onPointerCancel: (event: PointerEvent<HTMLElement>) => void;
-  // A swipe ends with a click on whatever it started on. It is not a tap,
-  // so the click is stopped before it follows a link.
+  // A swipe ends with a click on what it started on, which must not follow
+  // a link.
   onClickCapture: (event: MouseEvent<HTMLElement>) => void;
 }
 
@@ -101,8 +92,8 @@ export function useSwipe(onSwiped: () => void): Swipe {
   const onClickCapture = useCallback((event: MouseEvent<HTMLElement>) => {
     if (!swiped.current) return;
     swiped.current = false;
-    // A click from the keyboard has no pointer behind it, so it is never
-    // the end of a swipe. A touch swipe that went back may leave no click.
+    // A keyboard click (detail 0) never ends a swipe, and a touch swipe that
+    // went back may leave no click to clear swiped.
     if (event.detail === 0) return;
     event.preventDefault();
     event.stopPropagation();

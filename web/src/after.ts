@@ -1,8 +1,6 @@
-// Calls a function once a moment has passed, by this clock, and gives a
-// function that stops the wait. A computer or phone that sleeps can hold
-// timers back, so it looks at the clock at least once a minute as well,
-// and is at most a minute late after waking. Even for a moment already
-// past, it calls with the next timer, not at once.
+// A device that sleeps can hold timers back, so this looks at the clock at
+// least once a minute. It never calls back at once, even for a moment
+// already past.
 const lookMs = 60 * 1000;
 
 export function after(at: number, then: () => void): () => void {

@@ -1,15 +1,4 @@
-// Runs the eval set against the real model, with the sorting prompt the
-// service uses, and reports the scores. There is no pass mark: the run
-// fails only when it cannot reach the model at all. evals/model.ts says how
-// the model is reached, with or without a key.
-//
-// It runs the service's default model, or the models EVAL_MODELS names,
-// separated by commas. `npm run eval:candidates` runs every model in
-// evals/candidates.ts, sends each ask to each of them twice, and saves the
-// scores in evals/scores.md, unless a model gave no fitting reply at all or
-// the provider still refused an ask for rate after the eval sent it again.
-// Any other run saves nothing, and names each model the provider refused
-// for rate.
+// No pass mark: the run fails only when it cannot reach the model at all.
 import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { defaultModel } from "../service/src/model";
@@ -42,12 +31,9 @@ const models = acrossCandidates
     ? namedModels
     : [defaultModel];
 
-// How many times each model is sent the whole set. One run of a model
-// varies by a few asks, as the two runs in the pull request for #11 did,
-// so models are compared over two.
+// One run of a model varies by a few asks, so models are compared over two.
 const rounds = acrossCandidates ? 2 : 1;
 
-// How many asks are sent at once.
 const parallel = 5;
 
 // The models run at once, each with its own pool, so a run takes as long as
@@ -78,8 +64,6 @@ describe("the eval set against the real model", () => {
       return { model, outcomes };
     }
 
-    // The models run at once, each with its own pool, so a run across the
-    // candidates fits the test's time limit.
     const runs = await Promise.all(models.map(runModel));
     for (const run of runs) console.log(`\n${modelReport(run)}\n`);
     console.log(
@@ -101,7 +85,6 @@ describe("the eval set against the real model", () => {
         console.log(`${saved}\nSaved in evals/scores.md.\n`);
       }
     }
-    // The run counts only if a model answered at all.
     expect(
       runs.some(({ outcomes }) =>
         outcomes.some(({ failure }) => failure === undefined),

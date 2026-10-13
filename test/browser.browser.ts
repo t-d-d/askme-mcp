@@ -1,6 +1,3 @@
-// The browser tier's own helper. A route can still be running when a test
-// closes the page, as the guard's abort of a link opened in a new tab can be.
-// Closing must leave nothing behind to fail the run after the test passes.
 import { describe, expect, inject, it } from "vitest";
 import { openPage } from "./browser";
 
@@ -18,8 +15,7 @@ describe("openPage", () => {
       await open.page.context().route("https://example.com/", async (route) => {
         try {
           await open.close();
-          // The browser has closed, so this fails, as an abort still on its
-          // way when the browser closed does.
+          // Fails, as an abort still on its way when the browser closed does.
           await route.request().headerValue("authorization");
         } finally {
           ran();

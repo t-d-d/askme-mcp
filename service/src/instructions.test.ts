@@ -4,8 +4,6 @@ import { retryBudget } from "./errors";
 import { guidance, instructions } from "./instructions";
 import { resolveTool } from "./resolve";
 
-// The five things every agent is told (PRD, "MCP server"), each by the
-// words that carry it. The retry budget is the error contract's own.
 const points = {
   "post whenever work stops to wait for the person":
     /Post an ask whenever your work stops to wait for the person/u,
@@ -32,8 +30,6 @@ describe("the server's instructions", () => {
   });
 });
 
-// Not every client passes the server's instructions on, so the tool
-// descriptions repeat them.
 describe("the ask tool's description", () => {
   it.each(Object.entries(points))("repeats: %s", (_, words) => {
     expect(askTool.description).toMatch(words);

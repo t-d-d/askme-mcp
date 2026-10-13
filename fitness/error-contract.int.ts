@@ -9,7 +9,6 @@ import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, origin, refusalOf } from "../test/mcp";
 
-// A loopback port that nothing listens on, found by opening and closing one.
 async function closedPort(): Promise<number> {
   const server = createServer();
   server.listen(0, "127.0.0.1");
@@ -45,8 +44,7 @@ afterAll(async () => {
   await issuer.close();
 });
 
-// What an internal failure would leak: a stack frame, a socket error, or
-// the address the store was at.
+// A stack frame, a socket error, or the address the store was at.
 const internal = /\bat \S+ \(|ECONNREFUSED|127\.0\.0\.1|Error:/u;
 
 describe("fitness: unknown failures are contained (error-contract.md)", () => {

@@ -1,5 +1,3 @@
-// The MCP endpoint end to end, in process: API Gateway's event, the token
-// check, the MCP server and the ask tool, driven by the official client.
 import { randomUUID } from "node:crypto";
 import type { Client } from "@modelcontextprotocol/client";
 import { McpServer } from "@modelcontextprotocol/server";
@@ -13,7 +11,6 @@ import { limits } from "./src/ask";
 import { handler } from "./src/handler";
 import { instructions } from "./src/instructions";
 
-// What a posted ask answers: a long random id, and nothing about the account.
 const posted = z.strictObject({
   id: z.string().regex(/^[A-Za-z0-9_-]{24}$/u),
   status: z.literal("posted"),
@@ -219,13 +216,10 @@ describe.each(eras)(
   },
 );
 
-// What a resolve answers: the id it was given, and that it is resolved,
-// however and whenever the ask was closed (ADR 2).
 const resolved = (id: string) => ({ id, status: "resolved" });
 
 describe.each(eras)("resolving and replacing, %s handshake", (era) => {
-  // An account of its own for each test, so no test's ask is a repeat of
-  // another's.
+  // A new account per test, so no test's ask is a repeat of another's.
   const client = async () =>
     connect(handler, {
       token: await issuer.token({ claims: { sub: newAccount() } }),
@@ -367,8 +361,7 @@ describe("a request the handler cannot use", () => {
     expect(response.status).toBe(404);
   });
 
-  // The SDK answers a failure of its own with a 500 and logs nothing, so the
-  // handler logs it, and the error alarm sees it (logging.md).
+  // The SDK answers its own failure with a 500 and logs nothing.
   it("is logged as a failure when the MCP server cannot be built", async () => {
     const capture = captureLogs();
     const register = vi
@@ -396,8 +389,8 @@ describe("a request the handler cannot use", () => {
     }
   });
 
-  // API Gateway always sends a well-formed event, so this is a fault on
-  // askme's side, answered as service_unavailable is (ADR 11).
+  // API Gateway always sends a well-formed event, so this is askme's fault
+  // (ADR 11).
   it("is answered 503 when the event is not one API Gateway sends", async () => {
     const result = z
       .object({ statusCode: z.number() })
@@ -406,9 +399,7 @@ describe("a request the handler cannot use", () => {
   });
 });
 
-// The service holds no live connections (polling.md). On the 2026-07-28
-// revision a client can ask to keep a stream open for change notifications,
-// and it is refused at once.
+// The service holds no live connections (polling.md).
 describe("a modern client that asks to listen for changes", () => {
   it("is refused at once, with no stream left open", async () => {
     const client = await connect(handler, {

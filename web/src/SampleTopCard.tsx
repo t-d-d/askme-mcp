@@ -1,8 +1,6 @@
 import { palette, tagColour } from "./palette";
 import styles from "./SampleTopCard.module.css";
 
-// A picture of a top card for the signed-out page. As in the mockup it is
-// drawn smaller than a real one, and screen readers skip it.
 export function SampleTopCard() {
   return (
     <div

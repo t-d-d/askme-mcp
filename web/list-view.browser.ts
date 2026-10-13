@@ -1,6 +1,3 @@
-// Two rules of how the list is worked out that no other browser test holds,
-// with Clerk and the page's API faked on loopback (ADR 9). The page's clock
-// is set, so each test knows which hours are open.
 import { afterEach, describe, expect, inject, it } from "vitest";
 import {
   askChangePaths,
@@ -35,8 +32,6 @@ const work: Hashtag = {
 };
 const shop: Hashtag = { name: "shop", colour: 1 };
 
-// An ask sorted into a hashtag, and behind the rules until a time when one
-// is given.
 const ask = (id: string, hashtag: string, sortingUntil?: Date) => ({
   id,
   summary: `Ask ${id}`,
@@ -49,9 +44,8 @@ const ask = (id: string, hashtag: string, sortingUntil?: Date) => ({
     : { sortingUntil: sortingUntil.toISOString() }),
 });
 
-// The list, polled as the service answers: whole the first time, and as
-// unchanged after that, so an ask dismissed here stays in every answer. The
-// API takes a dismissal.
+// Later polls are answered as unchanged, so a dismissed ask stays in every
+// answer.
 const open = (list: AsksAnswer) =>
   openPage(inject("pageUrl"), phone, {
     session,
