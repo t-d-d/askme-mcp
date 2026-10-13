@@ -241,7 +241,8 @@ console.log(String(error?.cause));`;
       "--eval",
       script,
     ],
-    { env: { ...env, ...proxyEnv } },
+    // Ended before the test's own timeout, so a hung fetch leaves no child.
+    { env: { ...env, ...proxyEnv }, timeout: 4_000 },
   );
   return stdout;
 }
