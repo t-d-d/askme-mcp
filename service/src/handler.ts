@@ -140,6 +140,18 @@ async function serve(
   log: Logger,
 ): Promise<Response> {
   if (!isRoute(route)) return new Response(null, { status: 404 });
+  // The SDK's browser client sends MCP-Protocol-Version on the metadata GET,
+  // so the browser asks here first.
+  if (routes[route] === "public" && request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "access-control-allow-methods": "GET",
+        "access-control-allow-headers": "mcp-protocol-version",
+        "access-control-max-age": "86400",
+      },
+    });
+  }
   const { issuer, verifier, verifySession, store, sorts, model } = ready();
   if (isPageRoute(route)) {
     return servePage(route, request, {
