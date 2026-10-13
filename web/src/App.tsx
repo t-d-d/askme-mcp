@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "./auth";
-import { signInWaitMs } from "./reload";
+import { signInWaitMs, useAuth } from "./auth";
 import { SignedIn } from "./SignedIn";
 import { SignedOut } from "./SignedOut";
 import { Stopped } from "./Stopped";

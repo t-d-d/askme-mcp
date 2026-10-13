@@ -11,6 +11,10 @@ export interface Auth {
   signOut: () => void;
 }
 
+// Clerk's script is a few hundred kilobytes from its own host, so a wait
+// this long for sign-in to load means it is not coming.
+export const signInWaitMs = 10_000;
+
 export const AuthContext = createContext<Auth | null>(null);
 
 export function useAuth(): Auth {

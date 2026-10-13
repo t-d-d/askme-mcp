@@ -7,7 +7,7 @@ import {
   type OpenPage,
 } from "../test/browser";
 import { pollMs } from "./src/poll";
-import { signInWaitMs } from "./src/reload";
+import { signInWaitMs } from "./src/auth";
 
 const phone = { width: 390, height: 844 };
 const session = "test-session-token";

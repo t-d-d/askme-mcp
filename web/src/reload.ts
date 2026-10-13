@@ -1,7 +1,3 @@
-// Clerk's script is a few hundred kilobytes from its own host, so a wait
-// this long means it is not coming.
-export const signInWaitMs = 10_000;
-
 export type Marks = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 // Reaching the storage at all can throw, as where a browser blocks site
