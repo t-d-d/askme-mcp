@@ -33,6 +33,31 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
+      # The serverless package only installs a launcher, which fetches the
+      # framework and runs it. Serverless publishes no checksum for either, so
+      # both must match sums of downloads made when the version was pinned. A
+      # new launcher build fails here until someone checks it and commits its
+      # sum. The framework is unpacked, and the list of releases written,
+      # where the launcher looks, so it fetches nothing. Then the host is
+      # blocked, so nothing unchecked can come from it.
+      - name: Check the Serverless launcher and framework
+        run: |
+          version=4.43.0
+          archive="$RUNNER_TEMP/serverless-$version.tgz"
+          curl --fail --silent --show-error --output "$archive" \
+            "https://install.serverless.com/archives/serverless-$version.tgz"
+          sha256sum --check --strict <<EOF
+          b2de18a44fef8c320b7c0059aa68c8a8fb30b1a975a17ac4b528539f9366858f  node_modules/serverless/node_modules/.bin/serverless-linux-amd64-0.0.2
+          87eef92a242b92c44b6ac02fcc3176553c774f1340c536176a0a9d373771eb5b  $archive
+          EOF
+          release="$HOME/.serverless/releases/$version"
+          mkdir -p "$release" ~/.serverless/binaries
+          tar -xzf "$archive" -C "$release"
+          echo "{\"supportedVersions\":[\"$version\"],\"blockedVersions\":[]}" \
+            > ~/.serverless/binaries/versions.json
+          echo "{\"version\":\"$version\",\"updateLastChecked\":\"$(date -u +%FT%TZ)\"}" \
+            > ~/.serverless/binaries/metadata.json
+          echo "0.0.0.0 install.serverless.com" | sudo tee -a /etc/hosts > /dev/null
       # Build before the job holds any AWS credentials. Clerk's publishable
       # key is public (ADR 6).
       - name: Build the page
