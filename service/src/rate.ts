@@ -3,43 +3,37 @@
 // page's changes to an ask and the resolve tool have none, as the owner
 // decided in issues #96 and #121.
 
-// The page's poll (ADR 1). The page polls every five seconds while it is
-// visible, so a page open on two devices sends about 24 polls a minute.
-export const pollLimit: Readonly<{ polls: number; windowMinutes: number }> = {
-  polls: 60,
-  windowMinutes: 1,
-};
-
-// The ask tool. It slows an agent that floods before it uses up the day's
-// cap. Every call that reaches the store is counted, a repeat included. The
-// page's sample asks count here too, one for each area a press posts from.
-export const askLimit: Readonly<{ asks: number; windowMinutes: number }> = {
-  asks: 30,
-  windowMinutes: 1,
-};
-
-// Saving the rules. Each save reads the rules with a model call, and sorts
-// every open ask again with one each, so a page pressed over and over is
-// slowed before it spends much.
-export const rulesSaveLimit: Readonly<{
-  saves: number;
+// A limit: at most this many calls in each window of this many minutes.
+export interface RateLimit {
+  limit: number;
   windowMinutes: number;
-}> = {
-  saves: 10,
-  windowMinutes: 1,
-};
+}
 
-// Model calls (ADR 21): every call the service makes for an account, the
-// reading of the rules and each try of a sort, counted just before it is
-// sent. The window is one UTC day. A day of normal use is a few hundred
-// calls, so only a scripted account reaches the cap. Tuning it needs no new
-// decision.
-export const modelCallLimit: Readonly<{
-  calls: number;
-  windowMinutes: number;
-}> = {
-  calls: 2000,
-  windowMinutes: 24 * 60,
+// The name of a limit, which also names the store's counter for it.
+export type LimitName = "poll" | "ask" | "rulesSave" | "modelCall";
+
+export const rateLimits: Readonly<Record<LimitName, Readonly<RateLimit>>> = {
+  // The page's poll (ADR 1). The page polls every five seconds while it is
+  // visible, so a page open on two devices sends about 24 polls a minute.
+  poll: { limit: 60, windowMinutes: 1 },
+
+  // The ask tool. It slows an agent that floods before it uses up the day's
+  // cap. Every call that reaches the store is counted, a repeat included.
+  // The page's sample asks count here too, one for each area a press posts
+  // from.
+  ask: { limit: 30, windowMinutes: 1 },
+
+  // Saving the rules. Each save reads the rules with a model call, and sorts
+  // every open ask again with one each, so a page pressed over and over is
+  // slowed before it spends much.
+  rulesSave: { limit: 10, windowMinutes: 1 },
+
+  // Model calls (ADR 21): every call the service makes for an account, the
+  // reading of the rules and each try of a sort, counted just before it is
+  // sent. The window is one UTC day. A day of normal use is a few hundred
+  // calls, so only a scripted account reaches the cap. Tuning it needs no
+  // new decision.
+  modelCall: { limit: 2000, windowMinutes: 24 * 60 },
 };
 
 export interface RateWindow {

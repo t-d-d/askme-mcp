@@ -187,13 +187,13 @@ export interface SamplesSent {
 // minutes. An area whose samples were all posted in that time posts none.
 export async function sendSamples(
   account: AccountId,
-  store: Pick<Store, "countAsk" | "postAsk">,
+  store: Pick<Store, "countCall" | "postAsk">,
   now: Date,
   order: <T>(items: readonly T[]) => T[] = shuffled,
 ): Promise<SamplesSent> {
   const posted: string[] = [];
   for (const { area, asks } of sampleAreas) {
-    const counted = await store.countAsk(account, now);
+    const counted = await store.countCall(account, "ask", now);
     if (!counted.counted) {
       return {
         posted,

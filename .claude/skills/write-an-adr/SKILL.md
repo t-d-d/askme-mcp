@@ -73,7 +73,8 @@ the pull request, and stop.
    `docs/constraints/README.md`.
 
 6. **Land the checks.** Each fitness function is a test whose describe
-   name cites the constraint file: `fitness: <what it asserts> (<file>.md)`.
+   name is the check's name from the record's table, then the constraint
+   file: `fitness: <check> (<file>.md)`.
    They land with the code that first makes them meaningful. That can be
    this pull request or the issue that builds the feature. Say which.
 
