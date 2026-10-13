@@ -14,7 +14,6 @@
 // (aheadSince in load.ts), so the device putting its own clock right in the
 // meantime moves none of those times.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
 import {
   pagePaths,
   pollAnswer,
@@ -55,10 +54,13 @@ class PollFailed extends Error {
   }
 }
 
-// Counts each time the page is hidden or shown, and each time a screen that
-// polls starts to watch for that. It stands still only while the page has
-// been visible, and watched, throughout.
+// Counts each time the page is hidden or shown, from when the page loads,
+// whichever screen is showing. It stands still only while the page has been
+// visible throughout.
 let visibilityChanges = 0;
+document.addEventListener("visibilitychange", () => {
+  visibilityChanges += 1;
+});
 
 // The list, and when the page last polled for it, whether or not the poll
 // reached askme. Which asks are held is counted from then, so a held ask
@@ -74,16 +76,6 @@ export interface PolledAnswer extends Answer<AsksAnswer> {
 export function useAsks(): PolledAnswer {
   const { getToken } = useAuth();
   const queries = useQueryClient();
-  useEffect(() => {
-    const changed = () => {
-      visibilityChanges += 1;
-    };
-    changed();
-    document.addEventListener("visibilitychange", changed);
-    return () => {
-      document.removeEventListener("visibilitychange", changed);
-    };
-  }, []);
   const query = useQuery({
     queryKey,
     queryFn: async ({ signal }): Promise<Polled> => {

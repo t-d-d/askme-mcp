@@ -504,6 +504,44 @@ describe("the lapsed line", () => {
     expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
   });
 
+  // Leaving the list for the rules and coming back, with the page visible
+  // throughout, is no reason to stop counting by performance.now().
+  it("takes an ask out of the list when the service's time for it comes, though a slow clock is put right while polls fail and the person goes to the rules and back", async () => {
+    const moment = evening.getTime() + 20 * minute;
+    const serviceAhead = 3 * minute;
+    const pageAt = moment - serviceAhead - 2 * minute;
+    const polls = failingPolls(
+      () =>
+        listOf(
+          ask("a", schoolRun, family("low")),
+          ask("b", passkey, shop("high"), 20 * minute),
+        ),
+      () => pageAt + serviceAhead,
+    );
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: { stoppedAt: new Date(pageAt) },
+      api: { [pagePaths.asks]: polls.answering },
+    });
+    const { page } = view;
+    const reads = (order: string[]) => async () =>
+      (await summaries(page)).join("\n") === order.join("\n");
+    await stepUntil(page, reads([passkey, schoolRun]), "the list to show");
+    polls.fail();
+    await moveDeviceClock(page, serviceAhead);
+    await page.getByRole("link", { name: "Rules" }).click();
+    await stepUntilShown(
+      page,
+      page.getByRole("heading", { name: "Your rules", exact: true }),
+    );
+    await page.goBack();
+    await page.clock.pauseAt(new Date(moment - 2 * minute + pollMs + 1000));
+    await stepUntilShown(page, page.getByText("Not connected. Trying again."));
+    expect(await summaries(page)).toEqual([passkey, schoolRun]);
+    await page.clock.pauseAt(new Date(moment + pollMs));
+    await stepUntil(page, reads([schoolRun]), "the ask to lapse");
+  });
+
   it("sits at the foot of All clear when every ask has lapsed, and Show them brings the tabs back", async () => {
     const { page } = await open(
       listOf(ask("a", passkey, shop("high"), -minute)),
