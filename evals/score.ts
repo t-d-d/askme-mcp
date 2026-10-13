@@ -202,8 +202,9 @@ export const unanswered = (runs: readonly ModelRun[]): string[] =>
     .map(({ model }) => model);
 
 // The models with asks the provider refused for rate, and how many of their
-// asks it refused. A 429 counts as a miss, so a run with any is not saved:
-// it would rank a model by the provider's limit, not its replies (#294).
+// asks it refused. A 429 counts as a miss, so a run across the candidates
+// with any is not saved: it would rank a model by the provider's limit, not
+// its replies (#294). Any other run names them after its scores (#302).
 const rateLimited = (
   runs: readonly ModelRun[],
 ): { model: string; refused: number; of: number }[] =>
