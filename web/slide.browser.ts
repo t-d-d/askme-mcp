@@ -212,8 +212,10 @@ const click = (page: Page, name: string) => () =>
   page.getByRole("link", { name }).click();
 
 // Taps Dismiss and changes the address in the same frame, as a keyboard's
-// Back might. Both start just after a frame is drawn, so the change of
-// address reaches the page before the next.
+// Back might. A change of fragment sends popstate at once but queues
+// hashchange as a task, and on a busy machine the next frame's task can
+// already be queued ahead of it. So the address is changed with pushState,
+// which sends nothing, and the page is handed both events at once.
 async function dismissAndGo(page: Page) {
   const first = await page
     .getByRole("button", { name: "Dismiss" })
@@ -231,8 +233,16 @@ async function dismissAndGo(page: Page) {
         });
         requestAnimationFrame(came("the next frame"));
       });
+      const oldURL = window.location.href;
       button.click();
-      window.location.hash = "#asks";
+      window.history.pushState(null, "", "#asks");
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+      window.dispatchEvent(
+        new HashChangeEvent("hashchange", {
+          oldURL,
+          newURL: window.location.href,
+        }),
+      );
       return first;
     });
   expect(first, "what comes first after Dismiss").toBe("the address");
