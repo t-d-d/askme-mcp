@@ -385,20 +385,26 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
     );
   });
 
+  const lockPackages = () =>
+    z
+      .object({
+        packages: z.record(
+          z.string(),
+          z.looseObject({
+            version: z.string().optional(),
+            hasInstallScript: z.boolean().optional(),
+            os: z.array(z.string()).optional(),
+          }),
+        ),
+      })
+      .parse(JSON.parse(readRepoFile("package-lock.json"))).packages;
+
   it("holds the Serverless installer at one exact version in the lockfile", () => {
     const { devDependencies } = z
       .object({ devDependencies: z.record(z.string(), z.string()) })
       .parse(JSON.parse(readRepoFile("package.json")));
-    const lock = z
-      .object({
-        packages: z.record(
-          z.string(),
-          z.looseObject({ version: z.string().optional() }),
-        ),
-      })
-      .parse(JSON.parse(readRepoFile("package-lock.json")));
     expect(devDependencies.serverless).toMatch(/^\d+\.\d+\.\d+$/u);
-    expect(lock.packages["node_modules/serverless"]?.version).toBe(
+    expect(lockPackages()["node_modules/serverless"]?.version).toBe(
       devDependencies.serverless,
     );
   });
@@ -472,8 +478,11 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
   // unchecked (#349).
   const runsFramework = (job: Job): boolean =>
     runsIn(job).includes("node_modules/.bin/serverless deploy");
+  // On any line of a step, as each of these runs install scripts.
+  const installCommand =
+    /^\s*npm\s+(?:ci|clean-install|i|install|add|rebuild|rb)\b/mu;
   const installs = (job: Job): string[] =>
-    runsIn(job).filter((run) => /^npm (?:ci|install)\b/u.test(run));
+    runsIn(job).filter((run) => installCommand.test(run));
 
   it("skips install scripts in every job that never runs the framework", () => {
     const jobs = allJobs().filter(([, job]) => !runsFramework(job));
@@ -504,20 +513,14 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
   // Skipping install scripts is safe only while the installer is the one
   // package on a Linux runner that has one.
   it("has no install script but the installer's on a Linux runner", () => {
-    const lock = z
-      .object({
-        packages: z.record(
-          z.string(),
-          z.looseObject({
-            hasInstallScript: z.boolean().optional(),
-            os: z.array(z.string()).optional(),
-          }),
-        ),
-      })
-      .parse(JSON.parse(readRepoFile("package-lock.json")));
-    const scripted = Object.entries(lock.packages)
+    // npm reads "!name" in os as every system but that one.
+    const onLinux = (os: string[] | undefined): boolean =>
+      os === undefined ||
+      os.includes("linux") ||
+      (os.every((name) => name.startsWith("!")) && !os.includes("!linux"));
+    const scripted = Object.entries(lockPackages())
       .filter(([, entry]) => entry.hasInstallScript === true)
-      .filter(([, entry]) => entry.os?.includes("linux") ?? true)
+      .filter(([, entry]) => onLinux(entry.os))
       .map(([path]) => path);
     expect(scripted).toEqual(["node_modules/serverless"]);
   });

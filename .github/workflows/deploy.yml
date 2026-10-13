@@ -114,8 +114,9 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      # Only the deploy runs the Serverless launcher, and checks it. Its download
-      # is the one install script on a Linux runner, so the other jobs skip it.
+      # Only the deploy and rollback jobs run the Serverless launcher, and check
+      # it. Its download is the one install script on a Linux runner, so the
+      # other jobs skip it.
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run test:live
@@ -281,8 +282,9 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      # Only the deploy runs the Serverless launcher, and checks it. Its download
-      # is the one install script on a Linux runner, so the other jobs skip it.
+      # Only the deploy and rollback jobs run the Serverless launcher, and check
+      # it. Its download is the one install script on a Linux runner, so the
+      # other jobs skip it.
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run test:live
