@@ -74,7 +74,7 @@ The agents work to rules kept in the repo, so each session starts from the same 
 
 - [CLAUDE.md](CLAUDE.md) says how to work: one branch per issue, tests first, the gate before every push, and the owner merges.
 - [.claude/skills/](.claude/skills/) holds the steps for picking up an issue, checking the constraints, reviewing a branch before it is pushed, and writing a pull request.
-- Each decision record lists its checks, and each check is a fitness function named after it. Most run in the gate. A few run after each deploy, every day, or with the eval. A static test fails when a record names a check that has no test.
+- Each decision record lists its checks, and each check is a fitness function named after it. Most run in the gate. A few run after each deploy, every day, or with the eval. `npm run checks` lists any check a record names that has no test. It runs by hand, because a record may name checks that land with a later issue.
 - `npm run gate` runs format, lint, types, and the static, unit, integration and browser tests. It runs offline and holds no secrets. A pull request merges only when it passes.
 
 Anything only the owner can do, such as making accounts, setting secrets or connecting a real agent, is an issue labelled `mode: human`. Its closing comment records the result.
