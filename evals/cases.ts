@@ -208,6 +208,7 @@ export const cases: EvalCase[] = [
     expected: { hashtags: [["work"]], level: "low" },
   },
   {
+    // Never answering leaves the plan unfinished, which is normal (#191).
     name: "a ticket for next sprint",
     group: "core",
     area: "work",
@@ -218,7 +219,7 @@ export const cases: EvalCase[] = [
         "The single sign on ticket is estimated at five days. This sprint is already full. Move something out for it, or plan it for the next sprint?",
       actionLink: "https://fernhill.atlassian.net/browse/BILL-431",
     },
-    expected: { hashtags: [["work"]], level: "low" },
+    expected: { hashtags: [["work"]], level: "normal" },
   },
   {
     name: "a feature flag's name",
@@ -419,6 +420,8 @@ export const cases: EvalCase[] = [
     expected: { hashtags: [["family"]], level: "high" },
   },
   {
+    // A dripping kitchen tap does no damage and wastes little water, so
+    // never fixing it costs little, and the level is normal (#191).
     name: "a plumber who can come today",
     group: "core",
     area: "family",
@@ -429,7 +432,7 @@ export const cases: EvalCase[] = [
         "A plumber can come at four this afternoon to fix the leaking kitchen tap. The call out is eighty five pounds. The next slot is next Wednesday.",
       sessionLink: session(302),
     },
-    expected: { hashtags: [["family"]], level: "high" },
+    expected: { hashtags: [["family"]], level: "normal" },
   },
   {
     // A sign-in code runs out within minutes, though the ask does not say.
@@ -490,6 +493,8 @@ export const cases: EvalCase[] = [
     expected: { hashtags: [["family"]], level: "normal" },
   },
   {
+    // An unpaid council tax bill ends in court and debt collectors, so the
+    // level is high. The direct debit and the date do not change that (#191).
     name: "a council tax direct debit",
     group: "core",
     area: "family",
@@ -501,7 +506,7 @@ export const cases: EvalCase[] = [
         "The council has sent the new council tax bill for the house. I can set up the direct debit so the first payment goes on the first of next month.",
       sessionLink: session(306),
     },
-    expected: { hashtags: [["admin"], ["family", "admin"]], level: "normal" },
+    expected: { hashtags: [["admin"], ["family", "admin"]], level: "high" },
   },
   {
     name: "a dinner choice",
