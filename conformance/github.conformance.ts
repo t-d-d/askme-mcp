@@ -1,5 +1,3 @@
-// Conformance checks for GitHub (ADR 15). They read the repo's settings,
-// which no pull request can see, signed out and read only.
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -9,9 +7,8 @@ const repository = z
   .default("t-d-d/askme-mcp")
   .parse(process.env.GITHUB_REPOSITORY);
 
-// Reads a path under the repo from GitHub's API. The body is kept as text,
-// so a failed check shows GitHub's own words and a refusal such as a rate
-// limit is not read as drift.
+// The body stays text, so a failed check shows GitHub's own words and a
+// refusal such as a rate limit is not read as drift.
 async function github(path: string): Promise<{ status: number; body: string }> {
   const response = await fetch(
     `https://api.github.com/repos/${repository}${path}`,
@@ -58,7 +55,7 @@ const branchPoliciesSchema = z.object({
 
 describe("fitness: main is protected (repo-and-delivery.md)", () => {
   // A branch behind main may merge once its gate is green, so this does
-  // not check that it is up to date (#79).
+  // not check that it is up to date.
   it("refuses direct pushes to main and requires the gate", async () => {
     const { status, body } = await github("/rules/branches/main");
     expect(status, body).toBe(200);
@@ -73,14 +70,10 @@ describe("fitness: main is protected (repo-and-delivery.md)", () => {
   });
 });
 
-// A conformance job that signs in runs in this environment, so its keys,
-// and the AWS role that trusts its token, are only as safe as the rule that
-// only main may use it (ADR 15).
 describe("fitness: only main may use the conformance environment (test-tiers.md)", () => {
   it("keeps the environment to main, once the owner has made it", async () => {
     const { status, body } = await github("/environments/conformance");
-    // Until the first check needs a credential, there is no environment and
-    // nothing to keep to main.
+    // There is no environment until a check needs a credential.
     if (status === 404) return;
     expect(status, body).toBe(200);
     const policy = parse(body, environmentSchema).deployment_branch_policy;

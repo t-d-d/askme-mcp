@@ -1,7 +1,5 @@
-// The error contract through the official MCP client, against a working
-// store (ADR 11), and the one failure that is not a refusal (ADR 19).
-// error-contract.int.ts runs against a store that cannot be reached, so
-// these are kept apart from it.
+// Kept apart from error-contract.int.ts, which runs against a store that
+// cannot be reached.
 import { randomUUID } from "node:crypto";
 import { ProtocolErrorCode } from "@modelcontextprotocol/client";
 import {
@@ -63,14 +61,12 @@ const ask = {
   spoken_detail: "The electrician needs a yes or no before Friday.",
 };
 
-// An ask of its own for each number, as the store takes it.
 const numbered = (n: number) => ({
   summary: `Ask ${String(n)}`,
   area: "Home renovation",
   spokenDetail: "The electrician needs a yes or no.",
 });
 
-// One call through the official client, as an agent of the account.
 async function call(
   sub: string,
   name: string,
@@ -125,7 +121,6 @@ const cases: { code: Code; provoke: () => Promise<unknown> }[] = [
   {
     code: "rate_limited",
     provoke: async () => {
-      // The minute's calls, all counted already.
       const sub = newAccount();
       for (let n = 1; n <= rateLimits.ask.limit; n += 1) {
         await store.countCall(accountId(sub), "ask", noon);
@@ -183,7 +178,6 @@ describe.each(eras)(
         era,
       });
       try {
-        // The call is rejected, so no tool result comes back at all.
         const answer = agent.callTool({ name: "asks", arguments: ask });
         await expect(answer).rejects.toMatchObject({
           code: ProtocolErrorCode.InvalidParams,

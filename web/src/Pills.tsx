@@ -2,8 +2,7 @@ import type { PageAsk } from "../../shared/page-api";
 import { neutral, tagColour, type HashtagColour } from "./palette";
 import styles from "./Pills.module.css";
 
-// An ask's hashtags, each in its own colour, in the rules' order, or "Not
-// sorted yet" in the colour of the card it is on.
+// "Not sorted yet" sets no colour, so it takes the colour of its card.
 export function Pills({
   sort,
   colours,

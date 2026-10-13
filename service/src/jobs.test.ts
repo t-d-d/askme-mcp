@@ -61,8 +61,7 @@ describe("a sort job's message", () => {
 
 describe("queueing sorts", () => {
   it("gives an ask it cannot make a job of as not taken, and does not throw", async () => {
-    // The ask's id fails the job's schema before any call is made, so no
-    // queue is reached.
+    // The id fails the job's schema before any call, so no queue is reached.
     const sorts = createSortRequests({
       queueUrl: "http://127.0.0.1:9/000000000000/askme-sort.fifo",
     });

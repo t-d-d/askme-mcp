@@ -10,16 +10,13 @@ import { Refusal } from "./load";
 
 const ids = (...dismissed: string[]): ReadonlySet<string> => new Set(dismissed);
 
-// The list showing, with nothing dismissed.
 const idle = initial(true);
 const at = (more: Partial<DismissState>): DismissState => ({
   ...idle,
   ...more,
 });
 
-// The states the page can be in. A waits with its note and Undo. The note
-// that an earlier dismissal failed shows, alone or over B, which waits with
-// its time stopped. The list is away, with that note or without it.
+// holding: the failed note shows over b, which waits with its timer stopped.
 const states: Record<string, DismissState> = {
   idle,
   waiting: at({ dismissed: ids("a"), note: "dismissed", waiting: "a" }),

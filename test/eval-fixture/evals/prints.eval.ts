@@ -1,6 +1,5 @@
-// A stand-in for the eval set, for evals/config.static.ts. Like the eval,
-// it prints from a passing test. It sits outside evals/, so `npm run eval`
-// does not run it.
+// A stand-in eval for evals/config.static.ts. It sits outside evals/, so
+// `npm run eval` does not run it.
 import { it } from "vitest";
 
 it("prints a line and passes", () => {

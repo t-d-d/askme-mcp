@@ -1,5 +1,3 @@
-// The reading eval's own shape, checked in the gate. Running it against the
-// model is not in the gate (repo-and-delivery.md).
 import { describe, expect, it } from "vitest";
 import { parseReading } from "../service/src/rules";
 import { readingCases } from "./reading";

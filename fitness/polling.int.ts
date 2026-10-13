@@ -1,6 +1,3 @@
-// The page's poll, end to end in process, on the local DynamoDB. Every call
-// the service makes to the database goes through a recorder on loopback, so
-// a test can count the reads and writes behind one poll.
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
@@ -36,8 +33,6 @@ afterAll(async () => {
 
 const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
 
-// An account id as the token check gives it, to build the keys a test
-// expects with the key module.
 const accountId = (sub: string): AccountId =>
   callerOf({
     token: "test",
@@ -98,7 +93,6 @@ const refusalSchema = z.strictObject({
   message: z.string(),
 });
 
-// The calls one poll made to the database.
 async function callsFor(sub: string, since: number) {
   recorder.calls.length = 0;
   const response = await poll(sub, since);
@@ -189,8 +183,7 @@ describe("fitness: a counter leaves the version alone (table-design.md)", () => 
 });
 
 describe("fitness: the poll endpoint has its own rate limit (polling.md)", () => {
-  // Ten seconds into a minute, so the window has fifty seconds left. Each
-  // test stops the clock there.
+  // Ten seconds into a minute, so the window has fifty seconds left.
   const start = new Date("2026-10-11T09:30:10.000Z");
   afterAll(() => {
     vi.useRealTimers();

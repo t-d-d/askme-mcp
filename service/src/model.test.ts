@@ -16,7 +16,6 @@ interface Sent {
   body: unknown;
 }
 
-// A fetch that answers from memory and keeps what it was sent.
 function fakeFetch(answer: () => Response) {
   const sent: Sent[] = [];
   const fetch = async (
@@ -34,7 +33,6 @@ function fakeFetch(answer: () => Response) {
   return { fetch, sent };
 }
 
-// OpenRouter's answer, as a chat completion with the reply as its content.
 const completion = (content: string | null) =>
   Response.json({
     id: "gen-test",
@@ -77,10 +75,6 @@ const model = (
   });
 
 describe("a call to the model", () => {
-  // No temperature: with require_parameters, OpenRouter refuses the call when
-  // no endpoint takes it, and none for anthropic/claude-haiku-5.5 does.
-  // Reasoning off: the provider counts thinking against max_tokens, so a
-  // model that thinks first can be cut off before its reply (issue #57).
   it("sends one chat completion with the schema, no tools, no temperature, reasoning off, and providers that keep no prompts", async () => {
     const fake = fakeFetch(() => completion('{"level":"high"}'));
     await model(fake.fetch).reply(request);
@@ -109,7 +103,6 @@ describe("a call to the model", () => {
     });
   });
 
-  // The second try of a sort whose only fault was a long reason (#243).
   it("sends a follow-up after the same system and user messages, with the model's earlier reply as its own message, and changes nothing else", async () => {
     const plain = fakeFetch(() => completion('{"level":"high"}'));
     await model(plain.fetch).reply(request);
@@ -201,7 +194,6 @@ describe("a call to the model", () => {
 });
 
 describe("the model's key, read for a call", () => {
-  // A key that takes this long to read, as from a slow Parameter Store.
   const keyAfter = (ms: number) => () =>
     new Promise<string>((resolve) => {
       setTimeout(() => {
@@ -209,7 +201,6 @@ describe("the model's key, read for a call", () => {
       }, ms);
     });
 
-  // A model that answers after this long, unless the call is cut short.
   const answersAfter =
     (ms: number) => async (_: string | URL | Request, init?: RequestInit) =>
       new Promise<Response>((resolve, reject) => {
@@ -275,14 +266,12 @@ const accountId = (sub: string): AccountId =>
 
 const owner = accountId("user_owner");
 
-// A counter in memory with so many calls left today. It notes each count
-// and each reset it records in one list with the calls the fetch sends, so
-// a test can see their order.
+// Shares one list with the fetch, so a test can see the order of counts,
+// resets and sends.
 function memoryCounter(left: number, events: string[]) {
   let calls = left;
   const counter: CallCounter = {
     countCall: (account, limit) => {
-      // A model call counts against the model-call cap, and no other limit.
       if (limit !== "modelCall") {
         return Promise.reject(new Error(`Counted against ${limit}.`));
       }
@@ -302,7 +291,6 @@ function memoryCounter(left: number, events: string[]) {
   return counter;
 }
 
-// The model as the service builds it, at 11pm UTC on 12 October 2026.
 function counted(left: number) {
   const events: string[] = [];
   const fake = fakeFetch(() => {

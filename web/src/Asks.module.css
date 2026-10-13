@@ -5,15 +5,13 @@
   padding-bottom: var(--space-foot);
 }
 
-/* Room at the foot for the note after a dismissal, so it covers nothing. */
+/* Room for the dismissal note, so it covers nothing. */
 .screen[data-noted] {
   padding-bottom: calc(var(--space-foot) + var(--space-note));
 }
 
-/*
- * A link scrolled into view as a card closes shows its focus outline, and
- * while the note shows, sits clear of it (useListPlace.ts).
- */
+/* A link scrolled into view as a card closes (useListPlace.ts) shows its
+   focus outline, clear of the note. */
 .screen a {
   scroll-margin: calc(2 * var(--focus-width));
 }
@@ -22,17 +20,14 @@
   scroll-margin-bottom: calc(2 * var(--focus-width) + var(--space-note));
 }
 
-/* The tabs, and the held and lapsed lines and the sorting line under them. */
 .bar,
 .lines {
   display: flex;
   flex-direction: column;
 }
 
-/* On All clear the same lines sit at the foot of the screen, because All
-   clear fills the space above them. Their margin is the screen's space at
-   the foot, so All clear sits the same with them or without them, whichever
-   line comes first. */
+/* The screen's foot space, so All clear sits the same with or without the
+   lines under it. */
 .foot {
   margin-top: var(--space-foot);
 }
@@ -44,7 +39,6 @@
   line-height: var(--leading-note);
 }
 
-/* At desktop width the content is at most 1080px wide, and centred. */
 @media (min-width: 768px) {
   .screen {
     width: 90%;
@@ -57,8 +51,6 @@
     margin-left: 0;
   }
 
-  /* At desktop width the held and lapsed lines sit beside the tabs, at the
-     right, side by side. */
   .bar,
   .lines {
     flex-direction: row;

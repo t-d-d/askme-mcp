@@ -1,5 +1,3 @@
-// Calls a function once a moment has passed, with no reload (after.ts).
-// Without a moment, it waits for nothing.
 import { useEffect, useEffectEvent } from "react";
 import { after } from "./after";
 

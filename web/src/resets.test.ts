@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { clockTime, resetsAt, resetsHere, resetTime } from "./resets";
 
-// 12 October 2026. London is on summer time, an hour ahead of UTC, until
-// 1am UTC on 25 October. New York is four hours behind UTC.
+// London is an hour ahead of UTC until 1am UTC on 25 October 2026, and New
+// York four hours behind.
 const at = (iso: string) => Date.parse(iso);
 
 describe("when a daily cap resets", () => {
@@ -12,7 +12,6 @@ describe("when a daily cap resets", () => {
     expect(resetTime(afternoon, "Europe/London")).toBe("01:00");
     expect(resetTime(afternoon, "Asia/Tokyo")).toBe("09:00");
     expect(resetTime(afternoon, "Asia/Kolkata")).toBe("05:30");
-    // West of UTC the cap resets the same evening.
     expect(resetTime(afternoon, "America/New_York")).toBe("20:00");
   });
 
@@ -34,8 +33,7 @@ describe("when a daily cap resets", () => {
   });
 
   it("gives the midnight after, at midnight UTC itself", () => {
-    // The cap reset just now, so the next reset is a day on, after the
-    // clocks have gone back.
+    // The next reset is a day on, after the clocks have gone back.
     expect(resetTime(at("2026-10-25T00:00:00Z"), "Europe/London")).toBe(
       "00:00",
     );
@@ -65,8 +63,7 @@ describe("the moment a daily cap resets", () => {
   });
 });
 
-// The service counts every daily cap by its own clock. Here the true time
-// is 23:58 UTC on 12 October, two minutes before the cap resets.
+// The service's clock reads 23:58 UTC on 12 October in each of these.
 describe("the moment a daily cap resets, on this browser's clock", () => {
   const minutes = (count: number) => count * 60 * 1000;
 
@@ -76,17 +73,14 @@ describe("the moment a daily cap resets, on this browser's clock", () => {
     );
   });
 
-  // This browser's clock reads 00:01 on 13 October. Its own next midnight
-  // is a day away, but the service's is two minutes away, which this
-  // clock reads as 00:03.
+  // This clock reads 00:01 on 13 October, so its own next midnight is a day
+  // away.
   it("is the service's next midnight on a clock a few minutes fast", () => {
     expect(resetsHere(at("2026-10-13T00:01:00Z"), -minutes(3))).toBe(
       at("2026-10-13T00:03:00Z"),
     );
   });
 
-  // This browser's clock reads 23:55, and the service's midnight is two
-  // minutes away, which this clock reads as 23:57.
   it("is the service's next midnight on a clock a few minutes slow", () => {
     expect(resetsHere(at("2026-10-12T23:55:00Z"), minutes(3))).toBe(
       at("2026-10-12T23:57:00Z"),

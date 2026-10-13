@@ -9,8 +9,6 @@ import { sortMaxTokens, sortTimeoutMs } from "../service/src/sorter";
 import { cases } from "./cases";
 import { evalPrompt, inPool, sortEvalAsk } from "./sorting";
 
-// A model that answers each request with the next reply in the list, a
-// thrown error included, and keeps every request it was sent.
 function fakeModel(replies: unknown[]) {
   const requests: ModelRequest[] = [];
   const model: Model = {
@@ -64,7 +62,7 @@ describe("one sort of an eval ask", () => {
     expect(requests[0]?.user).toBe(evalPrompt(one).user);
   });
 
-  it("sends a reply whose only fault is a long reason back, and keeps the next reply (#243)", async () => {
+  it("sends a reply whose only fault is a long reason back, and keeps the next reply", async () => {
     const long = { ...fits, reason: "x".repeat(reasonLimit + 1) };
     const { model, requests } = fakeModel([long, fits]);
     const outcome = await sortEvalAsk(model, one);

@@ -1,7 +1,5 @@
-// Setup for every tier in the gate. The gate is offline (ADR 9), so anything
-// that would reach past loopback is refused before it leaves the machine: a
-// TCP or TLS connection, a DNS lookup, and a UDP datagram. So is a connection
-// to a proxy on loopback, which could pass a request on past it.
+// Setup for every tier in the gate: refuses anything that would reach past
+// loopback (ADR 9).
 import dgram from "node:dgram";
 import dns from "node:dns";
 import { syncBuiltinESMExports } from "node:module";
@@ -64,11 +62,9 @@ function targetOf(args: unknown[]): Target | undefined {
   };
 }
 
-// The port of each proxy on loopback that the environment names. With
-// NODE_USE_ENV_PROXY set, Node's fetch sends a request for any host past
-// loopback to that proxy, which may pass it on. Node reads these variables
-// once, as it starts, and so does the guard. A proxy past loopback needs no
-// list: a connection to it is refused already.
+// With NODE_USE_ENV_PROXY set, Node's fetch sends a request for any host to
+// the proxy these name, which may pass it on. Node reads them once, as it
+// starts, and so does the guard. A proxy past loopback is refused already.
 const proxyPorts = [
   "HTTPS_PROXY",
   "https_proxy",
@@ -81,16 +77,13 @@ const proxyPorts = [
   return [proxy.protocol === "https:" ? 443 : 80];
 });
 
-// lookup hands an address back as it is. It looks a name up in the hosts
-// file, and asks a DNS server when the file has no line for that name and
-// family. A hosts file may name localhost for IPv4 only, so the guard
-// answers localhost itself: it passes on ::1 in its place for an IPv6
-// lookup, and 127.0.0.1 for any other. Any other name, even one under
-// .localhost, would go to a DNS server, so it is refused. lookupService
-// asks a DNS server about any address the hosts file does not name, such as
-// 127.0.0.2, and the resolve family and reverse always ask one, so every
-// call to them is refused. Each module binds its own copies of the Resolver
-// methods, so the modules and the prototypes are both guarded.
+// lookup asks a DNS server for a name and family the hosts file lacks, and a
+// hosts file may name localhost for IPv4 only, so localhost becomes an
+// address here. Any other name, even under .localhost, is refused.
+// lookupService asks a DNS server about an address the hosts file lacks,
+// such as 127.0.0.2, and resolve* and reverse always ask one. Each module
+// binds its own copies of the Resolver methods, so modules and prototypes
+// are both guarded.
 for (const functions of [dns, dns.promises]) {
   guardLookup(functions, "lookup", (name, options) => {
     if (net.isIP(name) !== 0) return name;

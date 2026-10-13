@@ -26,8 +26,6 @@ const readDefinition = () =>
 let parsedDefinition: Definition | undefined;
 const definition = (): Definition => (parsedDefinition ??= readDefinition());
 
-// Every resource askme declares, in the deployment definition and in the
-// deploy role's stack, by logical id.
 type Declared = [string, z.infer<typeof resourceSchema>][];
 let parsedDeclared: Declared | undefined;
 const declared = (): Declared =>
@@ -51,8 +49,6 @@ const functionId = (name: string) => `${normalized(name)}LambdaFunction`;
 const logGroupId = (name: string) => `${normalized(name)}LogGroup`;
 const functionNames = () => Object.keys(definition().functions);
 
-// askme's own resources: those it declares, those the framework makes for
-// its functions, and the HTTP API the framework makes for their routes.
 const askmeResources = (): Set<string> => {
   const { functions } = definition();
   const api = Object.values(functions).some((fn) =>
@@ -110,7 +106,6 @@ const alarms = (): Alarm[] =>
 const alarmNamed = (name: string): Alarm | undefined =>
   alarms().find((alarm) => alarm.AlarmName === name);
 
-// The metrics an alarm reads, whether it reads one or does math over several.
 const metricsOf = (alarm: Alarm): Metric[] => {
   if (alarm.Metrics !== undefined) {
     return alarm.Metrics.flatMap((entry) =>
@@ -126,8 +121,7 @@ const metricsOf = (alarm: Alarm): Metric[] => {
   ];
 };
 
-// Whether an expression finds metrics for itself, with SEARCH or a Metrics
-// Insights query, rather than doing math over the alarm's own entries.
+// SELECT starts a Metrics Insights query.
 const searches = (expression: string): boolean =>
   /\b(?:SEARCH|SELECT)\b/iu.test(expression);
 
@@ -185,9 +179,8 @@ const queries = () =>
     querySchema.parse(resource.Properties),
   );
 
-// The events a query names. An event is written as a quoted string, and
-// event names are lower case and hyphenated, which nothing else a query
-// quotes is.
+// Of the strings a query quotes, only event names are lower case and
+// hyphenated.
 const eventShape = /^[a-z]+(?:-[a-z]+)+$/u;
 const eventsIn = (query: string): string[] =>
   [...query.matchAll(/"([^"]*)"|'([^']*)'/gu)]

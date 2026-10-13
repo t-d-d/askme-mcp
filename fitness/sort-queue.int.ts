@@ -42,7 +42,6 @@ afterAll(async () => {
   await issuer.close();
 });
 
-// Each test starts with an empty queue, whatever an earlier one left.
 beforeEach(() => {
   fakes.queue.purge();
 });
@@ -59,7 +58,6 @@ const accountId = (sub: string): AccountId =>
 
 const minute = 60_000;
 
-// Delivers the jobs waiting on the queue, as Lambda's trigger would.
 const deliver = () =>
   fakes.queue.deliver((event) => sorter(event, { awsRequestId: "sort-1" }));
 
@@ -81,8 +79,8 @@ async function post(sub: string, args: Record<string, string> = ask) {
   }
 }
 
-// Posts an ask straight to the store at a time in the past, so nothing is
-// queued for it, as when its job was lost. Gives its id.
+// Straight to the store, so nothing is queued for it, as when its job was
+// lost.
 async function postEarlier(sub: string, newAsk: NewAsk, at: Date) {
   const posting = await store.postAsk(accountId(sub), newAsk, at);
   if (posting.kind !== "posted") throw new Error("Not posted.");
@@ -102,15 +100,13 @@ const saveRules = async (sub: string, text: string) =>
     }),
   );
 
-// Saves the rules, with the model reading the hashtags given.
 async function saveRead(sub: string, text: string, hashtags: string[]) {
   fakes.model.reply({ json: { hashtags, hours: [] } });
   const response = await saveRules(sub, text);
   expect(response.status).toBe(200);
 }
 
-// The list as the page reads it: the version, and each ask's sort and the
-// time it turns stopped, when it is behind the rules.
+// sortingUntil is when an ask behind the rules turns stopped.
 async function listed(sub: string) {
   const response = await invoke(
     handler,
@@ -137,7 +133,6 @@ async function listed(sub: string) {
 const sortingUntil = async (sub: string, id: string) =>
   (await listed(sub)).asks.find((one) => one.id === id)?.sortingUntil;
 
-// The jobs sent for one account's asks since a point in the queue's record.
 const sentSince = (from: number, sub: string) =>
   fakes.queue.sent
     .slice(from)
@@ -146,7 +141,6 @@ const sentSince = (from: number, sub: string) =>
         z.object({ accountId: z.literal(sub) }).safeParse(message.body).success,
     );
 
-// What a run of the sort function answers the queue's trigger.
 const queueAnswer = z.object({
   batchItemFailures: z.array(z.object({ itemIdentifier: z.string() })),
 });

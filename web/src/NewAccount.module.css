@@ -31,7 +31,6 @@
   padding-top: var(--space-6);
 }
 
-/* A screen with no hashtag in play uses ink. */
 .connect {
   display: flex;
   align-items: center;

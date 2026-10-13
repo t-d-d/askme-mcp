@@ -1,12 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { readRepoFile, repoFiles } from "../test/repo";
 
-// The one module that builds the model client, and counts each call against
-// the account's daily cap before sending it (ADR 21).
 const countingModule = "service/src/model.ts";
 
-// The service's own code, tests left out, as a test may build any client.
-// The eval is outside the service, and outside the cap.
+// A test may build any client, and the eval is outside the cap.
 const serviceCode = () =>
   repoFiles().filter(
     (path) =>
@@ -15,8 +12,7 @@ const serviceCode = () =>
       !/\.(?:static|test|int|browser|live|conformance)\.ts$/u.test(path),
   );
 
-// Whether code builds a model client: with the builder of the client that
-// counts nothing, or with a request of its own to the model's API.
+// createModel builds a client that counts nothing.
 const buildsClient = (text: string) =>
   /\bcreateModel\b|chat\/completions|openrouter\.ai/u.test(text);
 

@@ -1,18 +1,11 @@
-// Moving between screens (docs/design.md, "Movement"). A screen that sits
-// higher slides in from the right over the one it opens from, and slides out
-// to the right to show the one under it. The browser draws a picture of each
-// screen and moves the pictures (base.css), so nothing on either screen moves
-// by itself.
+// Slides between screens with view transitions. The motion is in base.css.
 import { useLayoutEffect } from "react";
 import { flushSync } from "react-dom";
 
-// How high each screen sits: the list at the foot, an ask's card and the
-// rules over it, and Connect your agents, which the rules link to, over the
-// rules.
 export const layers = { list: 0, card: 1, rules: 1, connect: 2 } as const;
 
-// The layer of the screen drawn last. A card's address can show the list,
-// as when its ask has gone, so each screen says what it is as it is drawn.
+// Each screen sets this as it draws, since a card's address can show the
+// list, as when its ask has gone.
 let drawn: number = layers.list;
 
 export function useLayer(layer: number): void {
@@ -21,16 +14,10 @@ export function useLayer(layer: number): void {
   });
 }
 
-// The slide under way, if one is.
 let underWay: ViewTransition | null = null;
 
-// Makes a change that may draw another screen, sliding if it does. The
-// change is made at once when the person's device asks for reduced motion,
-// when the browser cannot draw the pictures, and when it has drawn its own
-// movement already, as a phone's browser may on Back. A change while a slide
-// is under way is made at once too, and shows as part of that slide.
-//
-// The page cannot be tapped while the screens move. Taps go to the pictures,
+// browserMoved: the browser has drawn its own movement, as a phone's may on
+// Back. While a slide runs, taps go to the browser's pictures of the screens,
 // whatever the page's styles say.
 export function slide(change: () => void, browserMoved = false): void {
   if (
@@ -44,8 +31,7 @@ export function slide(change: () => void, browserMoved = false): void {
   }
   const from = drawn;
   const root = document.documentElement;
-  // The browser draws the new screen's picture once the change returns, so
-  // React draws it at once.
+  // The browser takes the new screen's picture as soon as this returns.
   const transition = document.startViewTransition(() => {
     flushSync(change);
     if (drawn > from) root.dataset.slide = "in";

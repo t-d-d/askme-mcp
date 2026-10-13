@@ -1,43 +1,31 @@
-// Sorting an ask (ADR 12): the prompt for one account's rules and one of its
-// asks, and the check on what the model replies.
-//
-// Everything an agent sent is untrusted data. It sits in one delimited
-// section, with anything that could close the section escaped, and the
-// instructions say never to follow it. The model may answer only with
-// hashtags from the account's own list, one of three levels and a short
-// reason, and a reply that does not fit is discarded whole.
+// The sorting prompt and the check on the model's reply (ADR 12).
 import { z } from "zod";
 import { levels, type Level } from "../../shared/page-api";
 import type { AccountId } from "./identity";
 import type { FollowUp } from "./model";
 
-// How much an ask matters, judged on what it would cost if the person never
-// acted (PRD, "The ask"). Used for order only, and never shown. The page
-// orders by the same list.
+// Used for order only, and never shown.
 export { levels, type Level };
 
-// The most characters a reason may hold. It is one line on the open card.
+// One line on the open card.
 export const reasonLimit = 140;
 
-// The most characters the prompt asks for. The model writes up to what it
-// is asked and sometimes past it, so this sits well inside the limit.
+// The model sometimes writes past what it is asked for, so this sits well
+// inside reasonLimit.
 export const reasonAsked = 100;
 
-// What sorting decides about an ask.
 export interface Sort {
   hashtags: string[];
   level: Level;
   reason: string;
 }
 
-// The account's rules, as the sorting call reads them.
 export interface SortingRules {
   account: AccountId;
   text: string;
   hashtags: string[];
 }
 
-// The fields an agent sent, from one account's ask.
 export interface SortingAsk {
   account: AccountId;
   summary: string;
@@ -50,16 +38,12 @@ export interface SortingAsk {
 export interface Prompt {
   system: string;
   user: string;
-  // The JSON Schema the reply must follow.
   schema: Record<string, unknown>;
 }
 
-// The level lines come from #258. Low means nobody would be worse off.
-// Normal leaves things a little worse than they could be, and leaves out the
-// unfinished work that every ask has. High takes in a money saving missed,
-// since money never saved costs as much as the same money lost (#226, #262).
-// The model moves on a change of a few words, in asks far from the edit.
-// The pull requests that changed these lines list the wordings tried.
+// High takes in a missed money saving, since money never saved costs as
+// much as money lost. A change of a few words here moves the levels of asks
+// far from the edit, so run the eval before and after any change.
 const system = [
   "You sort one ask for one person. An ask is a request from one of their AI agents, which has stopped to wait for them.",
   "Decide three things: which of the person's hashtags the ask belongs to, how much it matters, and why, in one line.",
@@ -75,7 +59,6 @@ const system = [
   `Reply with the JSON the schema asks for. The reason is one plain sentence of at most ${String(reasonAsked)} characters.`,
 ].join("\n");
 
-// Characters that could open or close a section, written so they cannot.
 export const escaped = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
@@ -85,7 +68,6 @@ const field = (name: string, value: string | undefined) =>
 const levelSchema = { type: "string", enum: [...levels] };
 
 export function sortingPrompt(rules: SortingRules, ask: SortingAsk): Prompt {
-  // One account's rules and one of its asks, and nothing else (ADR 12).
   if (ask.account !== rules.account) {
     throw new Error("A sorting prompt holds one account's rules and asks.");
   }
@@ -126,7 +108,7 @@ export function sortingPrompt(rules: SortingRules, ask: SortingAsk): Prompt {
   return { system, user, schema };
 }
 
-// One line of plain text, within a limit.
+// No control characters, so one line.
 const reasonSchema = (limit: number) =>
   z
     .string()
@@ -135,7 +117,6 @@ const reasonSchema = (limit: number) =>
     .max(limit)
     .regex(/^[^\p{Cc}]*$/u);
 
-// The reply the rules allow, with a reason of at most the given limit.
 function replySchema(hashtags: readonly string[], limit: number) {
   const [first, ...rest] = hashtags;
   return first === undefined
@@ -151,8 +132,6 @@ function replySchema(hashtags: readonly string[], limit: number) {
       });
 }
 
-// The sort a reply gives, or undefined when anything in it is out of place.
-// Its hashtags come back in the order the rules give them.
 export function parseSortReply(
   reply: unknown,
   hashtags: readonly string[],
@@ -167,11 +146,8 @@ export function parseSortReply(
   };
 }
 
-// The turn that sends a reply back to the model when its only fault is a
-// reason over the limit (#243): the reply, and a message that says how long
-// its reason was and asks for the whole reply again with a shorter one.
-// Undefined for a reply that fits, or has any other fault. Nothing is kept
-// from the reply it sends back: the next reply is parsed on its own.
+// Undefined unless the reply's only fault is a long reason. Nothing is kept
+// from the reply sent back: the next reply is parsed on its own.
 export function followUpForLongReason(
   reply: unknown,
   hashtags: readonly string[],

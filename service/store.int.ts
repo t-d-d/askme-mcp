@@ -1,4 +1,3 @@
-// The store against a real DynamoDB, run locally (ADR 9).
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
@@ -22,7 +21,6 @@ afterAll(() => {
   store.close();
 });
 
-// A fresh account for each test, as only a verified token gives one.
 const account = (): AccountId =>
   callerOf({
     token: "test",
@@ -41,8 +39,6 @@ const ask: NewAsk = {
 const day = 86_400_000;
 const minute = 60_000;
 
-// Posts an ask the store must take as new, and gives its id and whether it
-// replaced one.
 async function postNew(owner: AccountId, newAsk: NewAsk, now: Date) {
   const posting = await store.postAsk(owner, newAsk, now);
   if (posting.kind !== "posted") {
@@ -51,7 +47,6 @@ async function postNew(owner: AccountId, newAsk: NewAsk, now: Date) {
   return posting;
 }
 
-// An ask of its own for each number.
 const numbered = (n: number): NewAsk => ({
   ...ask,
   summary: `${ask.summary} ${String(n)}`,
@@ -140,7 +135,6 @@ describe("the store", () => {
   });
 });
 
-// What is stored for one ask, open or closed, read straight from the table.
 const itemsOf = async (owner: AccountId, id: string) =>
   (await storedItems(endpoint, tableName, owner)).filter(
     (item) => item.id === id,
@@ -508,8 +502,8 @@ describe("replacing an ask", () => {
     });
   });
 
-  // Which call wins is up to the database, so five races run at once, and
-  // both outcomes are checked whichever happens.
+  // The database picks the winner, so five races run at once and both
+  // outcomes are checked.
   it("posts the new ask either way when a resolve closes the old one at the same moment", async () => {
     const owner = account();
     const race = async (n: number) => {
@@ -531,8 +525,8 @@ describe("replacing an ask", () => {
     expect(asks.map(({ id }) => id).sort()).toEqual(
       posts.map(({ id }) => id).sort(),
     );
-    // Each race posts once and closes once: one write when the replace wins,
-    // and two when the resolve does.
+    // Each race posts the old ask, then makes one write when the replace
+    // wins, or two when the resolve does.
     const writes = posts.map(({ replaced }) => (replaced ? 2 : 3));
     expect(version).toBe(writes.reduce((sum, count) => sum + count, 0));
   });
@@ -595,7 +589,6 @@ describe("matching a repeated ask", () => {
   }, 20_000);
 });
 
-// The counts kept for an account, read straight from the table.
 const countsOf = async (owner: AccountId) =>
   (await storedItems(endpoint, tableName, owner)).filter(
     (item) => typeof item.count === "number",
@@ -972,9 +965,6 @@ describe("the rules", () => {
     to: "18:00",
   };
 
-  // A new account starts with example rules in the box (PRD, "Rules"),
-  // already read, so it costs no model call. They are not saved: the
-  // version stays at 0, and nothing is written.
   it("are the example rules, already read, for an account that never saved any", async () => {
     const owner = account();
     expect(await store.rules(owner)).toEqual({
@@ -1138,8 +1128,7 @@ describe("the rules", () => {
     expect(saved.seen).toEqual(["work", "shop", "family"]);
   });
 
-  // Two hashtags the example rules do not name, so each is new to the
-  // account.
+  // Hashtags the example rules do not name, so each is new to the account.
   it("lose no hashtag when two saves arrive together", async () => {
     const owner = account();
     await Promise.all([

@@ -1,8 +1,6 @@
-// The icons a card's buttons carry: inline SVG in the text colour (ADR 14),
-// drawn as in the mockup. Each is hidden from screen readers, and its
-// button carries the words.
 import type { ReactNode } from "react";
 
+// Hidden from screen readers, so the button around an icon carries the words.
 function Icon({ children }: { children: ReactNode }) {
   return (
     <svg
@@ -21,7 +19,6 @@ function Icon({ children }: { children: ReactNode }) {
   );
 }
 
-// Listen.
 export function SpeakerIcon() {
   return (
     <Icon>
@@ -32,7 +29,6 @@ export function SpeakerIcon() {
   );
 }
 
-// Reply in the session.
 export function SessionIcon() {
   return (
     <Icon>
@@ -41,7 +37,6 @@ export function SessionIcon() {
   );
 }
 
-// Back to all asks.
 export function BackIcon() {
   return (
     <Icon>

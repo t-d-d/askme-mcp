@@ -1,42 +1,33 @@
 import { askIdPattern } from "../../shared/page-api";
 
-// The page's screens. It names them in the address's fragment
-// (SignedIn.tsx): #connect, #rules, and anything else for the list.
 export type Screen = "asks" | "connect" | "rules";
 
-// A screen with unsaved work gives the question to ask before it is left,
-// and null once it can be left without asking.
+// A screen with unsaved work passes the question to ask before it is left,
+// or null once it can be left without asking.
 export type AskFirst = (question: string | null) => void;
 
 export const screenIn = (hash: string): Screen =>
   hash === "#connect" ? "connect" : hash === "#rules" ? "rules" : "asks";
 
-// The open card's address. An ask's card is the list's screen with that ask
-// open, as #ask/<id>, so Back closes it.
+// A card has its own fragment, so Back closes it.
 const cardPrefix = "#ask/";
 
 export const cardHref = (id: string): string => `${cardPrefix}${id}`;
 
-// The id of the ask whose card the fragment opens, or null for none.
 export function cardIn(hash: string): string | null {
   if (!hash.startsWith(cardPrefix)) return null;
   const id = hash.slice(cardPrefix.length);
   return askIdPattern.test(id) ? id : null;
 }
 
-// The list's own address, for a screen with no list behind it to go back to.
 export const listHref = "#asks";
 
-// Whether the fragment shows the list, with no card open over it.
 const showsList = (hash: string): boolean =>
   screenIn(hash) === "asks" && cardIn(hash) === null;
 
-// How many entries back in the history the nearest one is that shows the
-// list, given the address shown and those of the entries before it, oldest
-// first, with null for one the browser cannot read. Only this page's own
-// entries count, so the search ends at the first that is not one, and at
-// the first it cannot read. None when the list is shown already, and null
-// when there is no list to go back to.
+// earlier is oldest first, with null for an entry the browser cannot read.
+// The search ends at the first that is not this page's own, or unreadable.
+// 0 when the list shows already, null with no list behind.
 export function stepsBackToList(
   here: string,
   earlier: readonly (string | null)[],

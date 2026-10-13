@@ -1,7 +1,3 @@
-// Ordering asks by the time they lapse, and holding lapsed asks back behind
-// a line of their own (PRD, "Web page"), with Clerk and the page's API faked
-// on loopback (ADR 9). The page's clock is set, so each test knows which
-// asks lapse when.
 import { afterEach, describe, expect, inject, it } from "vitest";
 import {
   askChange,
@@ -51,8 +47,6 @@ const hashtags: Hashtag[] = [
   { name: "family", colour: 2 },
 ];
 
-// An ask posted half an hour before the time given, which lapses the given
-// time after it, or never.
 const ask = (
   id: string,
   summary: string,
@@ -89,9 +83,6 @@ afterEach(async () => {
   view = undefined;
 });
 
-// The list, polled as the service answers: whole the first time, and as
-// unchanged after that. The API takes a dismissal. The test can change what
-// the service answers from then on.
 const open = async (list: AsksAnswer, screen = phone) => {
   let answer = list;
   view = await openPage(inject("pageUrl"), screen, {
@@ -110,7 +101,6 @@ const open = async (list: AsksAnswer, screen = phone) => {
   };
 };
 
-// The summaries on the screen, in order: the top card's, then the rows'.
 const summaries = async (page: Page) =>
   [
     ...(await page.getByRole("article").allInnerTexts()),
@@ -133,7 +123,6 @@ const tab = (page: Page, name: string) =>
     .getByRole("navigation", { name: "Hashtags" })
     .getByRole("button", { name, exact: true });
 
-// The text of whatever comes straight after the tabs.
 const underTheTabs = (page: Page) =>
   page.evaluate(
     () =>
@@ -141,11 +130,9 @@ const underTheTabs = (page: Page) =>
         ?.textContent ?? null,
   );
 
-// A line's control, found by the line's words.
 const control = (page: Page, words: string | RegExp) =>
   page.getByText(words).locator("..").getByRole("button");
 
-// Whether a control has the keyboard's focus.
 const focused = (element: Locator) =>
   element.evaluate((one) => one === document.activeElement);
 
@@ -157,14 +144,8 @@ const passkey = "Approve the passkey on the shop's settings page?";
 const slot = "Pick a delivery slot before it goes?";
 const boiler = "Book the boiler service?";
 
-// Opens the list on a page whose clock stands still two minutes before a
-// moment by the service's clock, which is serviceAhead ahead of the page's,
-// and waits for the summaries on the screen to read `before`, in order. A
-// second before the moment, by the page's clock, a poll brings a new ask,
-// which goes last, and the rest still read `before`. The first poll after
-// the moment finds them reading `after`. Each poll's answer gives the
-// service's time in its Date header, as it is then, because the page's
-// clock moves only when the test moves it.
+// The moment is by the service's clock. A poll a second before it brings a
+// new ask, so the order is seen to hold until the first poll after it.
 async function orderChangesAt(
   moment: number,
   serviceAhead: number,
@@ -202,14 +183,7 @@ async function orderChangesAt(
   return page;
 }
 
-// Opens the list on a page whose clock stands still two minutes before a
-// moment by the service's clock, which is serviceAhead ahead of the page's,
-// and waits for the summaries on the screen to read `before`, in order. Then
-// every poll fails from the next one on, and before it the device puts its
-// clock right, so it agrees with the service's. Once the page says it is not
-// connected, the summaries still read `before`. The first poll after the
-// moment, by the service's clock, finds them reading `after`, though it fails
-// too.
+// The moment is by the service's clock.
 async function orderChangesAtWhilePollsFail(
   moment: number,
   serviceAhead: number,
@@ -268,11 +242,6 @@ describe("ordering by the time asks lapse", () => {
     expect(await summaries(page)).toEqual([slot, schoolRun]);
   });
 
-  // The service gives the time an ask lapses by its own clock, so the ask
-  // moves up when the service's time for its last hour comes, even on a page
-  // whose clock is a few minutes out. For an ask whose last hour starts at
-  // 18:01 UTC by the service's clock, a clock three minutes fast reads 18:04
-  // then, and one three minutes slow reads 17:58.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
@@ -419,11 +388,6 @@ describe("the lapsed line", () => {
     expect(await summaries(page)).toEqual([schoolRun]);
   });
 
-  // The service gives the time an ask lapses by its own clock, so the ask
-  // goes behind the line when the service's time for it comes, even on a
-  // page whose clock is a few minutes out. For an ask that lapses at 18:20
-  // UTC by the service's clock, a clock three minutes fast reads 18:23 then,
-  // and one three minutes slow reads 18:17.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
@@ -444,11 +408,8 @@ describe("the lapsed line", () => {
     },
   );
 
-  // While polls fail, the page counts the service's time on from the last
-  // poll that reached askme, by the time that has passed on
+  // While polls fail, the page counts on from the last poll by
   // performance.now(), which a change to the device's clock does not move.
-  // So a clock three minutes fast or slow, put right while the page is not
-  // connected, does not make the ask lapse three minutes early or late.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
@@ -469,11 +430,8 @@ describe("the lapsed line", () => {
     },
   );
 
-  // A phone or laptop that sleeps usually hides the page first, and on most
-  // systems performance.now() stands still while it sleeps. So the time the
-  // page was hidden counts by the device's clock, and an ask whose time passed
-  // while the device slept has lapsed when the page is shown, though the poll
-  // then fails.
+  // On most systems performance.now() stands still while the device sleeps,
+  // so the time the page was hidden counts by the device's clock.
   it("takes an ask out of the list whose time passed while the page was hidden and the device slept, though the poll on waking fails", async () => {
     const polls = failingPolls(
       () =>
@@ -504,12 +462,9 @@ describe("the lapsed line", () => {
     expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
   });
 
-  // A device can sleep without hiding the page, such as a desktop that
-  // suspends with no screen lock. Its clock moves on an hour, with
-  // performance.now() standing still, which is more than a device putting
-  // its clock right is likely to move it. So the page counts that hour by the
-  // device's clock, and an ask whose time passed while the device slept has
-  // lapsed on the first poll after it wakes, though that poll fails.
+  // A desktop with no screen lock can suspend with the page showing. A jump
+  // of an hour is more than putting a clock right is likely to move it, so
+  // the page counts it by the device's clock.
   it("takes an ask out of the list whose time passed while the device slept with the page showing, though the poll on waking fails", async () => {
     const polls = failingPolls(
       () =>
@@ -539,14 +494,8 @@ describe("the lapsed line", () => {
     expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
   });
 
-  // While polls fail, the page counts the service's time on from each poll to
-  // the next, so it judges each step by its own clocks. A device that puts a
-  // clock three minutes out right, and then sleeps an hour with the page
-  // showing, has its correction counted as no time passed, and its sleep as
-  // the hour it was. So an ask whose time passed in the sleep has lapsed on
-  // the first poll after it, though that poll fails, and an ask whose time
-  // comes two minutes after the sleep lapses then, not a few minutes early or
-  // an hour late.
+  // While polls fail, the page judges each step from poll to poll on its own,
+  // so the correction counts as no time and the sleep as the hour it was.
   it.each([
     ["slow", 3 * minute, 60 * minute],
     ["fast", -3 * minute, 61 * minute],

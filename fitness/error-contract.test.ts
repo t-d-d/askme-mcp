@@ -11,8 +11,7 @@ import { addTool } from "../service/src/tools";
 import { captureLogs } from "../test/logs";
 import { refusalOf } from "../test/mcp";
 
-// The tools in memory, with a store they never reach: every call here is
-// refused before it would be stored.
+// Every call here is refused before it reaches the store or the queue.
 const unused = () => Promise.reject(new Error("The store is not used here."));
 const store: Store = {
   postAsk: unused,
@@ -32,7 +31,6 @@ const store: Store = {
   close: () => undefined,
 };
 
-// A queue the tools never reach either.
 const sorts: SortRequests = { queue: unused };
 
 let client: Client;
@@ -58,7 +56,6 @@ afterAll(async () => {
   capture.restore();
 });
 
-// Each field with a limit, by its tool and the name an agent sends.
 const fields = [
   ["ask", "summary", limits.summary],
   ["ask", "area", limits.area],
@@ -83,7 +80,6 @@ async function advertised(name: string, field: string) {
   return propertySchema.parse(tool?.inputSchema.properties?.[field]);
 }
 
-// A valid call to each tool, before one field is made too long.
 const valid: Record<string, Record<string, string>> = {
   ask: {
     summary: "Approve the plan",

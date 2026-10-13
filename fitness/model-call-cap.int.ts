@@ -35,8 +35,7 @@ afterAll(async () => {
   await issuer.close();
 });
 
-// Each test starts with an empty queue, whatever an earlier one left, and
-// at noon UTC, far from the end of the day the cap counts in.
+// Noon UTC keeps each test far from the end of the day the cap counts in.
 beforeEach(() => {
   fakes.queue.purge();
   startClockAt(noon);
@@ -50,7 +49,6 @@ afterEach(() => {
   capture.restore();
 });
 
-// Each line logged, with its level.
 const lines = () =>
   capture.lines.map(({ method, args }) => ({
     level: method,
@@ -67,7 +65,6 @@ const accountId = (sub: string): AccountId =>
     extra: { accountId: sub, requestId: "r" },
   }).accountId;
 
-// Delivers the jobs waiting on the queue, as Lambda's trigger would.
 const deliver = () =>
   fakes.queue.deliver((event) => sorter(event, { awsRequestId: "sort-1" }));
 
@@ -77,7 +74,6 @@ const ask = {
   spoken_detail: "The electrician needs a yes or no before Friday.",
 };
 
-// Posts an ask as an agent, and gives the tool's answer.
 async function post(sub: string, summary = ask.summary) {
   const client = await connect(handler, {
     token: await issuer.token({ claims: { sub } }),
@@ -109,14 +105,11 @@ const saveRules = async (sub: string, text: string) =>
     }),
   );
 
-// Saves the rules, with the model reading the hashtags given.
 async function saveRead(sub: string, text: string, hashtags: string[]) {
   fakes.model.reply({ json: { hashtags, hours: [] } });
   expect((await saveRules(sub, text)).status).toBe(200);
 }
 
-// The list as the page reads it: the version, when the cap resets while it
-// is spent, and each ask's sort.
 async function listed(sub: string) {
   const response = await invoke(
     handler,

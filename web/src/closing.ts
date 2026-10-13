@@ -1,14 +1,7 @@
-// Which ask's link takes focus as a card closes over the list
-// (useListPlace.ts). Takes the ask whose card it was, the list's asks as
-// they stood when the card opened, and the list's asks now, top card first.
-//
-// The ask's own link takes focus while the ask holds its place, so asks
-// coming and going around it do not count, and nor do other asks moving
-// past it. If it has left the list or moved in it, as following a link from
-// its card sinks it, the ask that came after it takes focus, so a person
-// working down the list carries on from where they were. With none of those
-// left, the last ask in the list does, which is the top card when no row is
-// left.
+// The ask's own link keeps focus while the ask holds its place. If it left
+// or moved, as following a link from its card sinks it, the next ask from
+// when the card opened takes focus, so a person working down the list
+// carries on from where they were.
 export function focusOnClosing(
   card: string,
   stood: readonly string[],
@@ -22,10 +15,9 @@ export function focusOnClosing(
   );
 }
 
-// Whether the ask held its place among the asks in both lists. The asks
-// that kept their order are the longest run of them whose places now still
-// rise. The ask held its place if every run that long takes it in. When its
-// move and another ask's would explain the new order as well, it moved.
+// It held its place if every longest rising run of places takes it in, so
+// leaving it out shortens the run. When its move and another's explain the
+// new order as well, it moved.
 function heldPlace(
   card: string,
   stood: readonly string[],
@@ -39,10 +31,8 @@ function heldPlace(
   );
 }
 
-// The length of the longest run of places, in the order given, that rises.
-// Each entry of lowest is the lowest place a run one longer than its index
-// can end on, so the entries rise, and a place goes on the first entry not
-// below it.
+// The longest strictly rising subsequence. lowest[i] is the lowest place a
+// run of length i + 1 can end on.
 function longestRise(places: readonly number[]): number {
   const lowest: number[] = [];
   for (const place of places) {

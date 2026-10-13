@@ -1,11 +1,8 @@
 import { useId, type ReactNode, type Ref } from "react";
 import styles from "./Held.module.css";
 
-// What holds the asks back: a hashtag's hours, or the time each ask lapsed.
 export type HeldBy = "hours" | "lapse";
 
-// The words of each line, by how many asks it holds, and once they are
-// shown, by how many are showing.
 const words: Record<
   HeldBy,
   { held: (count: number) => string; showing: (count: number) => string }
@@ -39,12 +36,8 @@ const icons: Record<HeldBy, ReactNode> = {
   ),
 };
 
-// A line of asks held back (docs/design.md, "The held line" and "The lapsed
-// line"): how many asks are held back until their hours, or how many have
-// lapsed, and a control to show them, or once shown, how many are showing,
-// and a control to hide them again. It sits under the tabs, or at the foot
-// of All clear (Asks.tsx). The ref is the control's, and the control is
-// described by the line's words, so two lines' controls can be told apart.
+// Both lines' buttons say "Show them", so each is described by its line's
+// words to tell them apart.
 export function Held({
   by,
   count,

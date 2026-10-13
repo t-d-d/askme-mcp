@@ -1,12 +1,9 @@
-// The live tier's own source, read for the static checks of ADR 16: the
-// files it runs and imports, the addresses they hold, and what they type.
+// Reads the live tier's own source for the static checks of ADR 16.
 import { dirname, join } from "node:path/posix";
 import ts from "typescript";
 import { readRepoFile, repoFiles } from "./repo";
 
-// Every *.live.ts file, and every file in the repo that one imports, however
-// deep. A package's files are not the repo's, so they are left out. The
-// list is worked out once per test file.
+// Every *.live.ts file, and every repo file one imports, however deep.
 let live: string[] | undefined;
 export function liveTierFiles(): string[] {
   live ??= findLiveTierFiles();
@@ -56,7 +53,6 @@ export function addressesIn(text: string): string[] {
   return text.match(/[\w.%+-]*@[\w-]+(?:\.[\w-]+)+/gu) ?? [];
 }
 
-// The name of the constant that holds a string, as `const name = "value";`.
 export function constantFor(text: string, value: string): string | undefined {
   const escaped = value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
   return new RegExp(`^(?:export )?const (\\w+) = "${escaped}";$`, "mu").exec(
@@ -64,13 +60,10 @@ export function constantFor(text: string, value: string): string | undefined {
   )?.[1];
 }
 
-// Each line where a constant is used other than as it is: as one whole
-// argument to a call, unless the call is a String method that puts its
-// argument into the string it returns. Its declaration, and an import of
-// it under its own name, are the only other places it may appear. The
-// source is read as TypeScript, so brackets and commas inside strings and
-// comments, and a constant wrapped in parentheses, are seen for what they
-// are.
+// Each line that uses a constant other than as it is. As it is means its
+// declaration, an import under its own name, or a whole argument to a call
+// that is not a String method building a new string. The source is parsed,
+// so strings, comments and parentheses around the constant do not mislead.
 export function builtFrom(text: string, name: string): string[] {
   const source = parse(text);
   const lines = text.split("\n");
@@ -118,11 +111,8 @@ const building = new Set([
   "replaceAll",
 ]);
 
-// The calls that type into a page.
 const typing = new Set(["fill", "type", "pressSequentially", "insertText"]);
 
-// The first argument of every call that types into a page: fill, type,
-// pressSequentially and insertText, as written in the source.
 export function typedValues(text: string): string[] {
   const source = parse(text);
   const found: string[] = [];
@@ -140,7 +130,6 @@ export function typedValues(text: string): string[] {
   return found;
 }
 
-// The roles a person presses, ticks or picks on a page.
 const pressable = new Set([
   "button",
   "checkbox",
@@ -154,11 +143,10 @@ const pressable = new Set([
   "tab",
 ]);
 
-// The name of every control a person presses found by its role, as written
-// in the source with a plain string in double quotes, or "(no name)" when
-// none is given. A role not written as a string counts as pressed, so it
-// cannot slip past, and so does getByRole called by any route: on a page or
-// a locator, by its bracketed name, or taken off one as a plain function.
+// A name written as a plain string comes back in double quotes, and a
+// missing one as "(no name)". A role not written as a string counts as
+// pressable, so none slips past, and getByRole is found however it is
+// called.
 export function controlNames(text: string): string[] {
   const source = parse(text);
   const found: string[] = [];

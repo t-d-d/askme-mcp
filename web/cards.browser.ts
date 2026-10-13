@@ -1,6 +1,3 @@
-// Acting on an ask from the list: following its links, opening its card,
-// listening to it and dismissing it, with Clerk and the page's API faked on
-// loopback (ADR 9).
 import { afterEach, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 import {
@@ -72,7 +69,6 @@ const listOf = (...asks: PageAsk[]): AsksAnswer => ({
   asks,
 });
 
-// The asks of the list below, one for each shape of link.
 const both = ask("both", "Merge the fix for checkout rounding?", 40 * minute, {
   actionLink: pullRequest,
   sessionLink,
@@ -116,18 +112,14 @@ afterEach(async () => {
   view = undefined;
 });
 
-// What open takes besides the list: the page's options, the answer to a
-// change of an ask, and the screen.
 type OpenOptions = PageOptions & {
   change?: unknown;
   screen?: { width: number; height: number };
 };
 
-// The page with a list, on a phone unless another screen is given, and the
-// API taking every change to an ask. With the clock, time jumps a minute
-// once the list shows, then stands still until a test moves it. The clock
-// runs until the pause, and a pause aimed at a moment already gone throws,
-// so it aims further ahead than vitest.config.ts lets a browser test run.
+// With the clock, time runs on a minute after the list shows, then stands
+// still. A pause at a moment already gone throws, so it aims further ahead
+// than vitest.config.ts lets a browser test run.
 async function open(
   list: AsksAnswer,
   options: OpenOptions = {},
@@ -152,7 +144,6 @@ async function open(
   return view;
 }
 
-// The ids the page sent to one of the change routes, in order.
 const sentTo = (opened: OpenPage, path: string) =>
   opened.apiCalls
     .filter((call) => call.path === path)
@@ -167,8 +158,7 @@ const rowTexts = async (opened: OpenPage) =>
     (row) => row.split("\n")[0],
   );
 
-// Drags an element sideways by a share of its width, as a finger would: to
-// the left, or to the right for a share below nought.
+// A share below nought drags to the right.
 async function swipe(
   opened: OpenPage,
   selector: ReturnType<OpenPage["page"]["locator"]>,
@@ -188,11 +178,9 @@ async function swipe(
 const hasFocus = (control: ReturnType<OpenPage["page"]["locator"]>) =>
   control.evaluate((element) => element === document.activeElement);
 
-// The style of the outline around an element, as drawn now.
 const outline = (element: ReturnType<OpenPage["page"]["locator"]>) =>
   element.evaluate((each) => getComputedStyle(each).outlineStyle);
 
-// Presses Tab until a control has the focus, as a keyboard user reaches it.
 async function tabTo(
   opened: OpenPage,
   control: ReturnType<OpenPage["page"]["locator"]>,
@@ -204,8 +192,7 @@ async function tabTo(
   throw new Error("Tab never reached the control.");
 }
 
-// The top card on a narrow phone, with Listen and the session beside the
-// main button, which leave the main button at its narrowest.
+// Listen and the session beside the main button leave it at its narrowest.
 async function narrowCard(top: PageAsk) {
   const { page } = await open(listOf(top), {
     screen: { width: 360, height: phone.height },
@@ -218,9 +205,8 @@ async function narrowCard(top: PageAsk) {
   return card;
 }
 
-// The one row of a list on a 320px phone, its main button leading to the
-// link. Under #shopping and waiting 50 minutes unless told otherwise, which
-// leave the site's name less room than a whole line.
+// The defaults, #shopping and 50 minutes, leave the site's name less room
+// than a whole line.
 async function narrowRow(
   actionLink: string,
   {
@@ -251,7 +237,6 @@ async function narrowRow(
   return page.getByRole("listitem");
 }
 
-// How many lines an element's text takes, in the page's own font.
 const lineCount = (element: Locator) =>
   element.evaluate(async (each) => {
     await document.fonts.ready;
@@ -261,8 +246,7 @@ const lineCount = (element: Locator) =>
     return new Set(rects.map(({ top }) => Math.round(top))).size;
   });
 
-// Where an element's text starts each new line after the first, as the text
-// before the break, in the page's own font.
+// Gives, for each line break, all the element's text before it.
 const lineEnds = (element: Locator) =>
   element.evaluate(async (each) => {
     await document.fonts.ready;
@@ -285,11 +269,9 @@ const lineEnds = (element: Locator) =>
     return ends;
   });
 
-// Whether an element's content fits its width, with nothing past its edge.
 const fitsWidth = (element: Locator) =>
   element.evaluate((each) => each.scrollWidth <= each.clientWidth);
 
-// The right edge of each line of an element's text, in the page's own font.
 const lineRights = (element: Locator) =>
   element.evaluate(async (each) => {
     await document.fonts.ready;
@@ -304,15 +286,12 @@ const lineRights = (element: Locator) =>
     return [...rights.values()];
   });
 
-// Where an element's box starts and ends down the page, and where it starts
-// across it.
 const boxEdges = (element: Locator) =>
   element.evaluate((each) => {
     const { top, bottom, left } = each.getBoundingClientRect();
     return { top, bottom, left };
   });
 
-// Where a row's content starts and ends across the page, inside its padding.
 const contentEdges = (row: Locator) =>
   row.getByRole("link").evaluate((link) => {
     const { left, right } = link.getBoundingClientRect();
@@ -323,10 +302,6 @@ const contentEdges = (row: Locator) =>
     };
   });
 
-// A row's meta line when its parts do not all fit on one line: the pill,
-// the age and any "Opened" each stay whole, and the site's name moves down
-// below the pill, with each of its lines ending at the row's right edge,
-// inside the row (docs/design.md).
 async function expectSiteMovedDown(
   row: Locator,
   { pill, kept, site }: { pill: string; kept: string[]; site: string },
@@ -349,17 +324,12 @@ async function expectSiteMovedDown(
   expect(await fitsWidth(row)).toBe(true);
 }
 
-// A site's name breaks onto another line, and only just after a dot
-// (docs/design.md).
 async function expectBreaksOnlyAfterDots(name: Locator) {
   const ends = await lineEnds(name);
   expect(ends.length).toBeGreaterThan(0);
   for (const end of ends) expect(end).toMatch(/\.$/u);
 }
 
-// The name of a link whose first part is too long for a line on its own,
-// longPart unless told otherwise, stays inside its element, and is split
-// only inside that part (docs/design.md).
 async function expectOnlyLongPartSplit(name: Locator, link = longPart) {
   const [part = ""] = new URL(link).hostname.split(".");
   expect(await fitsWidth(name)).toBe(true);
@@ -426,8 +396,7 @@ describe("the top card's buttons", () => {
     },
   );
 
-  // A site's name of more than 15 characters is set smaller, so a name as
-  // long as dash.cloudflare.com fits whole on one line (docs/design.md).
+  // A site's name of more than 15 characters is set smaller (docs/design.md).
   it.each([
     {
       site: "docs.google.com",
@@ -454,8 +423,6 @@ describe("the top card's buttons", () => {
     },
   );
 
-  // A name too long for one line even at 11px breaks just after a dot, not
-  // inside a word (docs/design.md).
   it("break console.aws.amazon.com only after a dot on a narrow phone, beside both icon buttons", async () => {
     const card = await narrowCard(awsAndSession);
     const name = card.locator(`a[href="${aws}"] span`).nth(1);
@@ -466,8 +433,6 @@ describe("the top card's buttons", () => {
     await expectBreaksOnlyAfterDots(name);
   });
 
-  // A part too long for a line on its own is split, so the name stays inside
-  // the button, and the rest still breaks after a dot (docs/design.md).
   it("split only a part too long for a line on its own, and keep the name inside the button", async () => {
     const card = await narrowCard(longPartAndSession);
     const name = card.locator(`a[href="${longPart}"] span`).nth(1);
@@ -571,8 +536,6 @@ describe("the rows", () => {
     expect(sentTo(opened, askChangePaths.opened)).toEqual([]);
   });
 
-  // A site's name that fits beside the pill and the age stays on their line
-  // (docs/design.md).
   it("keep github.com on the line of #shopping and the age on a 320px phone", async () => {
     const row = await narrowRow(issue);
     const name = row.getByText("github.com", { exact: true });
@@ -583,8 +546,6 @@ describe("the rows", () => {
     expect(await fitsWidth(row)).toBe(true);
   });
 
-  // When the site's name does not fit beside them, it gives way, and the
-  // pill and the age stay whole (docs/design.md).
   it("move console.aws.amazon.com to a line of its own at the right on a 320px phone, and keep #shopping and the age whole", async () => {
     const row = await narrowRow(aws);
     await expectSiteMovedDown(row, {
@@ -594,8 +555,7 @@ describe("the rows", () => {
     });
   });
 
-  // The longest hashtag a rule may name, with hyphens to break at and with
-  // none, on an opened row that has waited 23 hours (docs/design.md).
+  // The longest hashtag a rule may name, with hyphens to break at and without.
   it.each([
     {
       hashtag: "customer-onboarding-flow",
@@ -624,8 +584,6 @@ describe("the rows", () => {
     },
   );
 
-  // Beside a long hashtag, "Opened" moves down too, and starts the second
-  // line at the left (docs/design.md).
   it("move Opened down to start the second line at the left, beside #customer-onboarding-flow on a 320px phone", async () => {
     const row = await narrowRow(aws, {
       hashtag: "customer-onboarding-flow",
@@ -643,8 +601,6 @@ describe("the rows", () => {
     );
   });
 
-  // A site's name too long for a whole line breaks just after a dot, and
-  // each of its lines ends at the right (docs/design.md).
   it("break a name too long for a whole line only after a dot, on a line of its own at the right", async () => {
     const row = await narrowRow(longPart);
     const site = new URL(longPart).hostname;
@@ -656,8 +612,6 @@ describe("the rows", () => {
     await expectBreaksOnlyAfterDots(row.getByText(site, { exact: true }));
   });
 
-  // A part too long for a whole line on its own is split, so the name stays
-  // inside the row (docs/design.md).
   it("split only a part too long for a whole line on its own, and keep the name inside the row", async () => {
     const row = await narrowRow(longerPart);
     const name = row.getByText(new URL(longerPart).hostname, { exact: true });
@@ -808,8 +762,6 @@ describe("the open card", () => {
     expect(await page.locator("body").innerText()).not.toContain("new tab");
   });
 
-  // A site's name too long for its button's line breaks just after a dot,
-  // not inside a word, on both buttons (docs/design.md).
   it("breaks productionresultssa0.blob.core.windows.net only after a dot on both buttons on a 320px phone", async () => {
     const { page } = await openCard(
       [
@@ -828,8 +780,6 @@ describe("the open card", () => {
     }
   });
 
-  // A part too long for the line on its own is split, so the name stays
-  // inside the button (docs/design.md).
   it("splits only a part too long for the line on its own, and keeps the name inside the button", async () => {
     const { page } = await openCard(
       [
@@ -898,7 +848,6 @@ describe("the open card", () => {
 });
 
 describe("how long an ask has waited", () => {
-  // Monday 12 October 2026, 6pm UTC, by the service's clock.
   const serviceNow = Date.parse("2026-10-12T18:00:00Z");
   const posted = (id: string, summary: string, waited: number) =>
     ask(id, summary, 0, {
@@ -906,12 +855,7 @@ describe("how long an ask has waited", () => {
     });
   const oldest = "Choose the colour for the new labels?";
 
-  // The service gives the time an ask was posted by its own clock, so the
-  // top card, the rows and the open card count its age by that clock, even
-  // on a page whose clock is a few minutes out. At 18:00 UTC by the
-  // service's clock, a clock three minutes fast reads 18:03, and one three
-  // minutes slow reads 17:57. The page's clock stands still, and each poll's
-  // answer gives the service's time in its Date header.
+  // Each poll's answer gives the service's time in its Date header.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
@@ -947,9 +891,6 @@ describe("how long an ask has waited", () => {
     },
   );
 
-  // An ask's age is counted to the time the list was last read, by the
-  // service's clock as that poll found it. So the device putting its clock
-  // right while polls fail leaves it as it was.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
@@ -1019,7 +960,6 @@ describe("dismissing", () => {
     class: "retry",
     message: "askme could not finish this request. Try again in a moment.",
   });
-  // The API failing the dismissal of one ask, and taking the others.
   const failingFor = (id: string) =>
     new Answering((_url, _authorization, { body }) =>
       askChange.parse(JSON.parse(body ?? "")).id === id
@@ -1027,8 +967,8 @@ describe("dismissing", () => {
         : new Status(204),
     );
 
-  // Dismisses the top card, then the next one while the first waits, so the
-  // first is sent at once and fails while the second waits.
+  // Dismissing a second ask sends the first at once, so the first fails while
+  // the second waits.
   async function failWhileAnotherWaits(opened: OpenPage) {
     const { page } = opened;
     await swipe(opened, page.getByRole("article"));
@@ -1197,8 +1137,7 @@ describe("dismissing", () => {
     );
   });
 
-  // The note shows as the last ask goes, and goes a few seconds later. At
-  // 360 by 580 there is room to hold the headline, but little to spare.
+  // At 360 by 580 there is room to hold the headline, but little to spare.
   it.each([
     ["390 by 844", phone],
     ["360 by 690", { width: 360, height: 690 }],
@@ -1221,7 +1160,7 @@ describe("dismissing", () => {
     },
   );
 
-  // Some are too short to hold the headline where it is, and some too short
+  // These are too short to hold the headline where it is, and some too short
   // for All clear at all, so the page scrolls.
   it("keeps All clear's last line clear of the note on short screens", async () => {
     const opened = await open(listOf(neither), { clock: true });
@@ -1281,8 +1220,6 @@ describe("dismissing", () => {
     expect(await page.getByRole("article").innerText()).toContain(both.summary);
   });
 
-  // Dismisses the top card and leaves the list for the rules while the note
-  // with Undo shows, which sends the dismissal at once.
   async function dismissAndLeave(opened: OpenPage) {
     const { page } = opened;
     await swipe(opened, page.getByRole("article"));
@@ -1318,7 +1255,6 @@ describe("dismissing", () => {
   });
 
   it("brings the card back with a note when a dismissal sent as the list was left fails after the list shows again", async () => {
-    // The failure, held back until the test lets it go.
     let fail: () => void = () => undefined;
     const failing = new Promise<void>((resolve) => {
       fail = resolve;
@@ -1514,7 +1450,6 @@ describe("dismissing", () => {
       clock: true,
     });
     const { page } = opened;
-    // Whether each dismissal the page sends asks to be kept alive.
     await page.evaluate((path) => {
       const kept: boolean[] = [];
       Reflect.set(window, "keptAlive", kept);
@@ -1576,7 +1511,6 @@ describe("dismissing", () => {
 
 describe("going back to the list from a card", () => {
   const desktop = { width: 1280, height: 800 };
-  // Numbered asks, in the order given.
   const numbered = (count: number) =>
     Array.from({ length: count }, (_, index) =>
       ask(
@@ -1585,7 +1519,7 @@ describe("going back to the list from a card", () => {
         (60 - index) * minute,
       ),
     );
-  // A list longer than the screen: the top card and nineteen rows.
+  // Longer than the screen: the top card and nineteen rows.
   const long = numbered(20);
   const twelfthRow = (opened: OpenPage) =>
     opened.page.getByRole("listitem").nth(11);
@@ -1593,11 +1527,9 @@ describe("going back to the list from a card", () => {
     opened.page.getByRole("article").getByRole("link", { name: summary });
   const scrolled = (opened: OpenPage) =>
     opened.page.evaluate(() => window.scrollY);
-  // The focus outline reaches 2px out from a control, 2px away
-  // (docs/design.md).
+  // A 2px focus outline, 2px out from the control (docs/design.md).
   const outlineReach = 4;
 
-  // Scrolls the page until one edge of a link is so far down the screen.
   const edgeAt = (
     link: ReturnType<OpenPage["page"]["locator"]>,
     edge: "top" | "bottom",
@@ -1610,8 +1542,6 @@ describe("going back to the list from a card", () => {
       [edge, y] as const,
     );
 
-  // How far a link sits below the top of the screen, and above its foot, or
-  // above the note while one shows.
   const room = (link: ReturnType<OpenPage["page"]["locator"]>) =>
     link.evaluate((each) => {
       const note = document
@@ -1623,8 +1553,6 @@ describe("going back to the list from a card", () => {
       return { over: box.top, under: foot - box.bottom };
     });
 
-  // Scrolls the twelfth row into view and opens its card, which starts at
-  // the top. Gives where the list was.
   async function openTwelfth(opened: OpenPage) {
     const row = twelfthRow(opened);
     await row.scrollIntoViewIfNeeded();
@@ -1671,7 +1599,6 @@ describe("going back to the list from a card", () => {
     },
   );
 
-  // Where the page's entry sits in the history.
   const entry = (opened: OpenPage) =>
     opened.page.evaluate(() => window.navigation.currentEntry?.index);
 
@@ -1769,8 +1696,6 @@ describe("going back to the list from a card", () => {
     },
   );
 
-  // Following a link from a card marks its ask opened, which sinks it below
-  // the unopened asks at its level, here to the foot of the list.
   it.each(["All asks", "Back"] as const)(
     "with %s after a link on the card sank its ask leaves the list where it was, and focus on the ask that came after it",
     async (way) => {
@@ -1896,7 +1821,7 @@ describe("going back to the list from a card", () => {
     await last.getByRole("link").click();
     await opened.page.getByRole("link", { name: "All asks" }).waitFor();
     await dismissCard(opened);
-    // As far as the page, a row shorter, still scrolls.
+    // The page is a row shorter, so it may no longer scroll as far.
     const most = await opened.page.evaluate(
       () => document.documentElement.scrollHeight - window.innerHeight,
     );
@@ -1932,9 +1857,7 @@ describe("going back to the list from a card", () => {
     await opened.page.keyboard.press("Enter");
     await allClear(opened).waitFor();
     expect(await hasFocus(allClear(opened))).toBe(true);
-    // The heading is not a control, so it draws no outline.
     expect(await outline(allClear(opened))).toBe("none");
-    // Round the page and back again, Tab passes it by.
     for (let presses = 0; presses < 10; presses += 1) {
       await opened.page.keyboard.press("Tab");
       expect(await hasFocus(allClear(opened))).toBe(false);
@@ -1977,7 +1900,7 @@ describe("going back to the list from a card", () => {
     expect(await hasFocus(allClear(view))).toBe(true);
   });
 
-  // The header's link is followed where it is, so the test scrolls nothing.
+  // A dispatched click, so Playwright scrolls nothing into view first.
   it.each([
     ["the rules", phone, "Rules", "Your rules"],
     ["Connect your agents", desktop, "Connect agents", "Connect your agents"],

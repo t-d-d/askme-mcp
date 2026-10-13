@@ -1,6 +1,3 @@
-// The sorting line (docs/design.md, "The sorting line"), with Clerk and the
-// page's API faked on loopback (ADR 9). The page's clock is set, so each
-// test knows which asks are still being sorted.
 import { afterEach, describe, expect, inject, it } from "vitest";
 import {
   askChangePaths,
@@ -45,8 +42,6 @@ const hashtags: Hashtag[] = [
   },
 ];
 
-// An ask sorted into a hashtag, and behind the rules until a time when one
-// is given.
 const ask = (id: string, hashtag: string, sortingUntil?: Date) => ({
   id,
   summary: `Ask ${id}`,
@@ -68,8 +63,7 @@ const listOf = (asks: AsksAnswer["asks"]): AsksAnswer => ({
   asks,
 });
 
-// The API takes a dismissal. The browser's time zone is the machine's
-// unless one is given.
+// The browser's time zone is the machine's unless one is given.
 const open = (
   list: AsksAnswer,
   time = evening,
@@ -86,7 +80,6 @@ const open = (
     },
   });
 
-// The line under the tabs that says how sorting stands, found by its words.
 const line = (page: Page) =>
   page.getByText(
     /^Sorting \d+ asks? with your rules$|couldn't be sorted|sorting limit is reached/u,
@@ -101,15 +94,8 @@ afterEach(async () => {
   view = undefined;
 });
 
-// Opens the list in London on a page whose clock stands still two minutes
-// before a moment by the service's clock, which is serviceAhead ahead of
-// the page's. Its one ask is behind the rules until sortingUntil, when one
-// is given. The line reads `before` until the first poll after the moment,
-// and `after` from then, or is gone when `after` is null. A second
-// before the moment, by the page's clock, a poll brings a new ask and the
-// line still reads `before`. Each poll's answer gives the service's time in
-// its Date header, as it is then, because the page's clock moves only when
-// the test moves it.
+// The moment is by the service's clock. A poll a second before it brings a
+// new ask, so the line is seen to hold until the first poll after it.
 async function lineChangesAt({
   moment,
   serviceAhead,
@@ -162,14 +148,7 @@ async function lineChangesAt({
   }
 }
 
-// Opens the list in London on a page whose clock stands still two minutes
-// before a moment by the service's clock, which is serviceAhead ahead of
-// the page's. Its one ask is behind the rules until sortingUntil, when one
-// is given. Once the line reads `before`, every poll fails from the next one
-// on, and before it the device puts its clock right, so it agrees with the
-// service's. Once the page says it is not connected, the line still reads
-// `before`. The first poll after the moment, by the service's clock, finds it
-// reading `after`, or gone when `after` is null, though it fails too.
+// The moment is by the service's clock.
 async function lineChangesAtWhilePollsFail({
   moment,
   serviceAhead,
@@ -292,14 +271,12 @@ describe("the sorting line", () => {
       listOf([ask("a", "work", later), ask("b", "shop", later)]),
     );
     const { page } = view;
-    // A line's text colour and size, as the browser computes them.
     const style = (text: string) =>
       page.getByText(text).evaluate((element) => {
         const computed = getComputedStyle(element);
         return [computed.color, computed.getPropertyValue("font-size")];
       });
-    // Where a line's first thing starts: the held line's clock, and the
-    // sorting line's words.
+    // The held line starts with its clock icon, the sorting line with words.
     const start = (text: string) =>
       page.getByText(text).evaluate((element) => {
         const first = element.parentElement?.firstElementChild;
@@ -318,11 +295,6 @@ describe("the sorting line", () => {
     );
   });
 
-  // The service gives the time an ask turns stopped by its own clock, so the
-  // ask turns stopped when the service's time for it comes, even on a page
-  // whose clock is a few minutes out. For an ask that turns stopped at 18:10
-  // UTC by the service's clock, a clock three minutes fast reads 18:13 then,
-  // and one three minutes slow reads 18:07.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
@@ -340,8 +312,7 @@ describe("the sorting line", () => {
     },
   );
 
-  // While polls fail, the page counts the service's time on from the last
-  // poll that reached askme, by the time that has passed on
+  // While polls fail, the page counts on from the last poll by
   // performance.now(), which a change to the device's clock does not move.
   it.each([
     ["fast", -3 * minute],
@@ -426,10 +397,6 @@ describe("the sorting line while today's sorting limit is reached", () => {
     );
   });
 
-  // The service counts the cap by its own clock, so the line goes when the
-  // service's day ends, even on a page whose clock is a few minutes out. A
-  // clock three minutes fast reads 00:03 then, and one three minutes slow
-  // reads 23:57.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
@@ -446,9 +413,6 @@ describe("the sorting line while today's sorting limit is reached", () => {
     },
   );
 
-  // While polls fail, the page counts the service's time on by
-  // performance.now(), as above, so the line goes when the service's day
-  // ends, though the device's clock is put right in the meantime.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
@@ -475,7 +439,6 @@ describe("the sorting line on All clear", () => {
     lapsesAt: earlier.toISOString(),
   };
   const stopped = "2 asks couldn't be sorted. Saving your rules tries again.";
-  // A line's box, the held line's or the sorting line's, found by its words.
   const box = (page: Page, words: string) =>
     page.getByText(words, { exact: true }).locator("..").boundingBox();
 
@@ -532,10 +495,9 @@ describe("the sorting line on All clear", () => {
     );
   });
 
-  // The one ask showing is dismissed, with the page's time standing still,
-  // so the note with Undo stays. Some screens are too short to hold the
-  // headline where it is, and some too short for All clear at all, so the
-  // page scrolls.
+  // The page's time stands still, so the note with Undo stays. Some screens
+  // are too short to hold the headline where it is, and some too short for
+  // All clear at all, so the page scrolls.
   it.each([
     ["390 by 844", phone],
     ["360 by 640", { width: 360, height: 640 }],

@@ -7,22 +7,13 @@ import { cardIn, screenIn, type AskFirst, type Screen } from "./screen";
 import { slide } from "./slide";
 import { useDismissing, type Dismissing } from "./useDismissing";
 
-// Where this page's entry sits in the history, where the browser can say.
 const historyIndex = (): number | null =>
   "navigation" in window
     ? (window.navigation.currentEntry?.index ?? null)
     : null;
 
-// The page is static files with no router (ADR 5), so its screens are
-// named in the address's fragment: #connect, #rules, and anything else for
-// the list, with #ask/<id> opening one ask's card over it. Links between
-// them are real links, and Back works. "All asks" goes back to the list
-// rather than adding it to the history again (toList.ts).
-//
-// Each screen starts at the top. The list and its cards are one screen,
-// which keeps the list's place itself (useListPlace.ts), so the browser
-// keeps none of its own for Back. A screen that sits higher than the one
-// it opens from slides in, and slides out as it goes (slide.ts).
+// The page is static files with no router (ADR 5), so the screen is named
+// in the address's fragment.
 function useScreen(): {
   screen: Screen;
   card: string | null;
@@ -31,21 +22,21 @@ function useScreen(): {
   const [hash, setHash] = useState(() => window.location.hash);
   const question = useRef<string | null>(null);
   useEffect(() => {
+    // The page sets the scroll itself. The list keeps its own place
+    // (useListPlace.ts), and every other screen starts at the top.
     const restoring = window.history.scrollRestoration;
     window.history.scrollRestoration = "manual";
     let at = historyIndex();
     let returning = false;
-    // The address a traversal of the history has reached, when the browser
-    // drew its own movement on the way, as a phone's browser may when the
-    // person swipes Back. The page does not move the screen a second time.
+    // Set when the browser drew its own transition, as a phone's may on a
+    // swipe Back, so the page does not move the screen a second time.
     let browserDrew: string | null = null;
     const traverse = (event: PopStateEvent) => {
       browserDrew = event.hasUAVisualTransition ? window.location.href : null;
     };
-    // A link, Back or a typed address has changed the fragment before the
-    // page hears of it. If the person stays, the page goes back to the
-    // entry they were on, so the history is left as it was. A browser that
-    // cannot say where that entry is gets the old address as a new entry.
+    // hashchange comes after the fragment has changed. If the person stays,
+    // go back to the entry they were on, so the history is left as it was,
+    // or where the browser cannot say where that is, push the old address.
     const follow = (event: HashChangeEvent) => {
       const browserMoved = browserDrew === event.newURL;
       browserDrew = null;
@@ -66,8 +57,7 @@ function useScreen(): {
       }
       at = here;
       const left = screenIn(new URL(event.oldURL).hash);
-      // The address is read as the screen changes, which a slide holds back
-      // a moment.
+      // Read the address when the slide runs, which may be a moment later.
       slide(() => {
         setHash(window.location.hash);
         if (screenIn(window.location.hash) !== left) window.scrollTo(0, 0);
@@ -92,14 +82,13 @@ function useScreen(): {
 const newQueries = () =>
   new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-// Each time someone signs in, the page loads into a cache of its own, which
-// goes when they sign out. Nothing one account loaded can show to the next,
-// and the next one's first poll carries no version.
+// A new cache for each sign-in, so nothing one account loaded can show to
+// the next, and the next one's first poll carries no version.
 export function SignedIn() {
   const [queries] = useState(newQueries);
   const { screen, card, askFirst } = useScreen();
-  // Kept above the screens, so a dismissal sent as the list goes, and the
-  // note if it fails, outlive the list (dismissing.ts).
+  // Above the screens, so a dismissal sent as the list goes, and its note if
+  // it fails, outlive the list.
   const dismissing = useDismissing(screen === "asks");
   return (
     <QueryClientProvider client={queries}>

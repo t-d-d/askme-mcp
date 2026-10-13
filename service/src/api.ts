@@ -1,8 +1,4 @@
-// The page's API: the routes the signed-in page calls (ADR 6). Each one
-// verifies a session token and takes the account from it, never from the
-// request. An agent's token is refused, because an agent reads nothing
-// (ADR 2). A refusal uses the codes of the error contract (ADR 11), and only
-// a missing or bad token is refused with a bare 401.
+// The routes the signed-in page calls.
 import { z } from "zod";
 import {
   askChange,
@@ -33,15 +29,10 @@ import { asksView, rulesView, sortedWithRules } from "./view";
 import { countPer, timesIn, waitFor } from "./wording";
 
 export interface PageContext {
-  // The address the caller used, from which the MCP endpoint's is built.
   origin: string;
   verify: (token: string) => Promise<AccountId>;
   store: Store;
-  // Queues asks' sorts: the open asks when the rules are saved, and each
-  // sample ask. A poll queues none (ADR 22).
   sorts: SortRequests;
-  // Reads the rules when they are saved, counting each call against the
-  // account's daily cap.
   model: CountedModel;
   log: Logger;
 }
@@ -63,15 +54,12 @@ export function unavailable(): Response {
   );
 }
 
-// The version a poll carries, as the page sends it: a whole number.
 const sinceSchema = z
   .string()
   .regex(/^\d{1,15}$/u)
   .transform(Number)
   .optional();
 
-// Says what the limit is and how long to wait, from the limit's own
-// constants (ADR 11).
 function pollRefusal(secondsLeft: number): Response {
   return pageRefusal(
     "rate_limited",
@@ -86,8 +74,6 @@ function rulesSaveRefusal(secondsLeft: number): Response {
   );
 }
 
-// A save refused at the daily cap on model calls (ADR 21), which says when
-// the count starts again, as the ask cap's refusal does.
 function modelCapRefusal(resetsAt: Date): Response {
   return pageRefusal(
     "cap_reached",
@@ -109,8 +95,6 @@ function samplesCapRefusal(resetsAt: Date): Response {
   );
 }
 
-// Every sample was posted in the last ten minutes, so posting one again
-// would only be matched to it (ADR 3).
 function samplesSentRefusal(): Response {
   return pageRefusal(
     "rate_limited",
@@ -118,12 +102,8 @@ function samplesSentRefusal(): Response {
   );
 }
 
-// Queues a sort of the open asks after the rules are saved (PRD, "Rules"):
-// every one when the rules were read again, or only the asks behind them
-// when the text was saved unchanged. Each ask keeps its old sort, and so
-// its old hashtags, until the new one is stored. A failure here is askme's
-// own, such as the table failing, so it alerts. The rules are saved all the
-// same, and the asks show as stopped once their time is up.
+// A failure here still lets the save succeed. The asks then show as
+// stopped once their time is up.
 async function sortAfterSave(
   account: AccountId,
   rules: AccountRules,
@@ -147,12 +127,7 @@ async function sortAfterSave(
   }
 }
 
-// The account's open asks, unless nothing changed since the version the
-// poll carried. A poll with a bad version is refused before the table is
-// touched. Every other poll counts against the account's limit first. A
-// poll only reads: it never queues a sort (ADR 22). It gives each ask behind
-// the rules the time it turns stopped instead, and when the daily cap on
-// model calls resets, while that time is still ahead.
+// A poll only reads. It never queues a sort (ADR 22).
 async function poll(
   request: Request,
   account: AccountId,
@@ -180,22 +155,6 @@ async function poll(
   return answer(asksView(found, await store.rules(account), now));
 }
 
-// Saves the rules and the time zone they were written in, and reads the
-// hashtags and their hours from them with a model call. If the model cannot
-// read them, the text is still saved and the old hashtags and hours stay,
-// and the answer says so, so the page can offer to try again. Either way,
-// every open ask is then sorted again.
-//
-// A save of the text the rules already hold, whose last reading succeeded,
-// reads nothing and leaves the rules version alone (ADR 22). It records
-// when it was made, and queues only the asks still behind the rules, such
-// as those whose sorting stopped. "Try again" after a failed reading sends
-// the same text, and reads it again, as any other save does.
-//
-// While the account's daily cap on model calls is spent, a save is refused
-// with cap_reached before anything is saved (ADR 21): one that reads the
-// rules needs a call, and one of unchanged text queues sorts that do
-// (ADR 22). Empty rules sort with no call, so their save is never refused.
 async function saveRules(
   request: Request,
   account: AccountId,
@@ -217,6 +176,8 @@ async function saveRules(
     return rulesSaveRefusal(counted.secondsLeft);
   }
   const { text, timeZone } = input.data;
+  // Checked before the resave too: unchanged text is not read again, but
+  // the sorts it queues need model calls (ADR 21). Empty rules need none.
   if (!emptyRules(text)) {
     const resetsAt = await model.spent(account);
     if (resetsAt !== undefined) {
@@ -240,14 +201,13 @@ async function saveRules(
       });
     }
   } catch (error) {
-    // The cap ran out after the check above, so nothing was sent, and the
-    // save is refused as it would have been there.
+    // The cap ran out after the check above, so refuse as that check would.
     if (error instanceof CapReached) {
       log.info("rules-capped", { accountId: account });
       return modelCapRefusal(error.resetsAt);
     }
-    // Not the model's failure but askme's own, such as its key being
-    // unreadable, so it alerts. The text is kept all the same.
+    // askme's own failure, such as an unreadable key, so it alerts. The text
+    // is still saved.
     log.error("request-failed", { errorClass: errorClass(error) });
     read = { failed: errorClass(error) };
   }
@@ -263,11 +223,6 @@ async function saveRules(
   return answer(rulesView(saved));
 }
 
-// Posts one sample ask from each of three areas, as an agent would, and
-// queues each one's sort, so sorting can be watched with no agent
-// connected (PRD, "Web page"). Each counts against the account's rate and
-// its daily cap. A limit reached part way keeps the asks posted before it,
-// and the refusal says which limit it was.
 async function postSamples(
   account: AccountId,
   context: PageContext,
@@ -296,22 +251,11 @@ async function postSamples(
   }
 }
 
-// What the person did to an ask from the page.
 type AskChangeKind = "opened" | "dismissed";
 
-// Marks an ask as opened, or dismisses it, by the id in the body. A repeat
-// changes nothing and succeeds, and so does a change to an ask its agent
-// has closed meanwhile. An id the account has no ask for, another
-// account's included, is refused as not_found.
-//
-// Neither change has a rate limit, as the owner decided in issue #96. Only
-// an ask's first opening and its dismissal write, so these calls raise the
-// version at most twice for each ask, and the daily cap limits the asks.
-// Any other call reads at most two items and changes nothing. A call that
-// writes, or tries to, can also send up to writeTries refused transactions,
-// for the reasons given on writeTries in the store. A counter would add a
-// write to every call, a refused one included, so a flood would cost more
-// with a limit than without one.
+// No rate limit on purpose. Only an ask's first opening and its dismissal
+// write, and the daily cap bounds the asks. A counter would add a write to
+// every call, so a flood would cost more with a limit than without one.
 async function changeAsk(
   kind: AskChangeKind,
   request: Request,
@@ -351,7 +295,6 @@ async function changeAsk(
   return new Response(null, { status: 204, headers: noStore });
 }
 
-// The bearer token in a request, if it has one.
 function bearerToken(request: Request): string | undefined {
   const match = /^Bearer\s+(\S+)\s*$/iu.exec(authorizationOf(request) ?? "");
   return match?.[1];

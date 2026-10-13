@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { resolveTool } from "./resolve";
 
-// The input schema as an agent's client receives it.
 const advertised = z
   .object({
     properties: z.record(z.string(), z.object({ description: z.string() })),

@@ -20,7 +20,6 @@ afterEach(() => {
 const input = z.strictObject({});
 const output = z.object({ id: z.string().min(3) });
 
-// A store this tool never reaches.
 const unused = () => Promise.reject(new Error("The store is not used here."));
 const store: Store = {
   postAsk: unused,
@@ -40,11 +39,10 @@ const store: Store = {
   close: () => undefined,
 };
 
-// A queue this tool never reaches.
 const sorts: SortRequests = { queue: unused };
 
-// A tool whose answer passes its type but not its schema, as a bug in a
-// later store read might give.
+// Its answer passes its type but not its schema, as a bug in a store read
+// might give.
 const brokenTool: ToolDefinition<typeof input, typeof output> = {
   name: "broken",
   description: "Answers with an id its own schema refuses.",

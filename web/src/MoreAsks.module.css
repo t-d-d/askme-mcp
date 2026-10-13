@@ -18,10 +18,8 @@
   list-style: none;
 }
 
-/*
- * A row can be swiped sideways, so the browser keeps only scrolling up and
- * down, and the row goes back to its place after a short drag.
- */
+/* The swipe takes sideways drags, so the browser keeps only vertical
+   scrolling. */
 .row {
   border-top: var(--hairline) solid var(--line);
   touch-action: pan-y;
@@ -37,7 +35,6 @@
   opacity: var(--opacity-opened);
 }
 
-/* The whole row is the link. */
 .link {
   display: flex;
   flex-direction: column;
@@ -54,10 +51,6 @@
   overflow-wrap: anywhere;
 }
 
-/*
- * When the parts do not all fit on one line, the last ones move down whole,
- * so the site's name gives way before the pill or the age breaks.
- */
 .meta {
   display: flex;
   flex-wrap: wrap;
@@ -76,11 +69,6 @@
   font-weight: var(--weight-label);
 }
 
-/*
- * A name breaks after a dot, where the component marks it. It breaks inside
- * a part only when that part alone is longer than the line. Each of its
- * lines ends at the row's right edge.
- */
 .site {
   min-width: 0;
   margin-left: auto;

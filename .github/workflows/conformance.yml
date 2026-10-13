@@ -1,8 +1,6 @@
-# The conformance tier (ADR 15): checks that setup held outside the repo, such
-# as GitHub's settings, still matches what the repo records. No pull request
-# can see that setup, so this runs every day. It only reads. A job that signs
-# in runs in the "conformance" environment, never with the deploy role
-# (ADR 15).
+# Setup held outside the repo can drift with no pull request, so this runs
+# every day (ADR 15). A job that signs in runs in the "conformance"
+# environment, never with the deploy role.
 name: conformance
 
 on:

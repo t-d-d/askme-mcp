@@ -1,6 +1,3 @@
-// The resolve tool: an agent closes an ask it posted, by the id ask gave it,
-// and the card leaves the person's list. The answer is the same whether the
-// ask was open or already closed, and says nothing of how it closed (ADR 2).
 import { z } from "zod";
 import { limits, text } from "./ask";
 import { Refused, retryBudget } from "./errors";
@@ -13,15 +10,14 @@ const resolveInput = z.strictObject({
   ),
 });
 
-// What an agent gets back: the id and a status, and nothing about the
-// account (ADR 2).
+// Nothing about the account (ADR 2).
 const resolveOutput = z.strictObject({
   id: z.string(),
   status: z.literal("resolved"),
 });
 
-// The same words for an id that never existed and for another account's,
-// so neither can be told from the other (ADR 2).
+// The same words for an id that never existed and for another account's
+// (ADR 2).
 const notFound = new Refused(
   "not_found",
   "askme has no ask with this id, so there is nothing to resolve. Do not retry. Carry on with your work.",
@@ -42,14 +38,9 @@ export const resolveTool: ToolDefinition<
   ].join(" "),
   input: resolveInput,
   output: resolveOutput,
-  // No rate limit, as the owner decided in issue #121. Only an ask's first
-  // close writes, so these calls raise the version at most once for each
-  // ask, and the daily cap limits the asks. Any other call reads at most two
-  // items and changes nothing. A call that writes, or tries to, can also
-  // send up to writeTries refused transactions, for the reasons given on
-  // writeTries in the store. A counter would add a write to every call, a
-  // refused one included, so a flood would cost more with a limit than
-  // without one.
+  // No rate limit on purpose. Only an ask's first close writes, and the
+  // daily cap bounds the asks. A counter would add a write to every call, so
+  // a flood would cost more with a limit than without one.
   async run({ id }, { caller, log, store }) {
     const { accountId } = caller;
     const found = await store.resolveAsk(accountId, id, new Date());
@@ -57,6 +48,7 @@ export const resolveTool: ToolDefinition<
       case "resolved":
         log.info("ask-resolved", { accountId, askId: id });
         return { id, status: "resolved" };
+      // The same answer, which says nothing of how it closed (ADR 2).
       case "already-closed":
         log.info("ask-already-closed", { accountId, askId: id });
         return { id, status: "resolved" };

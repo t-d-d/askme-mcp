@@ -199,11 +199,9 @@ function lookupByCallback(
   });
 }
 
-// A lookup reads the hosts file and asks a DNS server through getaddrinfo.
-// Each call, from the callback form or the promise form, makes a
-// GETADDRINFOREQWRAP request, which an async hook sees as it is made. The
-// request carries the name once lookup has filled it in. The hook only
-// watches: a lookup the guard lets through still runs.
+// Each getaddrinfo call, from either form of lookup, makes a
+// GETADDRINFOREQWRAP request that an async hook sees. Lookup fills in its
+// hostname after the hook runs, so names are read later.
 function watchGetaddrinfo(): { names: () => string[]; stop: () => void } {
   const requests: object[] = [];
   const hook = createHook({
@@ -220,10 +218,9 @@ function watchGetaddrinfo(): { names: () => string[]; stop: () => void } {
   };
 }
 
-// Node reads NODE_USE_ENV_PROXY and the proxy variables once, as it starts,
-// so a fetch through a proxy runs in a child Node that starts with them and
-// loads the guard first. It says why the fetch failed. Every proxy variable
-// of this process is left out, so the child names only the proxy given.
+// Node reads the proxy variables once, as it starts, so the fetch runs in a
+// child Node that loads the guard first. This process's proxy variables are
+// left out, so the child sees only the one given.
 async function fetchInChild(proxyEnv: Record<string, string>): Promise<string> {
   const env = Object.fromEntries(
     Object.entries(process.env).filter(

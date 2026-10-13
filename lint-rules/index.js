@@ -1,10 +1,6 @@
-// Project lint rules: code-level rules from the decision records, each held
-// by lint (ADR 10). eslint.config.js decides which files each one covers.
+// eslint.config.js decides which files each rule covers.
 import { sortKeys } from "../service/src/store/keys.ts";
 
-// Whether a string is a sort key the table uses (ADR 13), written whole or
-// as the start of one. The names come from the key module, where a name
-// that ends in # is a prefix.
 const sortKeyNames = Object.values(sortKeys);
 const isSortKey = (text) =>
   sortKeyNames.some((name) =>
@@ -38,7 +34,6 @@ const noHandBuiltKey = {
   },
 };
 
-// The scan call in the AWS SDK, by any of its names.
 const scanNames = new Set(["ScanCommand", "paginateScan"]);
 
 const noScan = {
@@ -70,7 +65,6 @@ const noScan = {
   },
 };
 
-// Every command in the AWS SDK that writes to a table.
 const writeCommands = new Set([
   "PutCommand",
   "UpdateCommand",
@@ -84,12 +78,9 @@ const writeCommands = new Set([
   "BatchWriteItemCommand",
 ]);
 
-// The functions in the store that may write: write(), which raises the
-// version, and count(), which writes a rate counter and nothing else.
+// The names of the two writing functions in service/src/store/store.ts.
 const writeFunctions = new Set(["write", "count"]);
 
-// The name a function goes by: its own, or the variable, property or
-// method it is assigned to. Undefined for an anonymous callback.
 function functionName(node) {
   if (node.id?.type === "Identifier") return node.id.name;
   const { parent } = node;
@@ -124,10 +115,7 @@ const writeFunctionsRule = {
     },
   },
   create(context) {
-    // Write commands imported under another name, by their local name.
     const aliases = new Map();
-    // The command a constructor names: by its own name, an imported alias,
-    // or a property of a namespace, such as lib.PutCommand.
     const commandName = (callee) => {
       if (callee.type === "Identifier")
         return aliases.get(callee.name) ?? callee.name;
@@ -149,8 +137,7 @@ const writeFunctionsRule = {
       },
       NewExpression(node) {
         if (!writeCommands.has(commandName(node.callee))) return;
-        // The nearest enclosing function with a name, passing over
-        // anonymous callbacks.
+        // Anonymous callbacks are passed over.
         const named = context.sourceCode
           .getAncestors(node)
           .reverse()
@@ -165,8 +152,6 @@ const writeFunctionsRule = {
   },
 };
 
-// The name of an object property, when it is written as a plain name or a
-// string.
 function propertyName(property) {
   if (property.type !== "Property" || property.computed) return undefined;
   if (property.key.type === "Identifier") return property.key.name;

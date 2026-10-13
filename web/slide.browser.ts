@@ -1,9 +1,3 @@
-// A screen that sits higher slides in from the right over the one it opens
-// from, and slides out to the right to show the one under it
-// (docs/design.md, "Movement"). An ask's card and the rules sit over the
-// list, and Connect your agents over the rules. Each test that looks at a
-// slide holds it for an hour, so it can be seen under way, and then lets it
-// finish.
 import { afterEach, describe, expect, inject, it } from "vitest";
 import {
   askChangePaths,
@@ -28,7 +22,7 @@ const ask = (index: number): PageAsk => ({
   sort: null,
 });
 
-// The top card and nineteen rows, longer than the screen.
+// Longer than the screen: the top card and nineteen rows.
 const list: AsksAnswer = {
   version: 1,
   everAsked: true,
@@ -47,8 +41,7 @@ afterEach(async () => {
   view = undefined;
 });
 
-// The page at the given address, moving with the slides held, or with the
-// device asking for reduced motion.
+// A slide lasts an hour, so a test can see it under way, then finish it.
 async function open(hash: string, motion = true): Promise<Page> {
   view = await openPage(`${inject("pageUrl")}${hash}`, phone, {
     session: "test-session-token",
@@ -71,18 +64,16 @@ const heading = (page: Page, name: string) =>
 const theList = (page: Page) => page.getByRole("article").waitFor();
 const theCard = (page: Page) =>
   page.getByRole("button", { name: "Dismiss" }).waitFor();
-// The link that opens an ask's card: its row, or the top card's summary.
+// Index 0 is the top card's summary.
 const row = (page: Page, index: number) =>
   page.getByRole("link", {
     name: new RegExp(`^Ask number ${String(index + 1)}\\b`, "u"),
   });
 
-// A picture of a screen as it moves: where it starts and ends, across the
-// screen, and how high it is drawn. One that stays put says so.
+// A view transition's snapshot of a screen: its translate at the start and
+// end, and its z-index.
 type Picture = "still" | { from: string; to: string; layer: string };
 
-// Waits for the screens to move, then gives the picture of the screen being
-// left and of the one coming.
 async function moving(
   page: Page,
 ): Promise<{ leaving: Picture; coming: Picture }> {
@@ -128,7 +119,7 @@ async function moving(
   });
 }
 
-// Ends the slide under way. The browser clears it away a frame or so later.
+// The browser clears a finished slide away a frame or so later.
 const finish = (page: Page) =>
   page.evaluate(async () => {
     for (const animation of document.getAnimations()) animation.finish();
@@ -137,7 +128,6 @@ const finish = (page: Page) =>
     }
   });
 
-// Whether any picture of a screen moves, a few frames after the change.
 const anyMoving = (page: Page) =>
   page.evaluate(async () => {
     for (let frame = 0; frame < 3; frame += 1) {
@@ -152,7 +142,6 @@ const anyMoving = (page: Page) =>
       );
   });
 
-// Off the screen at the right, and in its place.
 const right = "100%";
 const inPlace = "none";
 const slidesIn = {
@@ -164,7 +153,6 @@ const slidesOut = {
   coming: "still",
 };
 
-// Does something that slides, checks which way, and lets the slide finish.
 async function slides(
   page: Page,
   act: () => Promise<unknown>,
@@ -256,8 +244,7 @@ describe("an ask's card", () => {
   });
 
   // The card stays until the slide draws the list, so a second tap can
-  // reach Dismiss before then. The ask is dismissed once, so nothing is
-  // sent before its note goes, and Undo brings it back.
+  // reach Dismiss before then.
   it("dismisses its ask once when Dismiss is tapped twice before the slide", async () => {
     const page = await open("");
     await theList(page);

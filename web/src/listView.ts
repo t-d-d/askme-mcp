@@ -1,9 +1,3 @@
-// What the main screen's list shows, worked out from the poll's answer and
-// what the person has done on this page: the asks it holds, the open card,
-// the tab, the asks shown on it, the held and lapsed counts, whether it is
-// all clear, and the sorting line (Asks.tsx says how each reads). The
-// service gives its times by its own clock, serviceAhead ahead of this
-// browser's (load.ts).
 import type { AsksAnswer, Hashtag, PageAsk } from "../../shared/page-api";
 import { heldAsks } from "./hours";
 import { clockTime } from "./resets";
@@ -12,42 +6,29 @@ import { everything, onTab, type Tab } from "./tab";
 import { inListOrder, lapsedAsks } from "./waiting";
 
 export interface ListViewInput {
-  // The poll's answer, or undefined before the first.
   answer: AsksAnswer | undefined;
-  // When the answer was polled, on this browser's clock.
+  // On this browser's clock.
   polledAt: number;
   serviceAhead: number;
-  // The asks dismissed and opened on this page, by id.
   dismissed: ReadonlySet<string>;
   opened: ReadonlySet<string>;
-  // The ask the address names, if any.
   card: string | null;
-  // The tab the person chose, and whether held and lapsed asks are showing.
   chosen: Tab;
   showingHeld: boolean;
   showingLapsed: boolean;
 }
 
 export interface ListView {
-  // The asks as polled, less those dismissed here, with those opened here
-  // marked opened.
   asks: readonly PageAsk[];
-  // The ask whose card is open, if the list holds it.
   open: PageAsk | undefined;
-  // The tab the list is on, which the chosen tab follows.
   tab: Tab;
-  // The asks shown on the tab, in list order.
   shown: readonly PageAsk[];
-  // How many of the tab's asks are held, and how many lapsed.
   heldHere: number;
   lapsedHere: number;
   allClear: boolean;
-  // The sorting line's words, or null when there is no line.
   sorting: string | null;
-  // Every hashtag an ask may carry, the former ones included, for colour.
   coloured: Hashtag[];
-  // Whether held, and lapsed, asks stay showing: once none is, they are
-  // hidden again when they are next held or lapsed.
+  // False once none is held, or lapsed, so the next one is hidden again.
   keepHeld: boolean;
   keepLapsed: boolean;
 }
@@ -70,9 +51,8 @@ export function listView({
   const hashtags = answer?.hashtags ?? [];
   const coloured =
     answer === undefined ? [] : [...hashtags, ...answer.formerHashtags];
-  // Counted over the list as polled, so an ask dismissed here still counts
-  // until askme drops it, and Undo brings it back as it was. A lapsed ask is
-  // not held, and only the rules' own hashtags have hours.
+  // Over the list as polled, so a dismissed ask counts until askme drops it,
+  // and Undo brings it back as it was.
   const lapsed = lapsedAsks(polled, polledAt, serviceAhead);
   const held = heldAsks(
     polled.filter(({ id }) => !lapsed.has(id)),

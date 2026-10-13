@@ -1,6 +1,3 @@
-// The page calls its API on its own address, under /api/, and the
-// distribution sends those calls on to the HTTP API. The page then needs no
-// API address at build time, and no cross-origin rules.
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { pagePaths } from "../shared/page-api";
@@ -34,7 +31,7 @@ const distribution = () =>
     }),
   ).resources.Resources.WebDistribution.Properties.DistributionConfig;
 
-// AWS's managed policies, by id.
+// AWS managed policy ids.
 const cachingDisabled = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad";
 const allViewerExceptHostHeader = "b689b0a8-53d0-40ab-baf2-68738e2966ac";
 
@@ -63,8 +60,8 @@ describe("the page's API on the page's own address", () => {
     });
   });
 
-  // The token is in the Authorization header, and the answer is one
-  // account's, so nothing is cached and every header but Host goes on.
+  // The token rides in the Authorization header and each answer is one
+  // account's, so nothing may be cached.
   it("caches nothing, and passes the caller's headers on", () => {
     const api = distribution().CacheBehaviors.find(
       (behaviour) => behaviour.PathPattern === "/api/*",

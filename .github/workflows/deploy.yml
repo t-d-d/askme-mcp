@@ -1,6 +1,3 @@
-# A green merge to main deploys (ADR 4), and nothing else does. This runs only
-# on a push to main, deploys only once the gate passes on the merged code, and
-# reaches AWS only by assuming the deploy role through OIDC.
 name: deploy
 
 on:
@@ -37,7 +34,7 @@ jobs:
           cache: npm
       - run: npm ci
       # Build before the job holds any AWS credentials. Clerk's publishable
-      # key is public, and the page needs it to sign people in (ADR 6).
+      # key is public (ADR 6).
       - name: Build the page
         run: npm run build
         env:
