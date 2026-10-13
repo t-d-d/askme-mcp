@@ -21,11 +21,7 @@ export const suites: Record<string, Suite> = {
     about:
       "The note a refused Save rules or Send sample asks gives, and when the cap's goes, against their unit tests.",
     mutate: ["web/src/refusalNote.ts", "web/src/resets.ts"],
-    tests: [
-      "web/src/refusalNote.test.ts",
-      "web/src/resets.test.ts",
-      "web/src/load.test.ts",
-    ],
+    tests: ["web/src/refusalNote.test.ts", "web/src/resets.test.ts"],
   },
   rate: {
     about:

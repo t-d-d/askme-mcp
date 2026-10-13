@@ -719,6 +719,34 @@ describe("the rules screen", () => {
       .waitFor();
   });
 
+  // Only a save that did not go through offers to try again. A limit's
+  // note says when to try instead.
+  it.each([
+    [
+      "rate_limited",
+      "retry",
+      "Slow down a little. Try again in a few seconds.",
+    ],
+    ["cap_reached", "do not retry", "You've reached today's limit."],
+  ])(
+    "offers no Try again button when a save is refused with %s",
+    async (code, retries, words) => {
+      view = await openRules(
+        rulesApi(
+          saved,
+          () => new Status(429, { code, class: retries, message: "No." }),
+        ),
+      );
+      const { page } = view;
+      await page.getByRole("textbox").fill("#work");
+      await page.getByRole("button", { name: "Save rules" }).click();
+      await page.getByRole("status").filter({ hasText: words }).waitFor();
+      expect(
+        await page.getByRole("button", { name: "Try again" }).count(),
+      ).toBe(0);
+    },
+  );
+
   it("says that saving changed rules re-sorts every open ask, and saving them unchanged sorts again any that couldn't be sorted", async () => {
     view = await openRules(saved);
     const read = view.page.getByRole("region", {
