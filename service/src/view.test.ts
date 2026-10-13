@@ -196,7 +196,7 @@ describe("the poll's full answer", () => {
           spokenDetail: ask.spokenDetail,
           postedAt: ask.postedAt,
           opened: false,
-          sortingUntil: sortingUntil(found.asks[1] ?? ask, rules),
+          sortingUntil: "2026-10-11T10:00:00.000Z",
           sort: {
             hashtags: ["old"],
             level: "high",
