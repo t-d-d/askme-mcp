@@ -306,6 +306,49 @@ describe("a known miss (#262)", () => {
     expect(right).not.toContain("- a sign-in code (#262)");
   });
 
+  it("is named once over several rounds, with the rounds it was right in when it missed in others", () => {
+    const sprint = accepted("a sprint ticket");
+    const code = accepted("a sign-in code");
+    const rounds = lines(
+      modelReport({
+        model: "maker/model",
+        outcomes: [
+          sorted(sprint, "high"),
+          sorted(code, "high"),
+          sorted(sprint, "normal"),
+          sorted(code, "high"),
+        ],
+      }),
+    );
+    expect(rounds).toContain("- a sprint ticket (#262), right in 1 of 2");
+    expect(rounds.filter((line) => line === "- a sign-in code (#262)")).toEqual(
+      ["- a sign-in code (#262)"],
+    );
+  });
+
+  it("is not marked when the miss is more than its level, since only the level is accepted", () => {
+    const other = lines(
+      modelReport({
+        model: "maker/model",
+        outcomes: [
+          unsorted(accepted("a sprint ticket")),
+          sorted(accepted("a sign-in code"), "high", ["shop"]),
+          sorted(accepted("a rota"), "low"),
+        ],
+      }),
+    );
+    expect(other).toContain(
+      "- a sprint ticket: expected #work, high; got no fitting reply (reply-rejected)",
+    );
+    expect(other).toContain(
+      '- a sign-in code: expected #work, high; got #shop, high: "Because."',
+    );
+    expect(other).toContain(
+      '- a rota (known miss, #262): expected #work, high; got #work, low: "Because."',
+    );
+    expect(other).toContain("Known misses: 1 of 3 misses");
+  });
+
   it("says when the model sorted no known miss right", () => {
     expect(report).toContain("Known misses sorted right: none");
   });
