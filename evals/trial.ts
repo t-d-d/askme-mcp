@@ -189,7 +189,8 @@ export interface TrialSort {
   ask: string;
   group: EvalCase["group"];
   expected: EvalCase["expected"];
-  // The issue in which the owner accepts the ask's miss, when they do.
+  // The issue in which the owner kept the ask's level though the default
+  // model misses it, when there is one.
   knownMiss?: number;
   hashtags?: string[];
   level?: Level;

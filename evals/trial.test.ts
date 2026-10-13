@@ -228,7 +228,11 @@ describe("a trial's record", () => {
   it("keeps the known miss of an ask that has one, and none for any other ask", () => {
     const accepted: EvalCase = { ...hotfix, knownMiss: 262 };
     const { sorts } = trialRecord(
-      [sorted(accepted, "normal"), sorted(hotfix, "normal")],
+      [
+        sorted(accepted, "normal"),
+        sorted(hotfix, "normal"),
+        { one: accepted, failure: "timeout" },
+      ],
       {
         model: "a/model",
         sorts: 1,
@@ -239,6 +243,7 @@ describe("a trial's record", () => {
     );
     expect(sorts[0]).toMatchObject({ ask: hotfix.name, knownMiss: 262 });
     expect(sorts[1]).not.toHaveProperty("knownMiss");
+    expect(sorts[2]).toMatchObject({ failure: "timeout", knownMiss: 262 });
   });
 
   it("survives a trip through JSON unchanged", () => {
