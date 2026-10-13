@@ -304,24 +304,29 @@ const lineRights = (element: Locator) =>
     return [...rights.values()];
   });
 
-// Where an element's box starts and ends down the page.
-const verticalEdges = (element: Locator) =>
+// Where an element's box starts and ends down the page, and where it starts
+// across it.
+const boxEdges = (element: Locator) =>
   element.evaluate((each) => {
-    const { top, bottom } = each.getBoundingClientRect();
-    return { top, bottom };
+    const { top, bottom, left } = each.getBoundingClientRect();
+    return { top, bottom, left };
   });
 
-// Where a row's content ends at the right, inside its padding.
-const contentRight = (row: Locator) =>
+// Where a row's content starts and ends across the page, inside its padding.
+const contentEdges = (row: Locator) =>
   row.getByRole("link").evaluate((link) => {
-    const { right } = link.getBoundingClientRect();
-    return right - parseFloat(getComputedStyle(link).paddingRight);
+    const { left, right } = link.getBoundingClientRect();
+    const style = getComputedStyle(link);
+    return {
+      left: left + parseFloat(style.paddingLeft),
+      right: right - parseFloat(style.paddingRight),
+    };
   });
 
 // A row's meta line when its parts do not all fit on one line: the pill,
 // the age and any "Opened" each stay whole, and the site's name moves down
-// to a line of its own, with each of its lines ending at the row's right
-// edge, inside the row (docs/design.md).
+// below the pill, with each of its lines ending at the row's right edge,
+// inside the row (docs/design.md).
 async function expectSiteMovedDown(
   row: Locator,
   { pill, kept, site }: { pill: string; kept: string[]; site: string },
@@ -334,10 +339,10 @@ async function expectSiteMovedDown(
     expect(await lineCount(part)).toBe(1);
   }
   const name = row.getByText(site, { exact: true });
-  expect((await verticalEdges(name)).top).toBeGreaterThanOrEqual(
-    (await verticalEdges(pillText)).bottom,
+  expect((await boxEdges(name)).top).toBeGreaterThanOrEqual(
+    (await boxEdges(pillText)).bottom,
   );
-  const edge = await contentRight(row);
+  const { right: edge } = await contentEdges(row);
   for (const right of await lineRights(name)) {
     expect(right).toBeCloseTo(edge, 0);
   }
@@ -572,8 +577,8 @@ describe("the rows", () => {
     const row = await narrowRow(issue);
     const name = row.getByText("github.com", { exact: true });
     expect(await lineCount(name)).toBe(1);
-    expect((await verticalEdges(name)).top).toBeLessThan(
-      (await verticalEdges(row.getByText("#shopping", { exact: true }))).bottom,
+    expect((await boxEdges(name)).top).toBeLessThan(
+      (await boxEdges(row.getByText("#shopping", { exact: true }))).bottom,
     );
     expect(await fitsWidth(row)).toBe(true);
   });
@@ -604,7 +609,7 @@ describe("the rows", () => {
     },
     { hashtag: "internationalshippingops", link: issue, site: "github.com" },
   ])(
-    "keep #$hashtag, 23 h and Opened whole on a 320px phone, and move $site to a line of its own at the right",
+    "keep #$hashtag, 23 h and Opened whole on a 320px phone, and move $site below them, at the right",
     async ({ hashtag, link, site }) => {
       const row = await narrowRow(link, {
         hashtag,
@@ -618,6 +623,25 @@ describe("the rows", () => {
       });
     },
   );
+
+  // Beside a long hashtag, "Opened" moves down too, and starts the second
+  // line at the left (docs/design.md).
+  it("move Opened down to start the second line at the left, beside #customer-onboarding-flow on a 320px phone", async () => {
+    const row = await narrowRow(aws, {
+      hashtag: "customer-onboarding-flow",
+      waited: 23 * 60 * minute,
+      opened: true,
+    });
+    const pill = row.getByText("#customer-onboarding-flow", { exact: true });
+    const opened = row.getByText("Opened", { exact: true });
+    expect((await boxEdges(opened)).top).toBeGreaterThanOrEqual(
+      (await boxEdges(pill)).bottom,
+    );
+    expect((await boxEdges(opened)).left).toBeCloseTo(
+      (await contentEdges(row)).left,
+      0,
+    );
+  });
 
   // A site's name too long for a whole line breaks just after a dot, and
   // each of its lines ends at the right (docs/design.md).
