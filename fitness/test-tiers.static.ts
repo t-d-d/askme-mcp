@@ -8,6 +8,7 @@ import {
   controlNames,
   fileSystemImports,
   liveTierFiles,
+  relativeImports,
   typedValues,
 } from "../test/live-tier";
 import {
@@ -447,7 +448,7 @@ describe("fitness: the live tier presses only controls that read (test-tiers.md)
 });
 
 // ADR 23: the live tier may read the repo's own files, and writes none.
-const reading = new Set([
+const readingFunctions = new Set([
   "existsSync",
   "readFile",
   "readFileSync",
@@ -473,16 +474,62 @@ describe("fitness: the live tier writes no file (test-tiers.md)", () => {
           'import old = require("fs");',
           'const lazy = await import("node:fs");',
           'const required = require("fs/promises");',
+          'export { writeFile } from "node:fs/promises";',
+          'export * from "fs";',
+          'export * as passed from "node:fs";',
+          'const loaded = createRequire(import.meta.url)("fs");',
+          'const built = process.getBuiltinModule("node:fs");',
+          'const actual = await vi.importActual("node:fs");',
+          'const named = "fs";',
+          "const computed = await import(`node:${named}`);",
+          "const variable = require(named);",
+          'import type { Stats } from "node:fs";',
+          'import { type Dirent, readdirSync } from "node:fs";',
+          'export type { WriteStream } from "fs";',
         ].join("\n"),
       ),
-    ).toEqual(["readFileSync", "writeFileSync", "default", "*", "*", "*", "*"]);
+    ).toEqual([
+      "readFileSync",
+      "writeFileSync",
+      "default",
+      "*",
+      "*",
+      "*",
+      "*",
+      "writeFile",
+      "*",
+      "*",
+      "*",
+      "*",
+      "*",
+      "*",
+      "*",
+      "*",
+      "readdirSync",
+    ]);
+  });
+
+  it("follows every way a live file can reach a file in the repo", () => {
+    expect(
+      relativeImports(
+        [
+          'import { a } from "./a";',
+          'export { b } from "./b";',
+          'import "./c";',
+          'const d = await import ("./d");',
+          'import e = require("./e");',
+          'const f = require ("../f");',
+          'import { g } from "vitest";',
+        ].join("\n"),
+      ),
+    ).toEqual(["./a", "./b", "./c", "./d", "./e", "../f"]);
   });
 
   it("takes from them only the functions that read", () => {
     for (const path of liveTierFiles()) {
       expect(
         fileSystemImports(readRepoFile(path)).filter(
-          (name) => !reading.has(name),
+          (name) => !readingFunctions.has(name),
         ),
         path,
       ).toEqual([]);

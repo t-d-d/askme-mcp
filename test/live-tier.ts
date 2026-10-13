@@ -27,10 +27,13 @@ function findLiveTierFiles(): string[] {
   return [...seen].sort();
 }
 
-function relativeImports(text: string): string[] {
+// Each relative module a piece of source reaches: by import or export from,
+// a bare import, a dynamic import, or require, written with or without a
+// space before the bracket.
+export function relativeImports(text: string): string[] {
   return [
     ...text.matchAll(
-      /(?:\bfrom|\bimport|\bimport\()\s*["'](\.{1,2}\/[^"']+)["']/gu,
+      /(?:\bfrom|\bimport(?:\s*\()?|\brequire\s*\()\s*["'](\.{1,2}\/[^"']+)["']/gu,
     ),
   ].flatMap((match) => (match[1] === undefined ? [] : [match[1]]));
 }
@@ -149,9 +152,13 @@ const fileModules = new Set([
 ]);
 
 // What a piece of source takes from Node's file modules (ADR 23): each
-// function imported by name, under the name it has there, "default" for a
-// default import, and "*" for the whole module, however it is reached: a
-// namespace import, an import with require, a dynamic import or require.
+// function imported or re-exported by name, under the name it has there,
+// "default" for a default import, and "*" for the whole module. The whole
+// module is any other mention of a module's name, however it is used: a
+// namespace import or re-export, require, a dynamic import, createRequire,
+// process.getBuiltinModule or vi.importActual. An import or require whose
+// module is not written as one string counts as the whole module too, since
+// the source does not say which it is. A type-only import takes nothing.
 export function fileSystemImports(text: string): string[] {
   const source = parse(text);
   const found: string[] = [];
@@ -159,30 +166,57 @@ export function fileSystemImports(text: string): string[] {
     node !== undefined &&
     ts.isStringLiteralLike(node) &&
     fileModules.has(node.text);
+  const named = (
+    elements: ts.NodeArray<ts.ImportSpecifier | ts.ExportSpecifier>,
+  ): void => {
+    for (const element of elements) {
+      if (!element.isTypeOnly) {
+        found.push((element.propertyName ?? element.name).text);
+      }
+    }
+  };
   const visit = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node) && fromFiles(node.moduleSpecifier)) {
       const clause = node.importClause;
-      if (clause?.name !== undefined) found.push("default");
-      const bindings = clause?.namedBindings;
+      if (
+        clause === undefined ||
+        clause.phaseModifier === ts.SyntaxKind.TypeKeyword
+      )
+        return;
+      if (clause.name !== undefined) found.push("default");
+      const bindings = clause.namedBindings;
       if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
         found.push("*");
       } else if (bindings !== undefined) {
-        for (const element of bindings.elements) {
-          found.push((element.propertyName ?? element.name).text);
-        }
+        named(bindings.elements);
       }
-    } else if (
-      ts.isImportEqualsDeclaration(node) &&
-      ts.isExternalModuleReference(node.moduleReference) &&
-      fromFiles(node.moduleReference.expression)
+      return;
+    }
+    if (
+      ts.isExportDeclaration(node) &&
+      node.moduleSpecifier !== undefined &&
+      fromFiles(node.moduleSpecifier)
     ) {
+      if (node.isTypeOnly) return;
+      const clause = node.exportClause;
+      if (clause === undefined || ts.isNamespaceExport(clause)) {
+        found.push("*");
+      } else {
+        named(clause.elements);
+      }
+      return;
+    }
+    if (fromFiles(node)) {
       found.push("*");
     } else if (
       ts.isCallExpression(node) &&
       (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
         (ts.isIdentifier(node.expression) &&
           node.expression.text === "require")) &&
-      fromFiles(node.arguments[0])
+      !(
+        node.arguments[0] !== undefined &&
+        ts.isStringLiteralLike(node.arguments[0])
+      )
     ) {
       found.push("*");
     }

@@ -37,7 +37,7 @@ The check runs in the gate and blocks a merge. It lands with this record.
 
 | Check | What it asserts | What it catches |
 | --- | --- | --- |
-| The live tier writes no file | A `*.live.ts` file, or a file one imports, takes from `node:fs` or `node:fs/promises` only functions that read: `existsSync`, `readFile`, `readFileSync`, `readdir`, `readdirSync`, `stat` and `statSync`. It takes neither module whole, by any route. | A live check that edits its checkout, such as one that writes the deploy's addresses into the README to make itself pass. |
+| The live tier writes no file | A `*.live.ts` file, or a file one imports, takes from `node:fs` or `node:fs/promises` only functions that read: `existsSync`, `readFile`, `readFileSync`, `readdir`, `readdirSync`, `stat` and `statSync`. It takes neither module whole, by any route: a namespace import, a re-export, `require`, a dynamic import, `createRequire`, `process.getBuiltinModule` or `vi.importActual`. An import whose module is not written as one string counts as the whole module. | A live check that edits its checkout, such as one that writes the deploy's addresses into the README to make itself pass. |
 
 ## Consequences
 
@@ -51,4 +51,4 @@ The check runs in the gate and blocks a merge. It lands with this record.
 - A red live check no longer always means the deployed site is broken. It can mean the README is out of date.
 - The first deploy of a new deployment always fails its live check, because the addresses do not exist until that deploy ends. Step 7 of [docs/bootstrap.md](../bootstrap.md) says so.
 - The check runs after the merge. A pull request that takes an address out of the README passes the gate, and fails only after the next deploy.
-- The gate's check reads what the live tier imports from Node's file modules. A file written another way, such as by a child process or a Playwright option that saves a file, is not seen.
+- The gate's check reads what the live tier imports from Node's file modules. A file written another way, such as by a child process, a Playwright option that saves a file, or a reading function opened with a writing flag, is not seen.
