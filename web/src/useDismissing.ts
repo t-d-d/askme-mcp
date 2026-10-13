@@ -8,6 +8,10 @@
 // dismissal fails while one waits, the note that says so shows first, and
 // the waiting one's time stops. When that note goes, the note with Undo
 // comes back for its full time.
+//
+// The page keeps its dismissals while another screen shows. A dismissal
+// sent as the list goes that fails brings the ask back, and its note shows
+// when the list shows again, for its full time.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { askChangePaths } from "../../shared/page-api";
 import { useAuth } from "./auth";
@@ -33,10 +37,10 @@ const without = (ids: ReadonlySet<string>, id: string) => {
   return kept;
 };
 
-export function useDismissing(): Dismissing {
+export function useDismissing(listShown: boolean): Dismissing {
   const { getToken } = useAuth();
   // The latest way to get a token, so that the functions below keep their
-  // identity, and leaving the list is the only thing that sends early.
+  // identity, and nothing but leaving the list or the page sends early.
   const token = useRef(getToken);
   useEffect(() => {
     token.current = getToken;
@@ -51,35 +55,53 @@ export function useDismissing(): Dismissing {
     timer: number;
   } | null>(null);
   const failedTimer = useRef<number | undefined>(undefined);
+  // Whether the list shows, and whether a dismissal failed while it did not.
+  const shown = useRef(listShown);
+  const failedAway = useRef(false);
+
+  // Gives the note that a dismissal failed its full time. When it goes, a
+  // dismissal still waiting gets its note with Undo back for its full time.
+  const timeFailed = useCallback(() => {
+    window.clearTimeout(failedTimer.current);
+    failedTimer.current = window.setTimeout(() => {
+      const pending = waiting.current;
+      if (pending === null) {
+        setNote(null);
+        return;
+      }
+      setNote("dismissed");
+      window.clearTimeout(pending.timer);
+      pending.timer = window.setTimeout(pending.due, undoMs);
+    }, undoMs);
+  }, []);
 
   // Sends a dismissal. An ask the API no longer has is gone either way.
   // A dismissal sent as the page closes is kept alive past it.
-  const send = useCallback(async (id: string, keepalive = false) => {
-    try {
-      await changeAsk(askChangePaths.dismissed, { id }, token.current, {
-        keepalive,
-      });
-    } catch (error) {
-      if (error instanceof Refusal && error.code === "not_found") return;
-      setDismissed((ids) => without(ids, id));
-      setNote("failed");
-      // A dismissal still waiting stops its time while this note shows, and
-      // its note with Undo comes back when this one goes.
-      const held = waiting.current;
-      if (held !== null) window.clearTimeout(held.timer);
-      window.clearTimeout(failedTimer.current);
-      failedTimer.current = window.setTimeout(() => {
-        const pending = waiting.current;
-        if (pending === null) {
-          setNote(null);
-          return;
+  const send = useCallback(
+    async (id: string, keepalive = false) => {
+      try {
+        await changeAsk(askChangePaths.dismissed, { id }, token.current, {
+          keepalive,
+        });
+      } catch (error) {
+        if (error instanceof Refusal && error.code === "not_found") return;
+        setDismissed((ids) => without(ids, id));
+        setNote("failed");
+        // A dismissal still waiting stops its time while this note shows, and
+        // its note with Undo comes back when this one goes.
+        const held = waiting.current;
+        if (held !== null) window.clearTimeout(held.timer);
+        if (shown.current) {
+          timeFailed();
+        } else {
+          // The note's time starts when the list shows again.
+          window.clearTimeout(failedTimer.current);
+          failedAway.current = true;
         }
-        setNote("dismissed");
-        window.clearTimeout(pending.timer);
-        pending.timer = window.setTimeout(pending.due, undoMs);
-      }, undoMs);
-    }
-  }, []);
+      }
+    },
+    [timeFailed],
+  );
 
   // Sends the waiting dismissal now, if there is one, and its note goes, so
   // a page kept by the browser comes back with no Undo for it.
@@ -118,6 +140,21 @@ export function useDismissing(): Dismissing {
     setDismissed((ids) => without(ids, pending.id));
     setNote(null);
   }, []);
+
+  // Leaving the list for another screen sends the waiting dismissal at once.
+  // A note that a dismissal failed while the list was away gets its time as
+  // the list shows again.
+  useEffect(() => {
+    shown.current = listShown;
+    if (!listShown) {
+      sendWaiting();
+      return;
+    }
+    if (failedAway.current) {
+      failedAway.current = false;
+      timeFailed();
+    }
+  }, [listShown, sendWaiting, timeFailed]);
 
   // Closing the page or leaving it for another site sends the waiting
   // dismissal, so it is not lost with the page.

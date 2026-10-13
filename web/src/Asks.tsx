@@ -18,7 +18,7 @@ import { SortingLine } from "./SortingLine";
 import { browserSpeech } from "./speech";
 import { Tabs, type TabsHandle } from "./Tabs";
 import { useAsks } from "./useAsks";
-import { useDismissing } from "./useDismissing";
+import type { Dismissing } from "./useDismissing";
 import { useLineFocus } from "./useLineFocus";
 import { useListPlace } from "./useListPlace";
 import { useOpening } from "./useOpening";
@@ -73,14 +73,20 @@ import { inListOrder, lapsedAsks } from "./waiting";
 // that opened the card, or the ask after it when that ask has moved or gone,
 // or on the All clear headline when nothing is left on the tab
 // (useListPlace.ts).
-export function Asks({ card }: { card: string | null }) {
+export function Asks({
+  card,
+  dismissing,
+}: {
+  card: string | null;
+  dismissing: Dismissing;
+}) {
   const { data, receivedAt, polledAt, serviceAhead, failed } = useAsks();
   const [chosen, choose] = useState<Tab>(everything);
   const [showingHeld, showHeld] = useState(false);
   const [showingLapsed, showLapsed] = useState(false);
   const [speak] = useState(browserSpeech);
   const { opened, markOpened } = useOpening();
-  const { dismissed, note, dismiss, undo } = useDismissing();
+  const { dismissed, note, dismiss, undo } = dismissing;
   const heldFocus = useLineFocus();
   const lapsedFocus = useLineFocus();
   const headline = useRef<HTMLHeadingElement>(null);
