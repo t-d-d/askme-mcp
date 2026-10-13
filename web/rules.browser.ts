@@ -675,6 +675,30 @@ describe("the rules screen", () => {
     );
   });
 
+  it("says when a save did not go through, keeps the text, and offers to try again", async () => {
+    const changed = `${text}\n\n#family is home.`;
+    const bodies: (string | null)[] = [];
+    view = await openRules(
+      rulesApi(saved, (body) => {
+        bodies.push(body);
+        return new Status(503);
+      }),
+    );
+    const { page } = view;
+    await page.getByRole("textbox").fill(changed);
+    await page.getByRole("button", { name: "Save rules" }).click();
+    await page
+      .getByRole("status")
+      .filter({ hasText: "That didn't go through. Try again" })
+      .waitFor();
+    expect(await page.getByRole("textbox").inputValue()).toBe(changed);
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect.poll(() => bodies.length).toBe(2);
+    expect(bodies[1]).toBe(
+      JSON.stringify({ text: changed, timeZone: await browserZone(page) }),
+    );
+  });
+
   it("says to slow down when the rules are saved too often", async () => {
     view = await openRules(
       rulesApi(
