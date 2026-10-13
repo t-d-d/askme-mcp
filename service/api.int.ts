@@ -20,10 +20,10 @@ import {
 } from "../shared/page-api";
 import { noon, stopClockAt } from "../test/clock";
 import { storedItems } from "../test/dynamodb";
-import { fakes, testModelKey } from "../test/fakes";
+import { fakes, modelKeyParameter, testModelKey } from "../test/fakes";
 import { runSorts } from "../test/sorts";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
-import { invoke } from "../test/lambda";
+import { invoke, type LambdaHandler } from "../test/lambda";
 import { captureLogs, lineText } from "../test/logs";
 import { connect, origin } from "../test/mcp";
 import { handler } from "./src/handler";
@@ -465,9 +465,13 @@ describe.each(Object.values(pagePaths))("a call to %s", (path) => {
 const session = (account: string) =>
   issuer.sessionToken({ claims: { sub: account } });
 
-const saveRules = async (account: string, body: unknown) =>
+const saveRules = async (
+  account: string,
+  body: unknown,
+  using: LambdaHandler = handler,
+) =>
   invoke(
-    handler,
+    using,
     new Request(`${origin}${pagePaths.rules}`, {
       method: "PUT",
       headers: {
@@ -501,10 +505,13 @@ describe("the rules", () => {
   });
 
   it("are saved, with the hashtags the model read from them, each with its colour", async () => {
+    // A handler loaded afresh has not read the key, whatever ran before.
+    vi.resetModules();
+    const fresh = (await import("./src/handler")).handler;
     const account = newAccount();
     const calls = fakes.model.calls.length;
     fakes.model.reply({ json: { hashtags: ["shop", "work"], hours: [] } });
-    const response = await saveRules(account, { text: rulesText });
+    const response = await saveRules(account, { text: rulesText }, fresh);
     expect(response.status).toBe(200);
     const saved = {
       text: rulesText,
@@ -521,9 +528,7 @@ describe("the rules", () => {
     expect(fakes.model.calls.slice(calls)).toEqual([
       expect.objectContaining({ authorization: `Bearer ${testModelKey}` }),
     ]);
-    // The handler keeps the key for the whole file, so this holds only while
-    // this is the file's first test to reach the model.
-    expect(fakes.parameters.asked).toContain("/askme/openrouter/api-key");
+    expect(fakes.parameters.asked).toEqual([modelKeyParameter]);
   });
 
   it("are saved with the time zone sent, and each hashtag's hours, which the list carries too", async () => {

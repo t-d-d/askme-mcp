@@ -24,8 +24,13 @@ afterAll(() => {
 });
 
 // One run of the function, with one job, as the queue's trigger hands it.
-const runFor = (accountId: string, askId: string, receives = 1) =>
-  sorter(
+const runFor = (
+  accountId: string,
+  askId: string,
+  receives = 1,
+  using: typeof sorter = sorter,
+) =>
+  using(
     {
       Records: [
         {
@@ -38,9 +43,11 @@ const runFor = (accountId: string, askId: string, receives = 1) =>
     { awsRequestId: "sort-1" },
   );
 
-// The function keeps its services for the life of this file's module, so
-// this test must make the file's first run of it.
+// The function keeps its services for the life of its module, so this test
+// loads the module afresh, whatever ran before it.
 it("reads the model's key on its first sort, and keeps it for the runs after", async () => {
+  vi.resetModules();
+  const fresh = (await import("./src/sorter")).handler;
   const sub = `user_${randomUUID().slice(0, 8)}`;
   const account = jobAccount(sub);
   await store.saveRules(
@@ -59,14 +66,15 @@ it("reads the model's key on its first sort, and keeps it for the runs after", a
     askIds.push(posting.id);
   }
   const calls = fakes.model.calls.length;
-  const reads = fakes.parameters.asked.length;
   const capture = captureLogs();
   try {
     for (const askId of askIds) {
       fakes.model.reply({
         json: { hashtags: ["work"], level: "normal", reason: "Routine." },
       });
-      expect(await runFor(sub, askId)).toEqual({ batchItemFailures: [] });
+      expect(await runFor(sub, askId, 1, fresh)).toEqual({
+        batchItemFailures: [],
+      });
     }
   } finally {
     capture.restore();
@@ -82,7 +90,7 @@ it("reads the model's key on its first sort, and keeps it for the runs after", a
     authorization: `Bearer ${testModelKey}`,
   });
   expect(fakes.model.calls.slice(calls)).toEqual(askIds.map(() => keyed));
-  expect(fakes.parameters.asked.slice(reads)).toEqual([modelKeyParameter]);
+  expect(fakes.parameters.asked).toEqual([modelKeyParameter]);
 });
 
 // OpenRouter answers 401 for a refused key and 402 for spent credit, which
