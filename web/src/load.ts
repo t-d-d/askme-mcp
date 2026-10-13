@@ -88,14 +88,20 @@ export const momentNow = (): Moment => ({
   steady: performance.now(),
 });
 
+// How far Date.now() moves on past performance.now() before a page visible
+// throughout reads it as the device sleeping rather than putting its clock
+// right. A device rarely puts its clock right by this much.
+const sleptAtLeast = 60 * 60 * 1000;
+
 // How far the service's clock is ahead of this browser's at a moment, from
 // how far it was at an earlier one, with no answer from the service between.
 // The service's clock has moved on by the time that passed. On a page visible
 // throughout, that is performance.now()'s count, so putting the device's
-// clock right in between moves nothing on the service's. A hidden page may be
-// on a device that slept, which performance.now() may not count, so there it
-// is Date.now()'s count, or performance.now()'s where that is more, as no less
-// time can have passed.
+// clock right in between moves nothing on the service's. A device may have
+// slept in between, which performance.now() may not count. A hidden page may
+// be on one, and so may a visible page whose Date.now() has moved on an hour
+// or more past performance.now(). There it is Date.now()'s count, or
+// performance.now()'s where that is more, as no less time can have passed.
 export function aheadSince(
   ahead: number,
   then: Moment,
@@ -104,7 +110,8 @@ export function aheadSince(
 ): number {
   const byDate = now.date - then.date;
   const bySteady = now.steady - then.steady;
-  const passed = visibleThroughout ? bySteady : Math.max(byDate, bySteady);
+  const mayHaveSlept = !visibleThroughout || byDate - bySteady >= sleptAtLeast;
+  const passed = mayHaveSlept ? Math.max(byDate, bySteady) : bySteady;
   return ahead + passed - byDate;
 }
 

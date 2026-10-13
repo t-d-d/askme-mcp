@@ -12,7 +12,8 @@
 // daily cap on model calls resets, with that clock. While polls fail, the
 // page counts the service's clock on from the last poll that reached askme
 // (aheadSince in load.ts), so the device putting its own clock right in the
-// meantime moves none of those times.
+// meantime moves none of those times, unless it moves it on an hour or more,
+// which the page reads as the device sleeping.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   pagePaths,
