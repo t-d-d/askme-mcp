@@ -3,7 +3,8 @@ import type { PageAsk } from "../../shared/page-api";
 import type { AskActions } from "./actions";
 import { destinations } from "./links";
 import styles from "./MoreAsks.module.css";
-import { askColour, neutral, tagColour, type HashtagColour } from "./palette";
+import { askColour, tagColour, type HashtagColour } from "./palette";
+import { HashtagPills } from "./Pills";
 import { cardHref } from "./screen";
 import { SiteName } from "./SiteName";
 import type { Tab } from "./tab";
@@ -89,15 +90,11 @@ function Row({
           {sort === null ? (
             <span className={styles.pill}>Not sorted yet</span>
           ) : (
-            sort.hashtags.map((name) => (
-              <span
-                className={styles.pill}
-                key={name}
-                style={tagColour(colours.get(name) ?? neutral)}
-              >
-                #{name}
-              </span>
-            ))
+            <HashtagPills
+              hashtags={sort.hashtags}
+              colours={colours}
+              className={styles.pill}
+            />
           )}
           <span>{age(postedAt, now, serviceAhead)}</span>
           {opened && <span>Opened</span>}
