@@ -188,31 +188,39 @@ describe("sorting an ask", () => {
     expect(emptyRulesSort.hashtags).toEqual([]);
   });
 
-  it("does nothing when the ask is no longer open", async () => {
+  it("does nothing when the ask is no longer open, and is done", async () => {
     const memory = memoryStore(undefined);
     const { model, asked } = memoryModel([good]);
-    await run(memory, model);
+    expect(await run(memory, model)).toBe("done");
     expect(asked).toEqual([]);
     expect(memory.recorded).toEqual([]);
   });
 
-  it("does nothing when the ask is already sorted with these rules", async () => {
-    const sorted: StoredAsk = {
-      ...ask,
-      sort: {
-        hashtags: ["work"],
-        level: "low",
-        reason: "Routine.",
-        rulesVersion: 4,
-        sortedAt: now.toISOString(),
-      },
-    };
-    const memory = memoryStore({ ask: sorted, rules });
-    const { model, asked } = memoryModel([good]);
-    await run(memory, model);
-    expect(asked).toEqual([]);
-    expect(memory.recorded).toEqual([]);
+  // The ask, sorted with the given version of the rules.
+  const sortedWith = (rulesVersion: number): StoredAsk => ({
+    ...ask,
+    sort: {
+      hashtags: ["work"],
+      level: "low",
+      reason: "Routine.",
+      rulesVersion,
+      sortedAt: now.toISOString(),
+    },
   });
+
+  it.each([
+    ["the rules in force", rules.version],
+    ["a newer version than the one it read", rules.version + 1],
+  ])(
+    "does nothing when the ask is already sorted with %s, and is done",
+    async (_, version) => {
+      const memory = memoryStore({ ask: sortedWith(version), rules });
+      const { model, asked } = memoryModel([good]);
+      expect(await run(memory, model)).toBe("done");
+      expect(asked).toEqual([]);
+      expect(memory.recorded).toEqual([]);
+    },
+  );
 
   it("tries again when a reply is discarded, and stores the next good one", async () => {
     const memory = memoryStore({ ask, rules });
@@ -315,11 +323,6 @@ describe("sorting an ask", () => {
     });
     expect(asked).toHaveLength(sortAttempts);
     expect(memory.recorded).toEqual([]);
-  });
-
-  it("is done when the ask is no longer open, or already sorted with these rules", async () => {
-    const { model } = memoryModel([]);
-    expect(await run(memoryStore(undefined), model)).toBe("done");
   });
 });
 

@@ -19,16 +19,9 @@ export const suites: Record<string, Suite> = {
   },
   view: {
     about:
-      "What the poll and the rules show the page, and whether an ask is sorted with the rules in force.",
-    mutate: ["service/src/view.ts", "service/src/sorter.ts:83-83"],
-    tests: [
-      "service/src/view.test.ts",
-      "service/src/sorter-up-to-date.test.ts",
-      "service/cap-reset.int.ts",
-      "service/api.int.ts",
-      "service/src/sorter.test.ts",
-      "fitness/sort-queue.int.ts",
-    ],
+      "What the poll and the rules show the page, and whether an ask is sorted with the rules in force, against their unit tests.",
+    mutate: ["service/src/view.ts", "service/src/sorter.ts:90-90"],
+    tests: ["service/src/view.test.ts", "service/src/sorter.test.ts"],
   },
   refusalNote: {
     about:
