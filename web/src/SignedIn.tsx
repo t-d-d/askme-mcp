@@ -4,6 +4,7 @@ import { Asks } from "./Asks";
 import { Connect } from "./Connect";
 import { Rules } from "./Rules";
 import { cardIn, screenIn, type AskFirst, type Screen } from "./screen";
+import { slide } from "./slide";
 import { useDismissing, type Dismissing } from "./useDismissing";
 
 // Where this page's entry sits in the history, where the browser can say.
@@ -20,7 +21,8 @@ const historyIndex = (): number | null =>
 //
 // Each screen starts at the top. The list and its cards are one screen,
 // which keeps the list's place itself (useListPlace.ts), so the browser
-// keeps none of its own for Back.
+// keeps none of its own for Back. A screen that sits higher than the one
+// it opens from slides in, and slides out as it goes (slide.ts).
 function useScreen(): {
   screen: Screen;
   card: string | null;
@@ -33,11 +35,20 @@ function useScreen(): {
     window.history.scrollRestoration = "manual";
     let at = historyIndex();
     let returning = false;
+    // The address a traversal of the history has reached, when the browser
+    // drew its own movement on the way, as a phone's browser may when the
+    // person swipes Back. The page does not move the screen a second time.
+    let browserDrew: string | null = null;
+    const traverse = (event: PopStateEvent) => {
+      browserDrew = event.hasUAVisualTransition ? window.location.href : null;
+    };
     // A link, Back or a typed address has changed the fragment before the
     // page hears of it. If the person stays, the page goes back to the
     // entry they were on, so the history is left as it was. A browser that
     // cannot say where that entry is gets the old address as a new entry.
     const follow = (event: HashChangeEvent) => {
+      const browserMoved = browserDrew === event.newURL;
+      browserDrew = null;
       if (returning) {
         returning = false;
         return;
@@ -55,11 +66,17 @@ function useScreen(): {
       }
       at = here;
       const left = screenIn(new URL(event.oldURL).hash);
-      setHash(window.location.hash);
-      if (screenIn(window.location.hash) !== left) window.scrollTo(0, 0);
+      // The address is read as the screen changes, which a slide holds back
+      // a moment.
+      slide(() => {
+        setHash(window.location.hash);
+        if (screenIn(window.location.hash) !== left) window.scrollTo(0, 0);
+      }, browserMoved);
     };
+    window.addEventListener("popstate", traverse);
     window.addEventListener("hashchange", follow);
     return () => {
+      window.removeEventListener("popstate", traverse);
       window.removeEventListener("hashchange", follow);
       window.history.scrollRestoration = restoring;
     };

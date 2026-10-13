@@ -11,6 +11,7 @@ import { Held } from "./Held";
 import { NewAccount } from "./NewAccount";
 import { OpenCard } from "./OpenCard";
 import { hashtagColours } from "./palette";
+import { layers, useLayer } from "./slide";
 import { SortingLine } from "./SortingLine";
 import { browserSpeech } from "./speech";
 import { Tabs, type TabsHandle } from "./Tabs";
@@ -146,6 +147,7 @@ export function Asks({
   if (showingHeld && !keepHeld) showHeld(false);
   if (showingLapsed && !keepLapsed) showLapsed(false);
   if (tab !== chosen) choose(tab);
+  useLayer(open === undefined ? layers.list : layers.card);
   const list = useListPlace(
     open?.id,
     shown.map(({ id }) => id),

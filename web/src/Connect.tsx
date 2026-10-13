@@ -4,6 +4,7 @@ import styles from "./Connect.module.css";
 import { cursorInstallLink } from "./cursor";
 import { NewTabLink } from "./NewTabLink";
 import { SampleAsks } from "./SampleAsks";
+import { layers, useLayer } from "./slide";
 import { backToList, followToList } from "./toList";
 import { useAnswer } from "./useAnswer";
 
@@ -12,6 +13,7 @@ import { useAnswer } from "./useAnswer";
 // yet can send sample asks instead, and is taken to the list to watch
 // their rules sort them.
 export function Connect() {
+  useLayer(layers.connect);
   const { data, failed } = useAnswer(pagePaths.connection, connectionAnswer);
   const address = useRef<HTMLInputElement>(null);
   const addressId = useId();

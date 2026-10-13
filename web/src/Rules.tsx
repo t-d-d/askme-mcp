@@ -7,6 +7,7 @@ import { refusalNote } from "./refusalNote";
 import styles from "./Rules.module.css";
 import { rulesState, type NoteKind } from "./rulesState";
 import type { AskFirst } from "./screen";
+import { layers, useLayer } from "./slide";
 import { followToList } from "./toList";
 import { useAfter } from "./useAfter";
 import { useAsks } from "./useAsks";
@@ -33,6 +34,7 @@ const leaving = "Leave without saving your rules?";
 // decides when asks stop and when the limit resets, for the note and the
 // button alike.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
+  useLayer(layers.rules);
   const auth = useAuth();
   const { loaded, save } = useRules();
   const { data } = loaded;

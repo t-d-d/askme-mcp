@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { PageAsk } from "../../shared/page-api";
 import type { AskActions } from "./actions";
 import { BackIcon, SpeakerIcon } from "./Icon";
@@ -7,6 +8,7 @@ import { OutLink } from "./OutLink";
 import { askColour, tagColour, type HashtagColour } from "./palette";
 import { Pills } from "./Pills";
 import { SiteName } from "./SiteName";
+import { slide } from "./slide";
 import { listenLength } from "./speech";
 import type { Tab } from "./tab";
 import { backToList, followToList } from "./toList";
@@ -47,6 +49,9 @@ export function OpenCard({
   const followed = () => {
     markOpened(id);
   };
+  // The card stays until the slide draws the list, so Dismiss can be tapped
+  // again before then. The ask is dismissed once.
+  const dismissing = useRef(false);
   return (
     <div
       className={styles.screen}
@@ -62,9 +67,14 @@ export function OpenCard({
           className={styles.dismiss}
           type="button"
           onClick={() => {
-            dismiss(id);
-            // The card is gone, so Back does not come back to it.
-            backToList();
+            if (dismissing.current) return;
+            dismissing.current = true;
+            // The card goes as the ask does, so it slides out then.
+            slide(() => {
+              dismiss(id);
+              // The card is gone, so Back does not come back to it.
+              backToList();
+            });
           }}
         >
           Dismiss
