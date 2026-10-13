@@ -285,6 +285,45 @@ describe("the tabs", () => {
     expect(await focused(tab(page, "#work"))).toBe(true);
   });
 
+  it("leave focus where it is when a tab goes after focus left it for the page", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#family").focus();
+    // As a click on plain text does, focus goes to the page itself.
+    await tab(page, "#family").blur();
+    expect(await page.evaluate(() => document.activeElement?.tagName)).toBe(
+      "BODY",
+    );
+    answer = {
+      ...list,
+      version: list.version + 1,
+      hashtags: hashtags.filter(({ name }) => name !== "family"),
+    };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "#family").waitFor({ state: "detached" });
+    expect(await focused(tab(page, "Everything"))).toBe(false);
+  });
+
+  it("leave focus off the tabs when the ask whose card has focus leaves the list", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    const link = page.getByRole("link", {
+      name: "Merge the fix for checkout rounding?",
+    });
+    await link.focus();
+    answer = {
+      ...list,
+      version: list.version + 1,
+      asks: list.asks.filter(({ id }) => id !== "a"),
+    };
+    await page.clock.fastForward(pollMs);
+    await link.waitFor({ state: "detached" });
+    expect(await focused(tab(page, "Everything"))).toBe(false);
+  });
+
   it("stay on Everything when a hashtag that left the rules comes back", async () => {
     let answer = list;
     view = await open(new Answering((url) => answerPoll(url, answer)), true);
