@@ -32,6 +32,8 @@ const issue = "https://github.com/t-d-d/askme-mcp/issues/7";
 const ticket = "https://linear.app/askme/issue/ASK-3";
 const googleDoc = "https://docs.google.com/document/d/1AbC/edit";
 const cloudflare = "https://dash.cloudflare.com/a1b2/example.com/dns";
+const aws = "https://console.aws.amazon.com/s3/buckets/shop";
+const longPart = "https://averyveryverylongsubdomainname.example.com/a";
 const sessionLink = "https://claude.ai/code/session_01AbC";
 
 const ask = (
@@ -88,6 +90,16 @@ const cloudflareAndSession = ask(
   40 * minute,
   { actionLink: cloudflare, sessionLink },
 );
+
+const awsAndSession = ask("bucket", "Empty the old bucket?", 40 * minute, {
+  actionLink: aws,
+  sessionLink,
+});
+
+const longPartAndSession = ask("part", "Check the old host?", 40 * minute, {
+  actionLink: longPart,
+  sessionLink,
+});
 
 let view: OpenPage | undefined;
 afterEach(async () => {
@@ -203,6 +215,30 @@ const lineCount = (element: Locator) =>
     return new Set(rects.map(({ top }) => Math.round(top))).size;
   });
 
+// Where an element's text starts each new line after the first, as the text
+// before the break, in the page's own font.
+const lineEnds = (element: Locator) =>
+  element.evaluate(async (each) => {
+    await document.fonts.ready;
+    const walker = document.createTreeWalker(each, NodeFilter.SHOW_TEXT);
+    const ends: string[] = [];
+    let before = "";
+    let top: number | undefined;
+    const range = document.createRange();
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node.textContent ?? "";
+      for (let at = 0; at < text.length; at += 1) {
+        range.setStart(node, at);
+        range.setEnd(node, at + 1);
+        const here = Math.round(range.getBoundingClientRect().top);
+        if (top !== undefined && here !== top) ends.push(before);
+        top = here;
+        before += text.charAt(at);
+      }
+    }
+    return ends;
+  });
+
 const cardIsOpen = (opened: OpenPage) =>
   opened.page.evaluate(() => window.location.hash.startsWith("#ask/"));
 
@@ -288,6 +324,36 @@ describe("the top card's buttons", () => {
       ).toBe(size);
     },
   );
+
+  // A name too long for one line even at 11px breaks just after a dot, not
+  // inside a word (docs/design.md).
+  it("break console.aws.amazon.com only after a dot on a narrow phone, beside both icon buttons", async () => {
+    const card = await narrowCard(awsAndSession);
+    const name = card.locator(`a[href="${aws}"] span`).nth(1);
+    expect(await name.innerText()).toBe("console.aws.amazon.com");
+    expect(await name.evaluate((each) => getComputedStyle(each).fontSize)).toBe(
+      "11px",
+    );
+    const ends = await lineEnds(name);
+    expect(ends.length).toBeGreaterThan(0);
+    for (const end of ends) expect(end).toMatch(/\.$/u);
+  });
+
+  // A part too long for a line on its own is split, so the name stays inside
+  // the button, and the rest still breaks after a dot (docs/design.md).
+  it("split only a part too long for a line on its own, and keep the name inside the button", async () => {
+    const card = await narrowCard(longPartAndSession);
+    const name = card.locator(`a[href="${longPart}"] span`).nth(1);
+    expect(
+      await name.evaluate((each) => each.scrollWidth <= each.clientWidth),
+    ).toBe(true);
+    const ends = await lineEnds(name);
+    const split = ends.filter((end) => !end.endsWith("."));
+    expect(split.length).toBeGreaterThan(0);
+    for (const end of split) {
+      expect("averyveryverylongsubdomainname".startsWith(end)).toBe(true);
+    }
+  });
 
   it("say in each link's name that it opens a new tab, and show nothing new", async () => {
     const { page } = await open(listOf(both));

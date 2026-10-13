@@ -5,6 +5,7 @@ import {
   longSite,
   sessionLabel,
   siteOf,
+  siteParts,
 } from "./links";
 
 describe("the site a link leads to", () => {
@@ -39,6 +40,17 @@ describe("a long site name", () => {
     "console.aws.amazon.com",
   ])("is %s, of more than 15 characters", (site) => {
     expect(longSite(site)).toBe(true);
+  });
+});
+
+describe("the places a site's name may break", () => {
+  it.each([
+    ["console.aws.amazon.com", ["console.", "aws.", "amazon.", "com"]],
+    ["github.com", ["github.", "com"]],
+    ["localhost", ["localhost"]],
+    ["a.a.com", ["a.", "a.", "com"]],
+  ])("split %s just after each dot", (site, parts) => {
+    expect(siteParts(site)).toEqual(parts);
   });
 });
 
