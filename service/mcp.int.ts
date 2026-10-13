@@ -79,6 +79,37 @@ describe("the metadata", () => {
       resource_name: "askme",
     });
   });
+
+  // The SDK's browser client sends MCP-Protocol-Version on the metadata GET,
+  // so the browser asks first.
+  it("answers a browser's preflight so that the GET may go ahead", async () => {
+    const response = await invoke(
+      handler,
+      new Request(metadataUrl, {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://client.example",
+          "access-control-request-method": "GET",
+          "access-control-request-headers": "mcp-protocol-version",
+        },
+      }),
+    );
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(response.headers.get("access-control-allow-methods")).toBe("GET");
+    expect(response.headers.get("access-control-allow-headers")).toBe(
+      "mcp-protocol-version",
+    );
+  });
+
+  it("leaves the MCP endpoint without a preflight answer", async () => {
+    const response = await invoke(
+      handler,
+      new Request(mcpUrl, { method: "OPTIONS" }),
+    );
+    expect(response.status).toBe(404);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
 });
 
 describe.each(eras)(
