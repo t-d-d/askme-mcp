@@ -31,10 +31,10 @@ export const sortAttempts = 2;
 export const sortDeliveries = 3;
 
 // The sort function's timeout in the deployment definition leaves room for
-// sortAttempts tries.
+// sortAttempts tries. The eval sends this too.
 export const sortTimeoutMs = 20_000;
 
-// Room for a few hashtags, a level and one line.
+// Room for a few hashtags, a level and one line. The eval sends this too.
 export const sortMaxTokens = 300;
 
 export const emptyRulesSort: Sort = {

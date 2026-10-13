@@ -19,6 +19,7 @@ export function AllClear({
   noted: boolean;
   ref?: Ref<HTMLHeadingElement>;
 }) {
+  // The page moves focus here when the control that had it goes.
   return (
     <main className={styles.allClear} data-noted={noted ? "" : undefined}>
       <h1 className={styles.headline} ref={ref} tabIndex={-1}>

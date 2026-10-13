@@ -5,7 +5,8 @@ import type { AccountId } from "./identity";
 import { rateLimits, windowOf } from "./rate";
 import type { Store } from "./store/store";
 
-// The best of the candidates in evals/scores.md.
+// The best of the candidates in evals/scores.md. Changing it needs a run of
+// the eval before and after.
 export const defaultModel = "anthropic/claude-haiku-5.5";
 
 export const openRouterEndpoint = "https://openrouter.ai/api/v1";

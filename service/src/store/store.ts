@@ -132,7 +132,9 @@ const windowsOf = (hours: HashtagWindow[] | undefined) =>
   hours === undefined || hours.length === 0 ? {} : { hours };
 
 // Read while an account has no rules item. Seeding seen keeps each example
-// hashtag's colour after the person saves their own rules.
+// hashtag's colour after the person saves their own rules. A save of them
+// unchanged stores them at version 0 (ADR 22), so the version stays at 0
+// until the first save that reads rules.
 const firstRules: AccountRules = {
   text: exampleRules.text,
   hashtags: [...exampleRules.reading.hashtags],
@@ -208,12 +210,16 @@ export interface Store {
     now: Date,
   ): Promise<AccountRules | undefined>;
   modelCapSpent(account: AccountId, now: Date): Promise<boolean>;
+  // False, writing nothing, when META already holds that time or a later
+  // one.
   recordModelCapReset(account: AccountId, resetsAt: Date): Promise<boolean>;
   askToSort(
     account: AccountId,
     askId: string,
     now: Date,
   ): Promise<AskToSort | undefined>;
+  // False when the ask is no longer open, or already holds a sort made with
+  // newer rules.
   recordSort(
     account: AccountId,
     askId: string,
@@ -417,8 +423,8 @@ export function createStore(config: {
     ]);
   }
 
-  // DynamoDB deletes expired items late, so every read checks expiry
-  // (ADR 5).
+  // Every read is strongly consistent (ADR 13). DynamoDB deletes expired
+  // items late, so every read checks expiry too (ADR 5).
   async function stored<Item extends { expiresAt: number }>(
     key: Key,
     schema: z.ZodType<Item>,

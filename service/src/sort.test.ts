@@ -133,7 +133,8 @@ describe("the sorting prompt", () => {
     expect(system).toContain(
       "give no weight to a date, a deadline or a time limit the ask names",
     );
-    // Nothing about time makes an ask high, a prompt that times out included.
+    // Nothing about time makes an ask high, and the prompt gives no example
+    // of a prompt that times out.
     const high = levelLine(system, "high");
     expect(high).toBeDefined();
     expect(high).not.toMatch(/deadline|soon|time/u);
