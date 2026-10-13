@@ -133,7 +133,7 @@ export function Asks({ card }: { card: string | null }) {
     serviceAhead,
   );
   const sorting = sortingLine(
-    sortingState(asks, polledAt),
+    sortingState(asks, polledAt, serviceAhead),
     capResets === null ? null : clockTime(capResets),
   );
   const waiting = (list: readonly PageAsk[]) =>

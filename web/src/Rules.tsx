@@ -36,7 +36,8 @@ const leaving = "Leave without saving your rules?";
 // to know when asks stopped and when the limit is reached. A save refused
 // at the limit keeps the text in the box, and says when the limit resets.
 // That note goes once the limit resets, with no reload. The service's clock
-// decides when the limit resets, for the note and the button alike.
+// decides when asks stop and when the limit resets, for the note and the
+// button alike.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const auth = useAuth();
   const { loaded, save } = useRules();
@@ -70,7 +71,8 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
     ) !== null;
   const stopped =
     data !== undefined &&
-    sortingState(listed.data?.asks ?? [], listed.polledAt).stopped > 0;
+    sortingState(listed.data?.asks ?? [], listed.polledAt, listed.serviceAhead)
+      .stopped > 0;
   // A save of unchanged text would be refused while the limit is reached.
   const awake = stopped && !capSpent;
   const ready = changed || awake;

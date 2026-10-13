@@ -84,6 +84,18 @@ const behind = (offset: number): AsksAnswer => ({
   ],
 });
 
+// An ask not sorted yet, which turns stopped at the time given by the
+// service's clock.
+const behindUntil = (sortingUntil: string): AsksAnswer["asks"][number] => ({
+  id: "a",
+  summary: "Renew the shop's domain?",
+  spokenDetail: "The domain lapses on Friday.",
+  postedAt: new Date(Date.parse(sortingUntil) - 30 * minute).toISOString(),
+  opened: false,
+  sortingUntil,
+  sort: null,
+});
+
 // The rules screen, with the rules answered by the given answer and saved
 // by the given one, and the open asks by the list given.
 async function openRules(
@@ -112,6 +124,49 @@ const rulesApi = (
   new Answering((_, __, sent) =>
     sent.method === "PUT" ? onSave(sent.body) : loaded,
   );
+
+// Opens the list in London on a page whose clock stands still two minutes
+// before a moment by the service's clock, which is serviceAhead ahead of
+// the page's, and waits for the sorting line to read as given. Then it opens
+// the rules, which have the list from the start, and finds Save rules
+// neutral until the first poll after the moment wakes it. Each poll's
+// answer gives the service's time in its Date header, as it is then,
+// because the page's clock moves only when the test moves it.
+async function wakesSaveRulesAt(
+  moment: string,
+  serviceAhead: number,
+  asks: AsksAnswer,
+  line: string,
+): Promise<void> {
+  const here = Date.parse(moment) - serviceAhead;
+  let pageAt = here - 2 * minute;
+  view = await openPage(inject("pageUrl"), phone, {
+    session,
+    email,
+    timeZone: "Europe/London",
+    clock: { stoppedAt: new Date(pageAt) },
+    api: {
+      [pagePaths.rules]: saved,
+      [pagePaths.asks]: datedPolls(
+        () => asks,
+        () => pageAt + serviceAhead,
+      ),
+    },
+  });
+  const { page } = view;
+  await stepUntilShown(page, page.getByText(line, { exact: true }));
+  await page.getByRole("link", { name: "Rules" }).click();
+  const save = page.getByRole("button", { name: "Save rules" });
+  await stepUntil(
+    page,
+    async () => (await page.getByRole("textbox").inputValue()) === text,
+    "the rules to load",
+  );
+  expect(await save.isDisabled()).toBe(true);
+  pageAt = here + pollMs;
+  await page.clock.pauseAt(new Date(pageAt));
+  await stepUntil(page, () => save.isEnabled(), "Save rules to wake");
+}
 
 const sleep = (ms: number) =>
   new Promise((resolve) => {
@@ -460,12 +515,10 @@ describe("the rules screen", () => {
   );
 
   // Asks that couldn't be sorted wake Save rules once today's sorting limit
-  // resets. The service counts the limit by its own clock, which the Date
-  // header of each poll's answer gives, so the button wakes when the
-  // service's day ends, even on a page whose clock is a few minutes out. A
-  // clock three minutes fast reads 00:03 then, and one three minutes slow
-  // reads 23:57. The page's clock stands still and moves only when the test
-  // moves it, so each answer can give the service's time as it is then.
+  // resets. The service counts the limit by its own clock, so the button
+  // wakes when the service's day ends, even on a page whose clock is a few
+  // minutes out. A clock three minutes fast reads 00:03 then, and one three
+  // minutes slow reads 23:57.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
@@ -473,55 +526,38 @@ describe("the rules screen", () => {
     "wakes Save rules when the service's day ends, on a clock a few minutes %s",
     async (_, serviceAhead) => {
       const resets = "2026-10-13T00:00:00.000Z";
-      const reset = Date.parse(resets) - serviceAhead;
-      let pageAt = reset - 2 * minute;
-      const stopped: AsksAnswer = {
-        ...list,
-        modelCapResetsAt: resets,
-        asks: [
-          {
-            id: "a",
-            summary: "Renew the shop's domain?",
-            spokenDetail: "The domain lapses on Friday.",
-            postedAt: "2026-10-12T21:00:00.000Z",
-            opened: false,
-            sortingUntil: "2026-10-12T21:30:00.000Z",
-            sort: null,
-          },
-        ],
-      };
-      view = await openPage(inject("pageUrl"), phone, {
-        session,
-        email,
-        timeZone: "Europe/London",
-        clock: { stoppedAt: new Date(pageAt) },
-        api: {
-          [pagePaths.rules]: saved,
-          [pagePaths.asks]: datedPolls(
-            () => stopped,
-            () => pageAt + serviceAhead,
-          ),
+      await wakesSaveRulesAt(
+        resets,
+        serviceAhead,
+        {
+          ...list,
+          modelCapResetsAt: resets,
+          asks: [behindUntil("2026-10-12T21:30:00.000Z")],
         },
-      });
-      const { page } = view;
-      // The list says the limit is reached before the rules screen opens,
-      // so the screen has the list from the start.
-      await stepUntilShown(
-        page,
-        page.getByText("Today's sorting limit is reached. It resets at 01:00."),
+        "Today's sorting limit is reached. It resets at 01:00.",
       );
-      await page.getByRole("link", { name: "Rules" }).click();
-      const save = page.getByRole("button", { name: "Save rules" });
-      await stepUntil(
-        page,
-        async () => (await page.getByRole("textbox").inputValue()) === text,
-        "the rules to load",
+    },
+  );
+
+  // An ask that couldn't be sorted wakes Save rules. The service gives the
+  // time an ask turns stopped by its own clock, so the button wakes when the
+  // service's time for it comes, even on a page whose clock is a few minutes
+  // out. For an ask that turns stopped at 18:30 UTC by the service's clock,
+  // a clock three minutes fast reads 18:33 then, and one three minutes slow
+  // reads 18:27.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "wakes Save rules when the service's time for an ask that couldn't be sorted comes, on a clock a few minutes %s",
+    async (_, serviceAhead) => {
+      const turns = "2026-10-12T18:30:00.000Z";
+      await wakesSaveRulesAt(
+        turns,
+        serviceAhead,
+        { ...list, asks: [behindUntil(turns)] },
+        "Sorting 1 ask with your rules",
       );
-      expect(await save.isDisabled()).toBe(true);
-      // The first poll after the reset wakes the button.
-      pageAt = reset + pollMs;
-      await page.clock.pauseAt(new Date(pageAt));
-      await stepUntil(page, () => save.isEnabled(), "Save rules to wake");
     },
   );
 
