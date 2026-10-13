@@ -37,7 +37,6 @@ afterAll(async () => {
 
 // Noon UTC keeps each test far from the end of the day the cap counts in.
 beforeEach(() => {
-  fakes.queue.purge();
   startClockAt(noon);
 });
 

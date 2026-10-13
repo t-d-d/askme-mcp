@@ -195,7 +195,6 @@ describe("fitness: no content reaches the output (logging.md)", () => {
         sorter(event, { awsRequestId: "sort-1" }),
       );
     }
-    fakes.queue.purge();
   });
 
   it("runs the paths that open and dismiss an ask from the page", async () => {
