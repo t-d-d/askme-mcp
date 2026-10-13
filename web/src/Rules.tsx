@@ -1,21 +1,16 @@
-import {
-  useEffect,
-  useId,
-  useState,
-  type MouseEvent,
-  type SubmitEvent,
-} from "react";
+import { useId, useState, type ReactNode, type SubmitEvent } from "react";
 import { rulesLimit } from "../../shared/page-api";
 import { useAuth } from "./auth";
-import type { AskFirst } from "./SignedIn";
 import { hoursText } from "./hours";
 import { colourOf, tagColour } from "./palette";
-import { refusalNote, type RefusalNote } from "./refusalNote";
+import { refusalNote } from "./refusalNote";
 import styles from "./Rules.module.css";
-import { capSpentUntil, sortingState } from "./sorting";
-import { elsewhere, followToList } from "./toList";
+import { rulesState, type NoteKind } from "./rulesState";
+import type { AskFirst } from "./screen";
+import { followToList } from "./toList";
 import { useAfter } from "./useAfter";
 import { useAsks } from "./useAsks";
+import { useLeaveGuard } from "./useLeaveGuard";
 import { browserTimeZone, useRules } from "./useRules";
 
 const leaving = "Leave without saving your rules?";
@@ -40,7 +35,7 @@ const leaving = "Leave without saving your rules?";
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const auth = useAuth();
   const { loaded, save } = useRules();
-  const { data, failed } = loaded;
+  const { data } = loaded;
   const listed = useAsks();
   const boxId = useId();
   const readId = useId();
@@ -57,63 +52,24 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
     setResorting(false);
     save.reset();
   });
-  const text = draft ?? data?.text ?? "";
-  const changed = data !== undefined && draft !== null && draft !== data.text;
-  const capSpent =
-    capSpentUntil(
-      listed.data?.modelCapResetsAt,
-      listed.polledAt,
-      listed.serviceAhead,
-    ) !== null;
-  const stopped =
-    data !== undefined &&
-    sortingState(listed.data?.asks ?? [], listed.polledAt, listed.serviceAhead)
-      .stopped > 0;
-  // A save of unchanged text would be refused while the limit is reached.
-  const awake = stopped && !capSpent;
-  const ready = changed || awake;
-  // The note for a save of unchanged text stands until a poll that came
-  // back after the save finds asks stopped again, or the limit reached.
-  const resorted =
-    resorting &&
-    !(
-      (stopped || capSpent) &&
-      !save.isPending &&
-      listed.receivedAt > save.submittedAt
-    );
+  const { text, changed, ready, note } = rulesState({
+    loaded,
+    listed,
+    draft,
+    resorting,
+    save: {
+      pending: save.isPending,
+      succeeded: save.isSuccess,
+      submittedAt: save.submittedAt,
+      refused,
+    },
+  });
+  const { away, mayLeave } = useLeaveGuard(changed, askFirst, leaving);
 
-  // Leaving with unsaved text asks first. The screens ask when Back or a
-  // typed address changes the fragment, and the browser asks before the tab
-  // closes.
-  useEffect(() => {
-    if (!changed) return;
-    askFirst(leaving);
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => {
-      askFirst(null);
-      window.removeEventListener("beforeunload", warn);
-    };
-  }, [changed, askFirst]);
-  // This screen's own links ask before the address changes, so staying adds
-  // nothing to the history. Once the person agrees, they are not asked again.
-  // A link opened in a new tab or window leaves nothing, so it does not ask.
-  const away = (event: MouseEvent) => {
-    if (!changed || elsewhere(event)) return;
-    if (window.confirm(leaving)) askFirst(null);
-    else event.preventDefault();
-  };
-
-  // Signing out leaves the rules too, so unsaved text asks first, and once
-  // the person agrees they are not asked again. The screen goes from the
-  // address, so whoever signs in next starts at the list.
+  // Signing out leaves the rules too, so unsaved text asks first. The screen
+  // goes from the address, so whoever signs in next starts at the list.
   const signOut = () => {
-    if (changed) {
-      if (!window.confirm(leaving)) return;
-      askFirst(null);
-    }
+    if (!mayLeave()) return;
     const { pathname, search } = window.location;
     window.history.replaceState(null, "", pathname + search);
     auth.signOut();
@@ -192,17 +148,7 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
           >
             Save rules
           </button>
-          <Note
-            failed={failed}
-            pending={save.isPending}
-            refused={refused}
-            changed={changed}
-            awake={awake}
-            resorting={resorted}
-            readFailed={data?.readFailed ?? false}
-            saved={data !== undefined && (data.text !== "" || save.isSuccess)}
-            onRetry={saveText}
-          />
+          <Note note={note} onRetry={saveText} />
         </form>
         <section className={styles.read} aria-labelledby={readId}>
           <h2 className={styles.heading} id={readId}>
@@ -274,78 +220,49 @@ function Footnote({
 }
 
 // One short note under the button, giving the state.
-function Note({
-  failed,
-  pending,
-  refused,
-  changed,
-  awake,
-  resorting,
-  readFailed,
-  saved,
-  onRetry,
-}: {
-  failed: boolean;
-  pending: boolean;
-  // The last save's refusal or failure, if it had one.
-  refused: RefusalNote | null;
-  changed: boolean;
-  awake: boolean;
-  resorting: boolean;
-  readFailed: boolean;
-  saved: boolean;
-  onRetry: () => void;
-}) {
+function Note({ note, onRetry }: { note: NoteKind; onRetry: () => void }) {
+  if (note.kind === "none") return null;
   const retry = (
     <button className={styles.retry} type="button" onClick={onRetry}>
       Try again
     </button>
   );
-  if (failed) {
-    return (
-      <p className={styles.note} role="status">
-        Not connected. Trying again.
-      </p>
-    );
-  }
-  if (pending) {
-    return (
-      <p className={styles.note} role="status">
-        {resorting ? "Sorting your asks again." : "Reading your rules."}
-      </p>
-    );
-  }
-  if (refused !== null) {
-    return (
-      <p className={styles.note} role="status">
-        {refused.words}
-        {refused.kind === "failed" && <> {retry}</>}
-      </p>
-    );
-  }
-  if (changed) return null;
-  if (readFailed) {
-    return (
-      <p className={styles.note} role="status">
-        askme couldn&apos;t read your rules just now. Your text is saved.{" "}
-        {retry}
-      </p>
-    );
-  }
-  if (resorting) {
-    return (
-      <p className={styles.note} role="status">
-        Sorting your asks again.
-      </p>
-    );
-  }
-  // While some asks couldn't be sorted, and the limit is not reached, the
-  // button is already awake.
-  return saved ? (
+  return (
     <p className={styles.note} role="status">
-      {awake
-        ? "Saved."
-        : "Saved. The button wakes up when you change the text."}
+      {noteWords(note, retry)}
     </p>
-  ) : null;
+  );
+}
+
+// What a note says, ending with Try again where it offers one.
+function noteWords(
+  note: Exclude<NoteKind, { kind: "none" }>,
+  retry: ReactNode,
+): ReactNode {
+  switch (note.kind) {
+    case "notConnected":
+      return "Not connected. Trying again.";
+    case "reading":
+      return "Reading your rules.";
+    case "sorting":
+      return "Sorting your asks again.";
+    case "refused":
+      return (
+        <>
+          {note.words}
+          {note.retry && <> {retry}</>}
+        </>
+      );
+    case "readFailed":
+      return (
+        <>
+          askme couldn&apos;t read your rules just now. Your text is saved.{" "}
+          {retry}
+        </>
+      );
+    case "saved":
+      return "Saved.";
+    case "savedAsleep":
+      return "Saved. The button wakes up when you change the text.";
+  }
 }

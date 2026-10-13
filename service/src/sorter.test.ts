@@ -4,6 +4,7 @@ import { captureLogs } from "../../test/logs";
 import { callerOf, type AccountId } from "./identity";
 import { createLogger } from "./log";
 import { CapReached, ModelFailed, type ModelRequest } from "./model";
+import { reasonAsked, reasonLimit } from "./sort";
 import type { NewSort, StoredAsk, AccountRules } from "./store/store";
 import {
   emptyRulesSort,
@@ -187,31 +188,39 @@ describe("sorting an ask", () => {
     expect(emptyRulesSort.hashtags).toEqual([]);
   });
 
-  it("does nothing when the ask is no longer open", async () => {
+  it("does nothing when the ask is no longer open, and is done", async () => {
     const memory = memoryStore(undefined);
     const { model, asked } = memoryModel([good]);
-    await run(memory, model);
+    expect(await run(memory, model)).toBe("done");
     expect(asked).toEqual([]);
     expect(memory.recorded).toEqual([]);
   });
 
-  it("does nothing when the ask is already sorted with these rules", async () => {
-    const sorted: StoredAsk = {
-      ...ask,
-      sort: {
-        hashtags: ["work"],
-        level: "low",
-        reason: "Routine.",
-        rulesVersion: 4,
-        sortedAt: now.toISOString(),
-      },
-    };
-    const memory = memoryStore({ ask: sorted, rules });
-    const { model, asked } = memoryModel([good]);
-    await run(memory, model);
-    expect(asked).toEqual([]);
-    expect(memory.recorded).toEqual([]);
+  // The ask, sorted with the given version of the rules.
+  const sortedWith = (rulesVersion: number): StoredAsk => ({
+    ...ask,
+    sort: {
+      hashtags: ["work"],
+      level: "low",
+      reason: "Routine.",
+      rulesVersion,
+      sortedAt: now.toISOString(),
+    },
   });
+
+  it.each([
+    ["the rules in force", rules.version],
+    ["a newer version than the one it read", rules.version + 1],
+  ])(
+    "does nothing when the ask is already sorted with %s, and is done",
+    async (_, version) => {
+      const memory = memoryStore({ ask: sortedWith(version), rules });
+      const { model, asked } = memoryModel([good]);
+      expect(await run(memory, model)).toBe("done");
+      expect(asked).toEqual([]);
+      expect(memory.recorded).toEqual([]);
+    },
+  );
 
   it("tries again when a reply is discarded, and stores the next good one", async () => {
     const memory = memoryStore({ ask, rules });
@@ -220,6 +229,65 @@ describe("sorting an ask", () => {
     await run(memory, model);
     expect(asked).toHaveLength(2);
     expect(memory.recorded).toHaveLength(1);
+  });
+
+  // #243: a reply that fits but for its reason's length goes back to the
+  // model, which is asked for the whole reply again with a shorter reason.
+  const long = {
+    hashtags: ["work"],
+    level: "low",
+    reason: "x".repeat(reasonLimit + 1),
+  };
+
+  it("sends a reply whose only fault is a long reason back to the model, asks for a shorter one, and stores only the second reply", async () => {
+    const memory = memoryStore({ ask, rules });
+    const { model, asked } = memoryModel([long, good]);
+    expect(await run(memory, model)).toBe("done");
+    expect(asked).toHaveLength(2);
+    const [first, second] = asked;
+    expect(first).not.toHaveProperty("followUp");
+    expect(second).toStrictEqual({
+      ...first,
+      followUp: {
+        reply: JSON.stringify(long),
+        user: expect.stringMatching(
+          new RegExp(
+            `has ${String(reasonLimit + 1)} characters.* at most ${String(reasonAsked)} characters`,
+            "u",
+          ),
+        ) as unknown,
+      },
+    });
+    expect(memory.recorded.map(({ sort }) => sort)).toEqual([
+      {
+        hashtags: ["shop"],
+        level: "high",
+        reason: "Customers see it.",
+        rulesVersion: 4,
+      },
+    ]);
+  });
+
+  it("leaves the ask unsorted when the reply to the follow-up does not fit either", async () => {
+    const memory = memoryStore({ ask, rules });
+    const { model, asked } = memoryModel([long, long]);
+    expect(await run(memory, model)).toEqual({ failed: "reply-rejected" });
+    expect(asked).toHaveLength(sortAttempts);
+    expect(memory.recorded).toEqual([]);
+  });
+
+  it.each([
+    ["an invented hashtag", { ...good, hashtags: ["urgent"] }],
+    ["a long reason and a fourth level", { ...long, level: "critical" }],
+    ["a long reason of two lines", { ...long, reason: `a\n${long.reason}` }],
+    ["a model failure", new ModelFailed("status-502")],
+  ])("gives %s a plain second try with the first prompt", async (_, first) => {
+    const memory = memoryStore({ ask, rules });
+    const { model, asked } = memoryModel([first, good]);
+    expect(await run(memory, model)).toBe("done");
+    expect(asked).toHaveLength(2);
+    expect(asked[1]).toStrictEqual(asked[0]);
+    expect(asked[1]).not.toHaveProperty("followUp");
   });
 
   it(`leaves the ask unsorted after ${String(sortAttempts)} failed tries, and says why to the job that asked`, async () => {
@@ -255,11 +323,6 @@ describe("sorting an ask", () => {
     });
     expect(asked).toHaveLength(sortAttempts);
     expect(memory.recorded).toEqual([]);
-  });
-
-  it("is done when the ask is no longer open, or already sorted with these rules", async () => {
-    const { model } = memoryModel([]);
-    expect(await run(memoryStore(undefined), model)).toBe("done");
   });
 });
 

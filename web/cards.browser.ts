@@ -2,6 +2,7 @@
 // listening to it and dismissing it, with Clerk and the page's API faked on
 // loopback (ADR 9).
 import { afterEach, describe, expect, inject, it } from "vitest";
+import { z } from "zod";
 import {
   askChange,
   askChangePaths,
@@ -288,6 +289,66 @@ const lineEnds = (element: Locator) =>
 const fitsWidth = (element: Locator) =>
   element.evaluate((each) => each.scrollWidth <= each.clientWidth);
 
+// The right edge of each line of an element's text, in the page's own font.
+const lineRights = (element: Locator) =>
+  element.evaluate(async (each) => {
+    await document.fonts.ready;
+    const range = document.createRange();
+    range.selectNodeContents(each);
+    const rights = new Map<number, number>();
+    for (const { top, right, width } of range.getClientRects()) {
+      if (width === 0) continue;
+      const line = Math.round(top);
+      rights.set(line, Math.max(rights.get(line) ?? right, right));
+    }
+    return [...rights.values()];
+  });
+
+// Where an element's box starts and ends down the page, and where it starts
+// across it.
+const boxEdges = (element: Locator) =>
+  element.evaluate((each) => {
+    const { top, bottom, left } = each.getBoundingClientRect();
+    return { top, bottom, left };
+  });
+
+// Where a row's content starts and ends across the page, inside its padding.
+const contentEdges = (row: Locator) =>
+  row.getByRole("link").evaluate((link) => {
+    const { left, right } = link.getBoundingClientRect();
+    const style = getComputedStyle(link);
+    return {
+      left: left + parseFloat(style.paddingLeft),
+      right: right - parseFloat(style.paddingRight),
+    };
+  });
+
+// A row's meta line when its parts do not all fit on one line: the pill,
+// the age and any "Opened" each stay whole, and the site's name moves down
+// below the pill, with each of its lines ending at the row's right edge,
+// inside the row (docs/design.md).
+async function expectSiteMovedDown(
+  row: Locator,
+  { pill, kept, site }: { pill: string; kept: string[]; site: string },
+) {
+  const pillText = row.getByText(pill, { exact: true });
+  for (const part of [
+    pillText,
+    ...kept.map((each) => row.getByText(each, { exact: true })),
+  ]) {
+    expect(await lineCount(part)).toBe(1);
+  }
+  const name = row.getByText(site, { exact: true });
+  expect((await boxEdges(name)).top).toBeGreaterThanOrEqual(
+    (await boxEdges(pillText)).bottom,
+  );
+  const { right: edge } = await contentEdges(row);
+  for (const right of await lineRights(name)) {
+    expect(right).toBeCloseTo(edge, 0);
+  }
+  expect(await fitsWidth(row)).toBe(true);
+}
+
 // A site's name breaks onto another line, and only just after a dot
 // (docs/design.md).
 async function expectBreaksOnlyAfterDots(name: Locator) {
@@ -510,40 +571,97 @@ describe("the rows", () => {
     expect(sentTo(opened, askChangePaths.opened)).toEqual([]);
   });
 
-  // A site's name too long for the row's line breaks just after a dot, not
-  // inside a word (docs/design.md).
-  it("break console.aws.amazon.com only after a dot on a 320px phone, beside #shopping and the age", async () => {
-    const row = await narrowRow(aws);
-    const text = await row.innerText();
-    expect(text).toContain("#shopping");
-    expect(text).toContain("50 min");
-    const name = row.getByText("console.aws.amazon.com", { exact: true });
-    await expectBreaksOnlyAfterDots(name);
+  // A site's name that fits beside the pill and the age stays on their line
+  // (docs/design.md).
+  it("keep github.com on the line of #shopping and the age on a 320px phone", async () => {
+    const row = await narrowRow(issue);
+    const name = row.getByText("github.com", { exact: true });
+    expect(await lineCount(name)).toBe(1);
+    expect((await boxEdges(name)).top).toBeLessThan(
+      (await boxEdges(row.getByText("#shopping", { exact: true }))).bottom,
+    );
     expect(await fitsWidth(row)).toBe(true);
   });
 
-  // The longest hashtag a rule may name, on an opened row, still leaves the
-  // site's name room to break after a dot inside the row (docs/design.md).
-  it("keep an opened row under a 24-character hashtag inside a 320px phone, and break its site only after a dot", async () => {
+  // When the site's name does not fit beside them, it gives way, and the
+  // pill and the age stay whole (docs/design.md).
+  it("move console.aws.amazon.com to a line of its own at the right on a 320px phone, and keep #shopping and the age whole", async () => {
+    const row = await narrowRow(aws);
+    await expectSiteMovedDown(row, {
+      pill: "#shopping",
+      kept: ["50 min"],
+      site: "console.aws.amazon.com",
+    });
+  });
+
+  // The longest hashtag a rule may name, with hyphens to break at and with
+  // none, on an opened row that has waited 23 hours (docs/design.md).
+  it.each([
+    {
+      hashtag: "customer-onboarding-flow",
+      link: aws,
+      site: "console.aws.amazon.com",
+    },
+    {
+      hashtag: "internationalshippingops",
+      link: aws,
+      site: "console.aws.amazon.com",
+    },
+    { hashtag: "internationalshippingops", link: issue, site: "github.com" },
+  ])(
+    "keep #$hashtag, 23 h and Opened whole on a 320px phone, and move $site below them, at the right",
+    async ({ hashtag, link, site }) => {
+      const row = await narrowRow(link, {
+        hashtag,
+        waited: 23 * 60 * minute,
+        opened: true,
+      });
+      await expectSiteMovedDown(row, {
+        pill: `#${hashtag}`,
+        kept: ["23 h", "Opened"],
+        site,
+      });
+    },
+  );
+
+  // Beside a long hashtag, "Opened" moves down too, and starts the second
+  // line at the left (docs/design.md).
+  it("move Opened down to start the second line at the left, beside #customer-onboarding-flow on a 320px phone", async () => {
     const row = await narrowRow(aws, {
       hashtag: "customer-onboarding-flow",
       waited: 23 * 60 * minute,
       opened: true,
     });
-    const text = await row.innerText();
-    expect(text).toContain("#customer-onboarding-flow");
-    expect(text).toContain("Opened");
-    const name = row.getByText("console.aws.amazon.com", { exact: true });
-    await expectBreaksOnlyAfterDots(name);
-    expect(await fitsWidth(row)).toBe(true);
+    const pill = row.getByText("#customer-onboarding-flow", { exact: true });
+    const opened = row.getByText("Opened", { exact: true });
+    expect((await boxEdges(opened)).top).toBeGreaterThanOrEqual(
+      (await boxEdges(pill)).bottom,
+    );
+    expect((await boxEdges(opened)).left).toBeCloseTo(
+      (await contentEdges(row)).left,
+      0,
+    );
   });
 
-  // A part too long for the line on its own is split, so the name stays
-  // inside the row (docs/design.md).
-  it("split only a part too long for the line on its own, and keep the name inside the row", async () => {
+  // A site's name too long for a whole line breaks just after a dot, and
+  // each of its lines ends at the right (docs/design.md).
+  it("break a name too long for a whole line only after a dot, on a line of its own at the right", async () => {
     const row = await narrowRow(longPart);
-    const name = row.getByText(new URL(longPart).hostname, { exact: true });
-    await expectOnlyLongPartSplit(name);
+    const site = new URL(longPart).hostname;
+    await expectSiteMovedDown(row, {
+      pill: "#shopping",
+      kept: ["50 min"],
+      site,
+    });
+    await expectBreaksOnlyAfterDots(row.getByText(site, { exact: true }));
+  });
+
+  // A part too long for a whole line on its own is split, so the name stays
+  // inside the row (docs/design.md).
+  it("split only a part too long for a whole line on its own, and keep the name inside the row", async () => {
+    const row = await narrowRow(longerPart);
+    const name = row.getByText(new URL(longerPart).hostname, { exact: true });
+    await expectOnlyLongPartSplit(name, longerPart);
     expect(await fitsWidth(row)).toBe(true);
   });
 
@@ -1352,6 +1470,107 @@ describe("dismissing", () => {
       .toEqual(["both"]);
     expect(await page.getByText(both.summary).count()).toBe(0);
     expect(await page.getByRole("status").count()).toBe(0);
+  });
+
+  it("sends a waiting dismissal once when the list is left for Connect your agents", async () => {
+    const opened = await open(listOf(both, neither), {
+      clock: true,
+      screen: { width: 1280, height: 800 },
+    });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await page.getByRole("link", { name: "Connect agents" }).click();
+    await page
+      .getByRole("heading", { name: "Connect your agents", exact: true })
+      .waitFor();
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both"]);
+    await page.clock.runFor(undoMs * 2);
+    await page.goBack();
+    await page.getByRole("article").waitFor();
+    await page.clock.runFor(undoMs * 2);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual(["both"]);
+    expect(await page.getByRole("status").count()).toBe(0);
+  });
+
+  it("sends a waiting dismissal once when the person signs out", async () => {
+    const opened = await open(listOf(both, neither), { clock: true });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await opened.signInAs(null);
+    await page.getByRole("button", { name: "Sign in" }).waitFor();
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both"]);
+    await page.clock.runFor(undoMs * 2);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual(["both"]);
+  });
+
+  it("keeps alive only the dismissal sent as the page closes", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither), {
+      clock: true,
+    });
+    const { page } = opened;
+    // Whether each dismissal the page sends asks to be kept alive.
+    await page.evaluate((path) => {
+      const kept: boolean[] = [];
+      Reflect.set(window, "keptAlive", kept);
+      const fetching = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        if (input === path) kept.push(init?.keepalive === true);
+        return fetching(input, init);
+      };
+    }, askChangePaths.dismissed);
+    const keptAlive = () =>
+      page
+        .evaluate((): unknown => Reflect.get(window, "keptAlive"))
+        .then((kept) => z.array(z.boolean()).parse(kept));
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent("pagehide")),
+    );
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both", "session"]);
+    expect(await keptAlive()).toEqual([false, true]);
+  });
+
+  it("sends a held dismissal at once when the list is left over the note that an earlier one failed, and that note gets its full time on the list, with no Undo after", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither), {
+      clock: true,
+      change: failingFor("both"),
+      api: { [pagePaths.rules]: noRules },
+    });
+    const { page } = opened;
+    await failWhileAnotherWaits(opened);
+    await page.getByRole("link", { name: "Rules" }).click();
+    await page
+      .getByRole("heading", { name: "Your rules", exact: true })
+      .waitFor();
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both", "session"]);
+    await page.clock.runFor(undoMs * 2);
+    await page.goBack();
+    await page.getByRole("article").waitFor();
+    const note = page.getByRole("status");
+    await expect.poll(() => note.innerText()).toBe(failed);
+    await page.clock.runFor(undoMs - 500);
+    expect(await note.innerText()).toBe(failed);
+    await page.clock.runFor(1000);
+    await expect.poll(() => note.count()).toBe(0);
+    await page.clock.runFor(undoMs * 2);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual([
+      "both",
+      "session",
+    ]);
+    expect(await page.getByText(sessionOnly.summary).count()).toBe(0);
   });
 });
 

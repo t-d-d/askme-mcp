@@ -9,24 +9,14 @@
 // scores in evals/scores.md, unless a model gave no fitting reply at all.
 import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { callerOf } from "../service/src/identity";
-import { defaultModel, ModelFailed } from "../service/src/model";
-import { parseSortReply, sortingPrompt } from "../service/src/sort";
-import {
-  sortAttempts,
-  sortMaxTokens,
-  sortTimeoutMs,
-} from "../service/src/sorter";
+import { defaultModel } from "../service/src/model";
+import { reasonLimit } from "../service/src/sort";
+import { sortAttempts } from "../service/src/sorter";
 import { candidates } from "./candidates";
-import { cases, evalRules, type EvalCase } from "./cases";
+import { cases } from "./cases";
 import { clientFor, evalKey, keyLine, namedModels, proxyLine } from "./model";
-import {
-  modelReport,
-  scoresFile,
-  unanswered,
-  type ModelRun,
-  type Outcome,
-} from "./score";
+import { modelReport, scoresFile, unanswered, type ModelRun } from "./score";
+import { inPool, sortEvalAsk } from "./sorting";
 
 const acrossCandidates = process.env.EVAL_CANDIDATES === "1";
 
@@ -44,13 +34,6 @@ const rounds = acrossCandidates ? 2 : 1;
 // How many asks are sent at once.
 const parallel = 5;
 
-const account = callerOf({
-  token: "eval",
-  clientId: "eval",
-  scopes: [],
-  extra: { accountId: "user_eval", requestId: "eval" },
-}).accountId;
-
 const header = [
   keyLine,
   proxyLine,
@@ -65,47 +48,13 @@ describe("the eval set against the real model", () => {
         "EVAL_MODELS and npm run eval:candidates each choose the models. Use one of them.",
       );
     }
-    const rules = { account, ...evalRules };
 
     async function runModel(model: string): Promise<ModelRun> {
       const client = clientFor(model, key);
-
-      async function sortOne(one: EvalCase): Promise<Outcome> {
-        const prompt = sortingPrompt(rules, { account, ...one.ask });
-        const started = performance.now();
-        try {
-          const reply = await client.reply({
-            ...prompt,
-            schemaName: "sort",
-            maxTokens: sortMaxTokens,
-            timeoutMs: sortTimeoutMs,
-          });
-          const ms = performance.now() - started;
-          const sort = parseSortReply(reply, evalRules.hashtags);
-          return sort === undefined
-            ? { one, failure: "reply-rejected", ms }
-            : { one, sort, ms };
-        } catch (error) {
-          if (error instanceof ModelFailed) {
-            return { one, failure: error.reason };
-          }
-          throw error;
-        }
-      }
-
-      // A pool: each worker takes the next ask as soon as its last one is
-      // back, so one slow reply does not hold up the others.
       const set = Array.from({ length: rounds }, () => cases).flat();
-      const outcomes: Outcome[] = new Array<Outcome>(set.length);
-      let next = 0;
-      async function worker(): Promise<void> {
-        while (next < set.length) {
-          const index = next++;
-          const one = set[index];
-          if (one !== undefined) outcomes[index] = await sortOne(one);
-        }
-      }
-      await Promise.all(Array.from({ length: parallel }, worker));
+      const outcomes = await inPool(set, parallel, (one) =>
+        sortEvalAsk(client, one),
+      );
       return { model, outcomes };
     }
 
@@ -114,7 +63,7 @@ describe("the eval set against the real model", () => {
     const runs = await Promise.all(models.map(runModel));
     for (const run of runs) console.log(`\n${modelReport(run)}\n`);
     console.log(
-      `${header}\n\nThe service tries each ask up to ${String(sortAttempts)} times. The eval tries each ask once a round, to measure the model.\n`,
+      `${header}\n\nThe service tries each ask up to ${String(sortAttempts)} times. The eval tries each ask once a round, to measure the model, and leaves out the service's plain second try, which is a second draw. When a reply's only fault is a reason over ${String(reasonLimit)} characters, the eval sends it back for a shorter one, as the service does, since that finishes the same draw.\n`,
     );
     const silent = unanswered(runs);
     if (acrossCandidates && silent.length > 0) {

@@ -19,22 +19,27 @@ export const suites: Record<string, Suite> = {
   },
   view: {
     about:
-      "What the poll and the rules show the page, and whether an ask is sorted with the rules in force.",
-    mutate: ["service/src/view.ts", "service/src/sorter.ts:83-83"],
-    tests: [
-      "service/src/view.test.ts",
-      "service/src/sorter-up-to-date.test.ts",
-      "service/cap-reset.int.ts",
-      "service/api.int.ts",
-      "service/src/sorter.test.ts",
-      "fitness/sort-queue.int.ts",
-    ],
+      "What the poll and the rules show the page, and whether an ask is sorted with the rules in force, against their unit tests.",
+    mutate: ["service/src/view.ts", "service/src/sorter.ts:90-90"],
+    tests: ["service/src/view.test.ts", "service/src/sorter.test.ts"],
   },
   refusalNote: {
     about:
       "The note a refused Save rules or Send sample asks gives, and when the cap's goes, against their unit tests.",
     mutate: ["web/src/refusalNote.ts", "web/src/resets.ts"],
     tests: ["web/src/refusalNote.test.ts", "web/src/resets.test.ts"],
+  },
+  rulesState: {
+    about:
+      "What the rules screen shows: the text, whether it changed, whether Save rules is awake, and the note, against their unit tests.",
+    mutate: ["web/src/rulesState.ts"],
+    tests: ["web/src/rulesState.test.ts"],
+  },
+  dismissing: {
+    about:
+      "What a dismissal does next: its note, Undo, its timers and when it is sent, against its unit tests.",
+    mutate: ["web/src/dismissing.ts"],
+    tests: ["web/src/dismissing.test.ts"],
   },
   rate: {
     about:
