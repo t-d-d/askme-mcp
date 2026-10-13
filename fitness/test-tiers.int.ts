@@ -1,4 +1,5 @@
 import { createHook } from "node:async_hooks";
+import { execFile } from "node:child_process";
 import { createSocket } from "node:dgram";
 import {
   lookup,
@@ -16,7 +17,10 @@ import {
 } from "node:dns/promises";
 import { connect, createServer, Socket, type AddressInfo } from "node:net";
 import { once } from "node:events";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
+
+const run = promisify(execFile);
 
 describe("fitness: the gate is offline (test-tiers.md)", () => {
   it("refuses a connection that is not to loopback", () => {
@@ -47,6 +51,27 @@ describe("fitness: the gate is offline (test-tiers.md)", () => {
     expect(error instanceof Error ? String(error.cause) : "").toMatch(
       /The gate is offline/u,
     );
+  });
+
+  it("refuses a fetch through a proxy on loopback that the environment names", async () => {
+    let connections = 0;
+    const proxy = createServer((socket) => {
+      connections += 1;
+      socket.destroy();
+    });
+    proxy.listen(0, "127.0.0.1");
+    await once(proxy, "listening");
+    const { port } = portOf(proxy.address());
+    try {
+      const refusal = await fetchInChild({
+        NODE_USE_ENV_PROXY: "1",
+        HTTPS_PROXY: `http://127.0.0.1:${String(port)}`,
+      });
+      expect(refusal).toMatch(/The gate is offline/u);
+      expect(connections).toBe(0);
+    } finally {
+      proxy.close();
+    }
   });
 
   it("allows a connection to loopback", async () => {
@@ -193,6 +218,33 @@ function watchGetaddrinfo(): { names: () => string[]; stop: () => void } {
       hook.disable();
     },
   };
+}
+
+// Node reads NODE_USE_ENV_PROXY and the proxy variables once, as it starts,
+// so a fetch through a proxy runs in a child Node that starts with them and
+// loads the guard first. It says why the fetch failed. Every proxy variable
+// of this process is left out, so the child names only the proxy given.
+async function fetchInChild(proxyEnv: Record<string, string>): Promise<string> {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) => !/^((https?|all|no)_proxy|node_use_env_proxy)$/iu.test(name),
+    ),
+  );
+  const script = `const error = await fetch("https://example.com/").catch((reason) => reason);
+console.log(String(error?.cause));`;
+  const { stdout } = await run(
+    process.execPath,
+    [
+      "--import",
+      new URL("../test/offline.ts", import.meta.url).href,
+      "--input-type=module",
+      "--eval",
+      script,
+    ],
+    // Ended before the test's own timeout, so a hung fetch leaves no child.
+    { env: { ...env, ...proxyEnv }, timeout: 4_000 },
+  );
+  return stdout;
 }
 
 function portOf(address: string | AddressInfo | null): AddressInfo {
