@@ -17,6 +17,7 @@
     "mutate": "node test/mutate.ts",
     "eval": "NODE_USE_ENV_PROXY=1 vitest run --config evals/vitest.config.ts",
     "eval:candidates": "EVAL_CANDIDATES=1 npm run eval",
+    "eval:trial": "EVAL_TRIAL=1 npm run eval -- evals/trial.eval.ts",
     "build": "vite build web"
   },
   "devDependencies": {
