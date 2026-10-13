@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
 import { callerOf, type AccountId } from "../service/src/identity";
-import { pollLimit } from "../service/src/rate";
+import { rateLimits } from "../service/src/rate";
 import { keys } from "../service/src/store/keys";
 import { pagePaths } from "../shared/page-api";
 import { stopClockAt } from "../test/clock";
@@ -197,7 +197,7 @@ describe("fitness: the poll endpoint has its own rate limit (polling.md)", () =>
   });
 
   async function pollToTheLimit(sub: string): Promise<void> {
-    for (let polls = 0; polls < pollLimit.polls; polls += 1) {
+    for (let polls = 0; polls < rateLimits.poll.limit; polls += 1) {
       expect((await poll(sub)).status).toBe(200);
     }
   }
@@ -212,7 +212,7 @@ describe("fitness: the poll endpoint has its own rate limit (polling.md)", () =>
     const refusal = refusalSchema.parse(await response.json());
     expect(refusal.code).toBe("rate_limited");
     expect(refusal.class).toBe("retry");
-    expect(refusal.message).toContain(String(pollLimit.polls));
+    expect(refusal.message).toContain(String(rateLimits.poll.limit));
     expect(refusal.message).toContain("Wait 50 seconds");
   });
 

@@ -20,8 +20,14 @@ export const suites: Record<string, Suite> = {
   view: {
     about:
       "What the poll and the rules show the page, and whether an ask is sorted with the rules in force, against their unit tests.",
-    mutate: ["service/src/view.ts", "service/src/sorter.ts:90-90"],
+    mutate: ["service/src/view.ts"],
     tests: ["service/src/view.test.ts", "service/src/sorter.test.ts"],
+  },
+  sorter: {
+    about:
+      "How a job sorts one ask: whether it is already sorted with the rules in force, the tries, the daily cap and what goes back to the queue, against its unit tests and the sort queue's fitness test, which runs the handler.",
+    mutate: ["service/src/sorter.ts"],
+    tests: ["service/src/sorter.test.ts", "fitness/sort-queue.int.ts"],
   },
   refusalNote: {
     about:
@@ -46,5 +52,28 @@ export const suites: Record<string, Suite> = {
       "The rate limits' windows and the time left in one, against their unit tests.",
     mutate: ["service/src/rate.ts"],
     tests: ["service/src/rate.test.ts"],
+  },
+  rateLimits: {
+    about:
+      "The four rate limits and the words of a refusal that names one, against the tests of the counters and the refusals that use them (#224).",
+    mutate: ["service/src/rate.ts", "service/src/wording.ts"],
+    tests: [
+      "service/src/rate.test.ts",
+      "service/src/wording.test.ts",
+      "service/src/limit-refusals.test.ts",
+      "service/src/limit-refusals-long.test.ts",
+      "service/src/ask.test.ts",
+      "service/src/samples.test.ts",
+      "service/src/model.test.ts",
+      "service/src/tools.test.ts",
+      "fitness/error-contract.test.ts",
+      "service/store.int.ts",
+      "service/api.int.ts",
+      "service/mcp.int.ts",
+      "fitness/error-contract-codes.int.ts",
+      "fitness/error-contract.int.ts",
+      "fitness/polling.int.ts",
+      "fitness/model-call-cap.int.ts",
+    ],
   },
 };
