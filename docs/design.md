@@ -249,7 +249,7 @@ Shown when nothing is waiting and the account has had at least one ask.
 
 Shown when the account has never had an ask. A white card says "Your agents can ask here.", explains in two sentences, and offers "Connect your agents" in ink and "Send sample asks" in `--neutral-tint`.
 
-When a press of "Send sample asks" does not go through, one short note under the button says why, in the words below. The daily cap's note goes once the cap resets at the next midnight UTC, with no reload.
+When a press of "Send sample asks" does not go through, one short note under the button says why, in the words below. The daily cap's note goes once the cap resets at the next midnight UTC, with no reload. It goes by askme's clock, which counts the cap, so a device whose clock is a few minutes out does not move it.
 
 ### Rules
 

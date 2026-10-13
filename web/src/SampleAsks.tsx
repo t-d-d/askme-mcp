@@ -1,5 +1,5 @@
 import { capped, Refusal } from "./load";
-import { resetsAt, resetTime } from "./resets";
+import { resetsHere, resetTime } from "./resets";
 import styles from "./SampleAsks.module.css";
 import { useAfter } from "./useAfter";
 import { useSamples } from "./useSamples";
@@ -10,7 +10,7 @@ import { useSamples } from "./useSamples";
 // waits while a press is under way, so one press sends once. The note's
 // region stays on the page, empty and hidden, so a screen reader hears
 // each note as it comes. The daily cap's note goes once the cap resets,
-// with no reload.
+// with no reload, by the service's clock, which counts the cap.
 //
 // The button is a main button on the list, and a settings screen's on
 // Connect your agents.
@@ -23,7 +23,9 @@ export function SampleAsks({
 }) {
   const send = useSamples(onSent);
   useAfter(
-    capped(send.error) ? resetsAt(send.submittedAt) : undefined,
+    capped(send.error)
+      ? resetsHere(send.submittedAt, send.error.serviceAhead)
+      : undefined,
     send.reset,
   );
   return (
@@ -47,14 +49,14 @@ export function SampleAsks({
   );
 }
 
-// The daily cap resets at the next midnight UTC after the press, given in
-// this browser's time zone.
+// The daily cap resets at the next midnight UTC after the press, by the
+// service's clock, given in this browser's time zone.
 function Note({ error, pressedAt }: { error: Error; pressedAt: number }) {
   if (capped(error)) {
     return (
       <>
         You&apos;ve reached today&apos;s limit. It resets at{" "}
-        {resetTime(pressedAt)}.
+        {resetTime(pressedAt + error.serviceAhead)}.
       </>
     );
   }

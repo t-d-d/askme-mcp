@@ -60,8 +60,8 @@ export interface PageOptions {
   // Give the page Playwright's clock, which runs as usual until a test
   // moves it on with page.clock. Given a time, the clock starts there.
   // "stopped", it stands still from before the page loads, and moves only
-  // when a test moves it on.
-  clock?: boolean | Date | "stopped";
+  // when a test moves it on. Stopped at a time, it stands still there.
+  clock?: boolean | Date | "stopped" | { stoppedAt: Date };
   // The browser's time zone, such as Europe/London. Without one it is the
   // machine's.
   timeZone?: string;
@@ -72,11 +72,13 @@ export interface PageOptions {
 }
 
 // An answer that is a status, such as a failure, with a JSON body when one
-// is given, such as a refusal.
+// is given, such as a refusal, and any headers given, such as the Date the
+// service's clock gave it.
 export class Status {
   constructor(
     readonly code: number,
     readonly body?: unknown,
+    readonly headers?: Record<string, string>,
   ) {}
 }
 
@@ -259,11 +261,11 @@ export async function openPage(
       if (answer === undefined) {
         await route.fulfill({ status: 404 });
       } else if (answer instanceof Status) {
-        await route.fulfill(
-          answer.body === undefined
-            ? { status: answer.code }
-            : { status: answer.code, json: answer.body },
-        );
+        await route.fulfill({
+          status: answer.code,
+          ...(answer.body === undefined ? {} : { json: answer.body }),
+          ...(answer.headers === undefined ? {} : { headers: answer.headers }),
+        });
       } else {
         await route.fulfill({ json: answer });
       }
@@ -284,11 +286,12 @@ export async function openPage(
     await context.clock.install({ time: options.clock });
   } else if (options.clock === true) {
     await context.clock.install();
-  } else if (options.clock === "stopped") {
+  } else if (options.clock !== undefined && options.clock !== false) {
     // Paused before there is a page, so it stops at this time exactly. A
     // page's clock is running by the time a test could pause it, and a
     // pause at a time already gone is refused.
-    const start = new Date();
+    const start =
+      options.clock === "stopped" ? new Date() : options.clock.stoppedAt;
     await context.clock.install({ time: start });
     await context.clock.pauseAt(start);
   }
