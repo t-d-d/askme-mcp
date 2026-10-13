@@ -68,6 +68,21 @@ describe("how far the service's clock is ahead after polls that failed", () => {
     expect(serviceAt(now, false)).toBe(then.date + ahead + 60 * minute);
   });
 
+  // A device putting its clock right is unlikely to move it on an hour, so a
+  // visible page reads that much as the device sleeping without hiding it.
+  it("counts the time a visible page's device slept, which performance.now() may not, once its clock has moved on an hour", () => {
+    const now = { date: then.date + 60 * minute, steady: then.steady };
+    expect(serviceAt(now, true)).toBe(then.date + ahead + 60 * minute);
+  });
+
+  it("moves the service's time on by performance.now() alone, on a page visible throughout, when the device's clock is put forward by just under an hour", () => {
+    const now = {
+      date: then.date + 10_000 + 60 * minute - 1,
+      steady: then.steady + 10_000,
+    };
+    expect(serviceAt(now, true)).toBe(then.date + ahead + 10_000);
+  });
+
   it("counts no less time than performance.now() on a hidden page whose device's clock is put back", () => {
     const now = {
       date: then.date + 10_000 - 3 * minute,

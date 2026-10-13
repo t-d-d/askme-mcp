@@ -27,6 +27,10 @@ const rules: SortingRules = {
   hashtags: ["work", "shop", "family"],
 };
 
+// The line of the sorting prompt that draws one level, if there is one.
+const levelLine = (system: string, level: string) =>
+  new RegExp(`^${level}: .*$`, "mu").exec(system)?.[0];
+
 const ask: SortingAsk = {
   account: owner,
   summary: "Merge the fix for checkout rounding?",
@@ -131,10 +135,23 @@ describe("the sorting prompt", () => {
       "give no weight to a date, a deadline or a time limit the ask names",
     );
     // Nothing about time makes an ask high, and the lines #91 added are gone.
-    const high = /^high: .*$/mu.exec(system)?.[0];
+    const high = levelLine(system, "high");
     expect(high).toBeDefined();
     expect(high).not.toMatch(/deadline|soon|time/u);
     expect(system).not.toMatch(/passkey|sign-in|times out/u);
+  });
+
+  it("draws low as nobody worse off, and normal without the unfinished work every ask has (issue #258)", () => {
+    const { system } = sortingPrompt(rules, ask);
+    expect(levelLine(system, "low")).toContain(
+      "nobody worse off in a way they would notice: any answer, or none, would do",
+    );
+    const normal = levelLine(system, "normal");
+    expect(normal).toBeDefined();
+    expect(normal).not.toMatch(/unfinished/u);
+    expect(levelLine(system, "high")).toContain(
+      "someone would go without something they need or were counting on",
+    );
   });
 
   it("asks for a shorter reason than the limit, since the model runs past what it is asked", () => {
