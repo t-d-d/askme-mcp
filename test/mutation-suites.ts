@@ -42,6 +42,12 @@ export const suites: Record<string, Suite> = {
     mutate: ["web/src/rulesState.ts"],
     tests: ["web/src/rulesState.test.ts"],
   },
+  dismissing: {
+    about:
+      "What a dismissal does next: its note, Undo, its timers and when it is sent, against its unit tests.",
+    mutate: ["web/src/dismissing.ts"],
+    tests: ["web/src/dismissing.test.ts"],
+  },
   rate: {
     about:
       "The rate limits' windows and the time left in one, against their unit tests.",
