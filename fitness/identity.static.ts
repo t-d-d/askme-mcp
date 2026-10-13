@@ -3,6 +3,13 @@ import { z } from "zod";
 import { routes } from "../service/src/handler";
 import { readYaml } from "../test/repo";
 
+const resource = z.object({
+  Type: z.string().optional(),
+  Properties: z
+    .object({ CorsConfiguration: z.unknown().optional() })
+    .optional(),
+});
+
 const definition = () =>
   readYaml(
     "serverless.yml",
@@ -22,6 +29,12 @@ const definition = () =>
           events: z.array(z.record(z.string(), z.unknown())).optional(),
         }),
       ),
+      resources: z
+        .object({
+          Resources: z.record(z.string(), resource).optional(),
+          extensions: z.record(z.string(), resource).optional(),
+        })
+        .optional(),
     }),
   );
 
@@ -72,5 +85,23 @@ describe("fitness: every route checks a token (identity.md)", () => {
   // replace the handler's answer on the metadata route.
   it("leaves API Gateway's own CORS off", () => {
     expect(definition().provider.httpApi?.cors).toBeUndefined();
+  });
+
+  // An extension of the HTTP API the framework makes, or an HTTP API of our
+  // own, can set the same CORS.
+  it("gives no HTTP API its own CORS", () => {
+    const { resources } = definition();
+    const apis = [
+      ...Object.entries(resources?.Resources ?? {}).filter(
+        ([, value]) => value.Type === "AWS::ApiGatewayV2::Api",
+      ),
+      ...Object.entries(resources?.extensions ?? {}).filter(
+        ([name]) => name === "HttpApi",
+      ),
+    ];
+    const withCors = apis
+      .filter(([, value]) => value.Properties?.CorsConfiguration !== undefined)
+      .map(([name]) => name);
+    expect(withCors).toEqual([]);
   });
 });
