@@ -1,14 +1,23 @@
 // How the list reads its asks: the order they come in, which asks have
 // lapsed, and how long each has waited, in the short forms docs/design.md
-// gives. The service gives the time an ask lapses by its own clock, so the
-// page works out which asks have lapsed, and the order, by that clock.
+// gives. The service gives the time an ask was posted, and the time it
+// lapses, by its own clock, so the page works out how long each ask has
+// waited, which asks have lapsed, and the order, by that clock.
 import { levels, type Level } from "../../shared/page-api";
 
 const minuteMs = 60_000;
 
-// "Just now", "4 min", "1 h" or "2 d".
-export function age(postedAt: string, now: number): string {
-  const minutes = Math.floor((now - Date.parse(postedAt)) / minuteMs);
+// How long an ask has waited at a moment on this browser's clock, as
+// "Just now", "4 min", "1 h" or "2 d". The service gives the time it was
+// posted by its own clock, serviceAhead ahead of this one (load.ts).
+export function age(
+  postedAt: string,
+  now: number,
+  serviceAhead: number,
+): string {
+  const minutes = Math.floor(
+    (now + serviceAhead - Date.parse(postedAt)) / minuteMs,
+  );
   if (minutes < 1) return "Just now";
   if (minutes < 60) return `${String(minutes)} min`;
   const hours = Math.floor(minutes / 60);
@@ -17,8 +26,12 @@ export function age(postedAt: string, now: number): string {
 }
 
 // The top card says "Waiting 4 min", or "Just now".
-export function waiting(postedAt: string, now: number): string {
-  const words = age(postedAt, now);
+export function waiting(
+  postedAt: string,
+  now: number,
+  serviceAhead: number,
+): string {
+  const words = age(postedAt, now, serviceAhead);
   return words === "Just now" ? words : `Waiting ${words}`;
 }
 

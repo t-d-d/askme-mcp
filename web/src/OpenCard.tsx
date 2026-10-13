@@ -27,6 +27,7 @@ export function OpenCard({
   ask,
   tab,
   now,
+  serviceAhead,
   colours,
   actions,
   noted,
@@ -34,6 +35,7 @@ export function OpenCard({
   ask: PageAsk;
   tab: Tab;
   now: number;
+  serviceAhead: number;
   colours: ReadonlyMap<string, HashtagColour>;
   actions: AskActions;
   noted: boolean;
@@ -70,7 +72,9 @@ export function OpenCard({
       <main className={styles.body}>
         <div className={styles.meta}>
           <Pills sort={sort} colours={colours} />
-          <span className={styles.age}>{waiting(ask.postedAt, now)}</span>
+          <span className={styles.age}>
+            {waiting(ask.postedAt, now, serviceAhead)}
+          </span>
         </div>
         <h1 className={styles.summary}>{ask.summary}</h1>
         {speak !== undefined && (
