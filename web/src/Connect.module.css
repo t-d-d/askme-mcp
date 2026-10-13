@@ -44,6 +44,11 @@
   letter-spacing: var(--tracking-title);
 }
 
+/* Focus comes here only from the page, and the heading is not a control. */
+.title:focus {
+  outline: none;
+}
+
 .note {
   margin: 0;
   color: var(--text-2);
