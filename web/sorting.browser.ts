@@ -99,6 +99,67 @@ afterEach(async () => {
   view = undefined;
 });
 
+// Opens the list in London on a page whose clock stands still two minutes
+// before a moment by the service's clock, which is serviceAhead ahead of
+// the page's. Its one ask is behind the rules until sortingUntil, when one
+// is given. The line reads `before` until the first poll after the moment,
+// and `after` from then, or is gone when `after` is null. A second
+// before the moment, by the page's clock, a poll brings a new ask and the
+// line still reads `before`. Each poll's answer gives the service's time in
+// its Date header, as it is then, because the page's clock moves only when
+// the test moves it.
+async function lineChangesAt({
+  moment,
+  serviceAhead,
+  list,
+  sortingUntil,
+  before,
+  after,
+}: {
+  moment: number;
+  serviceAhead: number;
+  list: (asks: AsksAnswer["asks"]) => AsksAnswer;
+  sortingUntil?: Date;
+  before: string;
+  after: string | null;
+}): Promise<void> {
+  const here = moment - serviceAhead;
+  let pageAt = here - 2 * minute;
+  let answer = list([ask("a", "shop", sortingUntil)]);
+  view = await openPage(inject("pageUrl"), phone, {
+    session,
+    clock: { stoppedAt: new Date(pageAt) },
+    timeZone: "Europe/London",
+    api: {
+      [pagePaths.asks]: datedPolls(
+        () => answer,
+        () => pageAt + serviceAhead,
+      ),
+    },
+  });
+  const { page } = view;
+  await stepUntilShown(page, page.getByText(before, { exact: true }));
+  answer = {
+    ...list([ask("a", "shop", sortingUntil), ask("b", "shop")]),
+    version: 4,
+  };
+  pageAt = here - 1000;
+  await page.clock.pauseAt(new Date(pageAt));
+  await stepUntilShown(page, page.getByText("Ask b", { exact: true }));
+  expect(await page.getByText(before, { exact: true }).count()).toBe(1);
+  pageAt = here + pollMs;
+  await page.clock.pauseAt(new Date(pageAt));
+  if (after === null) {
+    await stepUntil(
+      page,
+      async () => (await line(page).count()) === 0,
+      "the line to go",
+    );
+  } else {
+    await stepUntilShown(page, page.getByText(after, { exact: true }));
+  }
+}
+
 describe("the sorting line", () => {
   it("says how many asks are being sorted, under the tabs", async () => {
     view = await open(
@@ -201,6 +262,28 @@ describe("the sorting line", () => {
       await start("1 held until its hours"),
     );
   });
+
+  // The service gives the time an ask turns stopped by its own clock, so the
+  // ask turns stopped when the service's time for it comes, even on a page
+  // whose clock is a few minutes out. For an ask that turns stopped at 18:10
+  // UTC by the service's clock, a clock three minutes fast reads 18:13 then,
+  // and one three minutes slow reads 18:07.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "turns an ask stopped when the service's time for it comes, on a clock a few minutes %s",
+    async (_, serviceAhead) => {
+      await lineChangesAt({
+        moment: later.getTime(),
+        serviceAhead,
+        list: listOf,
+        sortingUntil: later,
+        before: "Sorting 1 ask with your rules",
+        after: "1 ask couldn't be sorted. Saving your rules tries again.",
+      });
+    },
+  );
 });
 
 describe("the sorting line while today's sorting limit is reached", () => {
@@ -268,52 +351,23 @@ describe("the sorting line while today's sorting limit is reached", () => {
     );
   });
 
-  // The service counts the cap by its own clock, which the Date header of
-  // each poll's answer gives, so the line goes when the service's day ends,
-  // even on a page whose clock is a few minutes out. A clock three minutes
-  // fast reads 00:03 then, and one three minutes slow reads 23:57. The
-  // page's clock stands still and moves only when the test moves it, so
-  // each answer can give the service's time as it is then.
+  // The service counts the cap by its own clock, so the line goes when the
+  // service's day ends, even on a page whose clock is a few minutes out. A
+  // clock three minutes fast reads 00:03 then, and one three minutes slow
+  // reads 23:57.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
   ])(
     "is gone when the service's day ends, on a clock a few minutes %s",
     async (_, serviceAhead) => {
-      const reset = Date.parse(resets) - serviceAhead;
-      let pageAt = reset - 2 * minute;
-      let list = capped([ask("a", "shop")]);
-      view = await openPage(inject("pageUrl"), phone, {
-        session,
-        clock: { stoppedAt: new Date(pageAt) },
-        timeZone: "Europe/London",
-        api: {
-          [pagePaths.asks]: datedPolls(
-            () => list,
-            () => pageAt + serviceAhead,
-          ),
-        },
+      await lineChangesAt({
+        moment: Date.parse(resets),
+        serviceAhead,
+        list: capped,
+        before: "Today's sorting limit is reached. It resets at 01:00.",
+        after: null,
       });
-      const { page } = view;
-      await stepUntilShown(
-        page,
-        page.getByText("Today's sorting limit is reached. It resets at 01:00."),
-      );
-      // A second before the reset, by the page's clock, the next poll brings
-      // a new ask and still finds the limit reached.
-      list = { ...capped([ask("a", "shop"), ask("b", "shop")]), version: 4 };
-      pageAt = reset - 1000;
-      await page.clock.pauseAt(new Date(pageAt));
-      await stepUntilShown(page, page.getByText("Ask b", { exact: true }));
-      expect(await line(page).count()).toBe(1);
-      // The first poll after the reset finds it gone.
-      pageAt = reset + pollMs;
-      await page.clock.pauseAt(new Date(pageAt));
-      await stepUntil(
-        page,
-        async () => (await line(page).count()) === 0,
-        "the line to go",
-      );
     },
   );
 });

@@ -10,18 +10,44 @@ const until = (offset: number) => ({
 describe("how sorting stands", () => {
   it("counts an ask behind the rules as sorting until its time, and stopped from then", () => {
     expect(
-      sortingState([until(minute), until(-minute), until(0), {}], now),
+      sortingState([until(minute), until(-minute), until(0), {}], now, 0),
     ).toEqual({ sorting: 1, stopped: 2 });
   });
 
   it("counts an ask sorted with the rules in force as neither", () => {
-    expect(sortingState([{}, {}], now)).toEqual({ sorting: 0, stopped: 0 });
+    expect(sortingState([{}, {}], now, 0)).toEqual({ sorting: 0, stopped: 0 });
   });
 
   it("moves an ask from sorting to stopped as time passes", () => {
     const asks = [until(minute)];
-    expect(sortingState(asks, now)).toEqual({ sorting: 1, stopped: 0 });
-    expect(sortingState(asks, now + minute)).toEqual({
+    expect(sortingState(asks, now, 0)).toEqual({ sorting: 1, stopped: 0 });
+    expect(sortingState(asks, now + minute, 0)).toEqual({
+      sorting: 0,
+      stopped: 1,
+    });
+  });
+
+  // The service gives each ask's time by its own clock, which the poll's
+  // Date header gives (load.ts). For an ask that turns stopped at 09:01 by
+  // the service's clock, a clock three minutes fast reads 09:04 then, and
+  // one three minutes slow reads 08:58.
+  it("moves an ask to stopped when the service's clock reaches its time, on a clock a few minutes out", () => {
+    const asks = [until(minute)];
+    const fast = -3 * minute;
+    expect(sortingState(asks, now + 4 * minute - 1, fast)).toEqual({
+      sorting: 1,
+      stopped: 0,
+    });
+    expect(sortingState(asks, now + 4 * minute, fast)).toEqual({
+      sorting: 0,
+      stopped: 1,
+    });
+    const slow = 3 * minute;
+    expect(sortingState(asks, now - 2 * minute - 1, slow)).toEqual({
+      sorting: 1,
+      stopped: 0,
+    });
+    expect(sortingState(asks, now - 2 * minute, slow)).toEqual({
       sorting: 0,
       stopped: 1,
     });

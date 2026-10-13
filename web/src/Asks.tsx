@@ -61,9 +61,10 @@ import { inListOrder, lapsedAsks } from "./waiting";
 // sorting stands: that today's sorting limit is reached and when it resets,
 // on the clock where the person is, or how many asks are being sorted with
 // the rules, or how many couldn't be sorted. It counts every ask, on every
-// tab, as of the last poll, so an ask turns from sorting to stopped, and the
-// limit goes once it resets, with no reload. On All clear it sits at the
-// foot, under the held and lapsed lines when they show.
+// tab, as of the last poll by the service's clock, which gives each time,
+// so an ask turns from sorting to stopped, and the limit goes once it
+// resets, with no reload. On All clear it sits at the foot, under the held
+// and lapsed lines when they show.
 //
 // An ask the person has opened shows as opened, and one they have dismissed
 // leaves the list, before the next poll says so.
@@ -133,7 +134,7 @@ export function Asks({ card }: { card: string | null }) {
     serviceAhead,
   );
   const sorting = sortingLine(
-    sortingState(asks, polledAt),
+    sortingState(asks, polledAt, serviceAhead),
     capResets === null ? null : clockTime(capResets),
   );
   const waiting = (list: readonly PageAsk[]) =>
