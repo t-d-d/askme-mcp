@@ -2,6 +2,7 @@
 // listening to it and dismissing it, with Clerk and the page's API faked on
 // loopback (ADR 9).
 import { afterEach, describe, expect, inject, it } from "vitest";
+import { z } from "zod";
 import {
   askChange,
   askChangePaths,
@@ -1352,6 +1353,107 @@ describe("dismissing", () => {
       .toEqual(["both"]);
     expect(await page.getByText(both.summary).count()).toBe(0);
     expect(await page.getByRole("status").count()).toBe(0);
+  });
+
+  it("sends a waiting dismissal once when the list is left for Connect your agents", async () => {
+    const opened = await open(listOf(both, neither), {
+      clock: true,
+      screen: { width: 1280, height: 800 },
+    });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await page.getByRole("link", { name: "Connect agents" }).click();
+    await page
+      .getByRole("heading", { name: "Connect your agents", exact: true })
+      .waitFor();
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both"]);
+    await page.clock.runFor(undoMs * 2);
+    await page.goBack();
+    await page.getByRole("article").waitFor();
+    await page.clock.runFor(undoMs * 2);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual(["both"]);
+    expect(await page.getByRole("status").count()).toBe(0);
+  });
+
+  it("sends a waiting dismissal once when the person signs out", async () => {
+    const opened = await open(listOf(both, neither), { clock: true });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await opened.signInAs(null);
+    await page.getByRole("button", { name: "Sign in" }).waitFor();
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both"]);
+    await page.clock.runFor(undoMs * 2);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual(["both"]);
+  });
+
+  it("keeps alive only the dismissal sent as the page closes", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither), {
+      clock: true,
+    });
+    const { page } = opened;
+    // Whether each dismissal the page sends asks to be kept alive.
+    await page.evaluate((path) => {
+      const kept: boolean[] = [];
+      Reflect.set(window, "keptAlive", kept);
+      const fetching = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        if (input === path) kept.push(init?.keepalive === true);
+        return fetching(input, init);
+      };
+    }, askChangePaths.dismissed);
+    const keptAlive = () =>
+      page
+        .evaluate((): unknown => Reflect.get(window, "keptAlive"))
+        .then((kept) => z.array(z.boolean()).parse(kept));
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent("pagehide")),
+    );
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both", "session"]);
+    expect(await keptAlive()).toEqual([false, true]);
+  });
+
+  it("sends a held dismissal at once when the list is left over the note that an earlier one failed, and that note gets its full time on the list, with no Undo after", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither), {
+      clock: true,
+      change: failingFor("both"),
+      api: { [pagePaths.rules]: noRules },
+    });
+    const { page } = opened;
+    await failWhileAnotherWaits(opened);
+    await page.getByRole("link", { name: "Rules" }).click();
+    await page
+      .getByRole("heading", { name: "Your rules", exact: true })
+      .waitFor();
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both", "session"]);
+    await page.clock.runFor(undoMs * 2);
+    await page.goBack();
+    await page.getByRole("article").waitFor();
+    const note = page.getByRole("status");
+    await expect.poll(() => note.innerText()).toBe(failed);
+    await page.clock.runFor(undoMs - 500);
+    expect(await note.innerText()).toBe(failed);
+    await page.clock.runFor(1000);
+    await expect.poll(() => note.count()).toBe(0);
+    await page.clock.runFor(undoMs * 2);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual([
+      "both",
+      "session",
+    ]);
+    expect(await page.getByText(sessionOnly.summary).count()).toBe(0);
   });
 });
 
