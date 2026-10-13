@@ -199,33 +199,51 @@ describe("fitness: a dismissal still matches (ask-idempotency.md)", () => {
 });
 
 describe("fitness: expired is new (ask-idempotency.md)", () => {
-  it("makes a new card with a new id when the first ask expired, never closed, inside the window", async () => {
-    const owner = accountId(newAccount());
-    const newAsk = {
-      summary: ask.summary,
-      area: ask.area,
-      spokenDetail: ask.spoken_detail,
-    };
-    const start = new Date("2026-10-11T09:30:00.000Z");
-    const at = (ms: number) => new Date(start.getTime() + ms);
-    const lifetime = askLifetimeDays * 86_400_000;
+  const newAsk = {
+    summary: ask.summary,
+    area: ask.area,
+    spokenDetail: ask.spoken_detail,
+  };
+  const start = new Date("2026-10-11T09:30:00.000Z");
+  const at = (ms: number) => new Date(start.getTime() + ms);
+  const lifetime = askLifetimeDays * 86_400_000;
+  const later = at(lifetime + 60_000);
 
-    // A replacing ask keeps the expiry of the ask it replaces (ADR 13), so
-    // this one expires two minutes after it is posted.
+  // A replacing ask keeps the expiry of the ask it replaces (ADR 13), so
+  // the first ask here expires two minutes after it is posted.
+  const postFirst = async (owner: AccountId) => {
     const oldest = idFrom(await store.postAsk(owner, newAsk, start));
     const replacing = { ...newAsk, replaces: oldest };
     const first = idFrom(
       await store.postAsk(owner, replacing, at(lifetime - 120_000)),
     );
-    const later = at(lifetime + 60_000);
-    expect((await store.openAsks(owner, later)).asks).toEqual([]);
+    return { first, repeat: () => store.postAsk(owner, replacing, later) };
+  };
 
-    const again = idFrom(await store.postAsk(owner, replacing, later));
+  const openIdsAt = async (owner: AccountId, now: Date) =>
+    (await store.openAsks(owner, now)).asks.map(({ id }) => id);
+
+  it("makes a new card with a new id when the first ask expired, never closed, inside the window", async () => {
+    const owner = accountId(newAccount());
+    const { first, repeat } = await postFirst(owner);
+    expect(await openIdsAt(owner, later)).toEqual([]);
+
+    const again = idFrom(await repeat());
     expect(again).not.toBe(first);
-    expect(
-      (await store.openAsks(owner, later)).asks.map(({ id }) => id),
-    ).toEqual([again]);
+    expect(await openIdsAt(owner, later)).toEqual([again]);
     expect(await asksOf(owner)).toHaveLength(3);
+  });
+
+  it("makes a new card with a new id when the person dismissed the first ask and it then expired", async () => {
+    const owner = accountId(newAccount());
+    const { first, repeat } = await postFirst(owner);
+    expect(await store.dismissAsk(owner, first, at(lifetime - 60_000))).toBe(
+      "dismissed",
+    );
+
+    const again = idFrom(await repeat());
+    expect(again).not.toBe(first);
+    expect(await openIdsAt(owner, later)).toEqual([again]);
   });
 });
 

@@ -11,8 +11,8 @@ read to check. A duplicate is a second card in a list meant to be short.
   trimmed, and is tied to the account.
 - The check and the write are one atomic step.
 - A match returns the first ask's id and stores nothing.
-- A match counts while the first ask is open and not expired, or
-  dismissed. If the agent closed it, as resolved or replaced, or it
+- A match counts while the first ask is open or dismissed, and has
+  not expired. If the agent closed it, as resolved or replaced, or it
   expired, the ask is posted as new.
 - A new ask posted over such a match takes over the dedupe record in
   the same transaction, on condition the record still names the
@@ -27,7 +27,10 @@ read to check. A duplicate is a second card in a list meant to be short.
 - Match loosely: merging two different asks hides a real one.
 - Check and then write in two steps: two retries arriving together
   would both be stored. This holds for taking over the record too.
-- Post a repeat of a dismissed ask as new: a late retry would bring
-  back a card the person swiped away.
+- Post a repeat of a dismissed ask as new before it expires: a late
+  retry would bring back a card the person swiped away.
+- Read the first ask without checking its expiry to keep a dismissal
+  matching: expiry is checked on every read, and DynamoDB deletes the
+  item at a time nobody controls.
 
 History: [ADR 3](../adr/0003-idempotency.md), [ADR 23](../adr/0023-agent-closed-asks-are-not-matched.md), [ADR 27](../adr/0027-expired-asks-are-not-matched.md)
