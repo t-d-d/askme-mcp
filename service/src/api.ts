@@ -7,10 +7,8 @@ import { z } from "zod";
 import {
   askChange,
   askIdLimit,
-  asksAnswer,
   asksUnchanged,
   connectionAnswer,
-  rulesAnswer,
   rulesInput,
   rulesLimit,
   sinceParam,
@@ -18,7 +16,7 @@ import {
 import { pageRefusal } from "./errors";
 import { authorizationOf, jsonBody } from "./http";
 import { AgentToken, TokenRejected, type AccountId } from "./identity";
-import { queueSorts, sortingMs, type SortRequests } from "./jobs";
+import { queueSorts, type SortRequests } from "./jobs";
 import { errorClass, type Logger } from "./log";
 import { CapReached, type CountedModel } from "./model";
 import { askLimit, modelCallLimit, pollLimit, rulesSaveLimit } from "./rate";
@@ -29,9 +27,9 @@ import {
   dailyAskCap,
   dedupeWindowMinutes,
   type AccountRules,
-  type StoredAsk,
   type Store,
 } from "./store/store";
+import { asksView, rulesView, sortedWithRules } from "./view";
 
 export interface PageContext {
   // The address the caller used, from which the MCP endpoint's is built.
@@ -129,66 +127,6 @@ function samplesSentRefusal(): Response {
   );
 }
 
-// The account's hashtags as the page shows them: in the rules' order, each
-// with the colour it took when it first appeared, and the windows of its
-// hours when the rules give it any.
-const hashtagsOf = ({
-  hashtags,
-  seen,
-  hours,
-}: Pick<AccountRules, "hashtags" | "seen" | "hours">) =>
-  hashtags.map((name) => {
-    const windows = (hours ?? [])
-      .filter(({ hashtag }) => hashtag === name)
-      .map(({ days, from, to }) => ({ days, from, to }));
-    return {
-      name,
-      colour: Math.max(0, seen.indexOf(name)),
-      ...(windows.length === 0 ? {} : { hours: windows }),
-    };
-  });
-
-// The hashtags open asks still carry that the rules no longer name, because
-// they have not been sorted again since the rules changed. Each keeps the
-// colour it took when it first appeared.
-function formerHashtagsOf({ hashtags, seen }: AccountRules, asks: StoredAsk[]) {
-  const carried = new Set(asks.flatMap(({ sort }) => sort?.hashtags ?? []));
-  return hashtagsOf({
-    hashtags: seen.filter(
-      (name) => carried.has(name) && !hashtags.includes(name),
-    ),
-    seen,
-  });
-}
-
-const rulesView = (rules: AccountRules) =>
-  rulesAnswer.parse({
-    text: rules.text,
-    hashtags: hashtagsOf(rules),
-    readFailed: rules.readFailed,
-    timeZone: rules.timeZone,
-  });
-
-// Whether an ask is behind the rules in force: not sorted yet, or sorted
-// with rules saved before.
-const behind = (ask: StoredAsk, rules: AccountRules) =>
-  ask.sort === undefined || ask.sort.rulesVersion < rules.version;
-
-// When an ask behind the rules turns from sorting to stopped (ADR 22): half
-// an hour after the later of when it was stored and the last save, either
-// of which queued it. Not when it was posted: a replacing ask keeps the
-// posting time of the ask it replaces. Nothing is written when the time
-// passes, so the page works the state out from it. An ask sorted with the
-// rules in force has none.
-function sortingUntil(ask: StoredAsk, rules: AccountRules) {
-  if (!behind(ask, rules)) return undefined;
-  const queued = Math.max(
-    Date.parse(ask.storedAt),
-    rules.savedAt === undefined ? 0 : Date.parse(rules.savedAt),
-  );
-  return new Date(queued + sortingMs).toISOString();
-}
-
 // Queues a sort of the open asks after the rules are saved (PRD, "Rules"):
 // every one when the rules were read again, or only the asks behind them
 // when the text was saved unchanged. Each ask keeps its old sort, and so
@@ -204,7 +142,9 @@ async function sortAfterSave(
 ): Promise<void> {
   try {
     const { asks } = await context.store.openAsks(account, now);
-    const queued = every ? asks : asks.filter((ask) => behind(ask, rules));
+    const queued = every
+      ? asks
+      : asks.filter((ask) => !sortedWithRules(ask, rules));
     await queueSorts(
       context,
       account,
@@ -246,41 +186,7 @@ async function poll(
   }
   const found = await store.asksSince(account, since.data, now);
   if ("unchanged" in found) return answer(asksUnchanged.parse(found));
-  const { version, everAsked, asks, modelCapResetsAt } = found;
-  const rules = await store.rules(account);
-  return answer(
-    asksAnswer.parse({
-      version,
-      everAsked,
-      hashtags: hashtagsOf(rules),
-      formerHashtags: formerHashtagsOf(rules, asks),
-      timeZone: rules.timeZone,
-      modelCapResetsAt:
-        modelCapResetsAt !== undefined &&
-        Date.parse(modelCapResetsAt) > now.getTime()
-          ? modelCapResetsAt
-          : undefined,
-      asks: asks.map((ask) => ({
-        id: ask.id,
-        summary: ask.summary,
-        spokenDetail: ask.spokenDetail,
-        actionLink: ask.actionLink,
-        sessionLink: ask.sessionLink,
-        postedAt: ask.postedAt,
-        lapsesAt: ask.lapsesAt,
-        opened: ask.openedAt !== undefined,
-        sortingUntil: sortingUntil(ask, rules),
-        sort:
-          ask.sort === undefined
-            ? null
-            : {
-                hashtags: ask.sort.hashtags,
-                level: ask.sort.level,
-                reason: ask.sort.reason,
-              },
-      })),
-    }),
-  );
+  return answer(asksView(found, await store.rules(account), now));
 }
 
 // Saves the rules and the time zone they were written in, and reads the

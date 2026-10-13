@@ -31,6 +31,7 @@ import { emptyRules } from "./rules";
 import { createKeyReader } from "./secrets";
 import { parseSortReply, sortingPrompt, type Sort } from "./sort";
 import { createStore, type Store } from "./store/store";
+import { sortedWithRules } from "./view";
 
 // How many times one run asks the model before it leaves the ask unsorted.
 export const sortAttempts = 2;
@@ -79,9 +80,7 @@ export async function sortAsk(
   const found = await store.askToSort(account, askId, now);
   if (found === undefined) return "done";
   const { ask, rules } = found;
-  if (ask.sort !== undefined && ask.sort.rulesVersion >= rules.version) {
-    return "done";
-  }
+  if (sortedWithRules(ask, rules)) return "done";
   let sort: Sort | undefined;
   let failure = "reply-rejected";
   if (emptyRules(rules.text)) {

@@ -979,7 +979,9 @@ export function createStore(config: {
     },
 
     // The sort is written only onto an ask that is still open, and never
-    // over one made with newer rules.
+    // over one made with newer rules. The condition must agree with
+    // sortedWithRules in view.ts: it refuses the write only when the stored
+    // sort is already sorted with rules later than the new one's.
     async recordSort(account, askId, sort, now) {
       try {
         await write(account, [
