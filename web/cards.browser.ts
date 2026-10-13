@@ -671,7 +671,7 @@ describe("following a link", () => {
       .toEqual(["session"]);
   });
 
-  it("dims an ask the list gives as opened, says so after its age, and keeps it below the unopened ones at its level", async () => {
+  it("sets an ask the list gives as opened in the second text colour, undimmed, says so after its age, and keeps it below the unopened ones at its level", async () => {
     const opened = await open(
       listOf(
         { ...both, opened: true },
@@ -693,16 +693,46 @@ describe("following a link", () => {
       "Merge the fix for checkout rounding?",
     ]);
     const rows = page.getByRole("listitem");
-    const opacity = (index: number) =>
-      rows.nth(index).evaluate((row) => Number(getComputedStyle(row).opacity));
-    expect(await opacity(0)).toBe(1);
-    expect(await opacity(1)).toBeCloseTo(0.55, 5);
-    expect(await rows.nth(1).innerText()).toMatch(/40 min\s+Opened/u);
+    const card = page.getByRole("article");
+    const opacity = (element: Locator) =>
+      element.evaluate((each) => Number(getComputedStyle(each).opacity));
+    const colourOf = (element: Locator) =>
+      element.evaluate((each) => getComputedStyle(each).color);
+    const tokens = await page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement);
+      return ["--ink", "--text-2"].map((name) =>
+        root.getPropertyValue(name).trim(),
+      );
+    });
+    const [ink = "", text2 = ""] = await page.evaluate((hexes) => {
+      const probe = document.createElement("span");
+      document.body.append(probe);
+      const rgb = hexes.map((hex) => {
+        probe.style.color = hex;
+        return getComputedStyle(probe).color;
+      });
+      probe.remove();
+      return rgb;
+    }, tokens);
+    expect(await opacity(rows.nth(0))).toBe(1);
+    expect(await opacity(rows.nth(1))).toBe(1);
+    expect(await opacity(card)).toBe(1);
+    const summaryOf = (element: Locator, summary: string) =>
+      element.getByText(summary, { exact: true });
+    expect(await colourOf(summaryOf(rows.nth(0), "Which date format?"))).toBe(
+      ink,
+    );
     expect(
-      await page
-        .getByRole("article")
-        .evaluate((card) => Number(getComputedStyle(card).opacity)),
-    ).toBeCloseTo(0.55, 5);
+      await colourOf(
+        summaryOf(rows.nth(1), "Merge the fix for checkout rounding?"),
+      ),
+    ).toBe(text2);
+    expect(
+      await colourOf(
+        card.getByRole("link", { name: "Sign off the migration?" }),
+      ),
+    ).toBe(text2);
+    expect(await rows.nth(1).innerText()).toMatch(/40 min\s+Opened/u);
   });
 });
 
@@ -1051,6 +1081,52 @@ describe("dismissing", () => {
     expect(await page.getByRole("status").count()).toBe(0);
     await page.clock.runFor(undoMs * 2);
     expect(sentTo(opened, askChangePaths.dismissed)).toEqual([]);
+  });
+
+  // The note goes, and sends, 5 seconds after `leave` and no sooner.
+  async function goesAfter(opened: OpenPage, leave: () => Promise<void>) {
+    const { page } = opened;
+    await page.clock.runFor(undoMs * 2);
+    expect(await page.getByRole("button", { name: "Undo" }).count()).toBe(1);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual([]);
+    await leave();
+    await page.clock.runFor(undoMs - 500);
+    expect(await page.getByRole("button", { name: "Undo" }).count()).toBe(1);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual([]);
+    await page.clock.runFor(1000);
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both"]);
+    expect(await page.getByRole("status").count()).toBe(0);
+  }
+
+  it("keeps the note with Undo while the pointer is over it, and lets it go 5 seconds after the pointer leaves", async () => {
+    const opened = await open(listOf(both, neither), { clock: true });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).hover();
+    await goesAfter(opened, () => page.mouse.move(5, 5));
+  });
+
+  it("keeps the note with Undo while Undo has focus, and lets it go 5 seconds after focus leaves", async () => {
+    const opened = await open(listOf(both, neither), { clock: true });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.mouse.move(5, 5);
+    await tabTo(opened, page.getByRole("button", { name: "Undo" }));
+    await goesAfter(opened, () => page.keyboard.press("Shift+Tab"));
+  });
+
+  it("keeps the note with Undo until both focus and the pointer have left", async () => {
+    const opened = await open(listOf(both, neither), { clock: true });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    const undo = page.getByRole("button", { name: "Undo" });
+    await tabTo(opened, undo);
+    await undo.hover();
+    await page.clock.runFor(undoMs * 2);
+    await page.keyboard.press("Shift+Tab");
+    await goesAfter(opened, () => page.mouse.move(5, 5));
   });
 
   it("sends the first dismissal at once when a second ask is dismissed", async () => {
