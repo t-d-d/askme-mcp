@@ -1,9 +1,10 @@
 // Every check a decision record names has a test of that name (ADR 9,
 // "Every ADR check exists"). It runs by hand, with `npm run checks`, and
-// not in the gate, because a record may name checks that land with a later
-// issue (the write-an-adr skill, step 6), and its pull request would fail
-// until they did. Run it when the train's last issue lands, or after a record's
-// checks should all exist.
+// not in the gate. A record may name checks that land with a later issue
+// (the write-an-adr skill, step 6), and the record's pull request would
+// fail the gate until they did. Run it when an issue lands the last check a
+// record names. ADR 9 says this check blocks a merge. By the owner's
+// decision on #19 it runs by hand instead.
 import { describe, expect, it } from "vitest";
 import {
   asNamed,
