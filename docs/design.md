@@ -207,7 +207,9 @@ Every ask after the first. A summary of up to two lines, then one line with the 
 
 Tapping a row opens its card, the same as tapping the top card's summary. The site name says where the card's main button leads.
 
-A site's name too long for the rest of the line, such as console.aws.amazon.com beside #shopping on a 320px phone, breaks onto a second line just after a dot, as on the top card. A part between two dots is split only when it is too long for a line on its own.
+When that line's parts do not all fit, they keep their order, and the last ones move down whole to a second line, 6px below, as wrapped pills are. The pill, the age and "Opened" stay whole, so the site's name gives way first. Beside #shopping and "50 min" on a 320px phone, console.aws.amazon.com moves down to a line of its own, still at the right. Beside a long hashtag, such as #customer-onboarding-flow, "Opened" moves down too, and starts the second line at the left.
+
+A site's name too long for a whole line breaks just after a dot, as on the top card, and each of its lines ends at the row's right edge. A part between two dots is split only when it is too long for a whole line on its own.
 
 | State | How it looks |
 | --- | --- |
