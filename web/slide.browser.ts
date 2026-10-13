@@ -215,7 +215,9 @@ const click = (page: Page, name: string) => () =>
 // Back might. A change of fragment sends popstate at once but queues
 // hashchange as a task, and on a busy machine the next frame's task can
 // already be queued ahead of it. So the address is changed with pushState,
-// which sends nothing, and the page is handed both events at once.
+// which sends neither event. The page is handed popstate at once, as a
+// browser would, and hashchange in a microtask, which runs after those
+// Dismiss queued but always before the next frame.
 async function dismissAndGo(page: Page) {
   const first = await page
     .getByRole("button", { name: "Dismiss" })
@@ -237,12 +239,12 @@ async function dismissAndGo(page: Page) {
       button.click();
       window.history.pushState(null, "", "#asks");
       window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
-      window.dispatchEvent(
-        new HashChangeEvent("hashchange", {
-          oldURL,
-          newURL: window.location.href,
-        }),
-      );
+      const newURL = window.location.href;
+      queueMicrotask(() => {
+        window.dispatchEvent(
+          new HashChangeEvent("hashchange", { oldURL, newURL }),
+        );
+      });
       return first;
     });
   expect(first, "what comes first after Dismiss").toBe("the address");
