@@ -12,8 +12,13 @@ export interface Outcome {
   one: EvalCase;
   sort?: Sort;
   failure?: string;
-  // How long the model took to reply, in milliseconds, when it replied.
+  // How long the model took to reply, in milliseconds, when it replied. A
+  // follow-up's reply is counted in.
   ms?: number;
+  // Whether the reply's only fault was a long reason, so it went back to the
+  // model, as the service sends it (#243). The sort, or the failure, is then
+  // the follow-up's.
+  followedUp?: boolean;
 }
 
 // Every outcome of one model, over every round of the set.
@@ -101,9 +106,12 @@ export function modelReport({ model, outcomes }: ModelRun): string {
     ({ failure }) => failure === undefined || failure === "reply-rejected",
   ).length;
   const hostile = inGroup(outcomes, "hostile");
+  const followedUp = outcomes.filter((outcome) => outcome.followedUp === true);
+  const fitAfter = followedUp.filter(({ sort }) => sort !== undefined).length;
   return [
     `Model: ${model}`,
     `Replies from the model: ${String(replies)} of ${String(outcomes.length)}`,
+    `Follow-ups for a long reason: ${String(followedUp.length)} sent, ${String(fitAfter)} got a reply that fit`,
     `Median reply time: ${medianTime(outcomes)}`,
     ...(hostile.length === 0
       ? []
