@@ -4,10 +4,11 @@ import { captureLogs } from "../../test/logs";
 import { callerOf, type AccountId } from "./identity";
 import { createLogger } from "./log";
 import { CapReached, ModelFailed, type ModelRequest } from "./model";
-import { reasonAsked, reasonLimit } from "./sort";
+import { parseSortReply, reasonAsked, reasonLimit } from "./sort";
 import type { NewSort, StoredAsk, AccountRules } from "./store/store";
 import {
   emptyRulesSort,
+  handler,
   runJob,
   sortAsk,
   sortAttempts,
@@ -160,18 +161,26 @@ describe("sorting an ask", () => {
     ]);
   });
 
-  // The eval sends these same two values, so its scores describe the
+  // The eval sends these same three values, so its scores describe the
   // service's own call.
-  it("asks the model with the token cap and timeout it exports", async () => {
+  it("asks the model with the schema's name, and the token cap and timeout it exports", async () => {
     const memory = memoryStore({ ask, rules });
     const { model, asked } = memoryModel([good]);
     await run(memory, model);
     expect(asked).toEqual([
       expect.objectContaining({
+        schemaName: "sort",
         maxTokens: sortMaxTokens,
         timeoutMs: sortTimeoutMs,
       }),
     ]);
+  });
+
+  it("logs nothing when the store keeps no sort, as the ask closed meanwhile, and is done", async () => {
+    const memory = memoryStore({ ask, rules });
+    memory.store.recordSort = () => Promise.resolve(false);
+    expect(await run(memory, memoryModel([good]).model)).toBe("done");
+    expect(logged()).toEqual([]);
   });
 
   it("asks no model when the rules are empty, and lists the ask with no hashtag", async () => {
@@ -186,6 +195,11 @@ describe("sorting an ask", () => {
       { ...emptyRulesSort, rulesVersion: 4 },
     ]);
     expect(emptyRulesSort.hashtags).toEqual([]);
+  });
+
+  it("gives the ask a level and a one-line reason when the rules are empty, as a model's reply with no hashtags would", () => {
+    const { level, reason } = emptyRulesSort;
+    expect(parseSortReply({ level, reason }, [])).toEqual(emptyRulesSort);
   });
 
   it("does nothing when the ask is no longer open, and is done", async () => {
@@ -322,6 +336,17 @@ describe("sorting an ask", () => {
       failed: "status-502",
     });
     expect(asked).toHaveLength(sortAttempts);
+    expect(memory.recorded).toEqual([]);
+  });
+
+  it("tries no more when a call fails for a reason that is not the model's, and passes the error on to the job", async () => {
+    const memory = memoryStore({ ask, rules });
+    const { model, asked } = memoryModel([
+      new TypeError("The key could not be read."),
+      good,
+    ]);
+    await expect(run(memory, model)).rejects.toThrow(TypeError);
+    expect(asked).toHaveLength(1);
     expect(memory.recorded).toEqual([]);
   });
 });
@@ -491,9 +516,58 @@ describe("a job from the queue", () => {
         ),
       ).toBe(false);
       expect(logged()).toEqual([
-        expect.objectContaining({ level: "error", event: "request-failed" }),
+        expect.objectContaining({
+          level: "error",
+          event: "request-failed",
+          errorClass: "UnreadableJob",
+        }),
       ]);
     }
     expect(memory.reads.count).toBe(0);
+  });
+});
+
+describe("a run of the sort function", () => {
+  // A record as the queue's trigger gives one, with a receive count and a
+  // body no job can be read from, so no run reaches the services.
+  const record = (receives: string) => ({
+    messageId: "message-1",
+    body: "not json",
+    attributes: { ApproximateReceiveCount: receives },
+  });
+
+  it.each([
+    ["no event", undefined],
+    ["no records", {}],
+    [
+      "a receive count that is not a whole number",
+      { Records: [record("1 1")] },
+    ],
+  ])(
+    "lets an event with %s go at once, at error, since only the trigger sends one",
+    async (_, event) => {
+      expect(await handler(event, { awsRequestId: "sort-7" })).toEqual({
+        batchItemFailures: [],
+      });
+      expect(logged()).toEqual([
+        {
+          level: "error",
+          event: "request-failed",
+          requestId: "sort-7",
+          errorClass: "UnreadableEvent",
+        },
+      ]);
+    },
+  );
+
+  it.each([
+    ["the run's request id", { awsRequestId: "sort-7" }, "sort-7"],
+    ["unknown with no context", undefined, "unknown"],
+    ["unknown for an id with a space", { awsRequestId: "sort 7" }, "unknown"],
+  ])("logs under %s", async (_, context, requestId) => {
+    await handler({ Records: [record("1")] }, context);
+    expect(logged()).toEqual([
+      expect.objectContaining({ errorClass: "UnreadableJob", requestId }),
+    ]);
   });
 });
