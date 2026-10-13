@@ -109,6 +109,27 @@ describe("a call to the model", () => {
     });
   });
 
+  // The second try of a sort whose only fault was a long reason (#243).
+  it("sends a follow-up after the same system and user messages, with the model's earlier reply as its own message, and changes nothing else", async () => {
+    const plain = fakeFetch(() => completion('{"level":"high"}'));
+    await model(plain.fetch).reply(request);
+    const fake = fakeFetch(() => completion('{"level":"high"}'));
+    await model(fake.fetch).reply({
+      ...request,
+      followUp: { reply: '{"level":"low"}', user: "Shorter, please." },
+    });
+    expect(fake.sent).toHaveLength(1);
+    expect(fake.sent[0]?.body).toEqual({
+      ...z.record(z.string(), z.unknown()).parse(plain.sent[0]?.body),
+      messages: [
+        { role: "system", content: "Sort it." },
+        { role: "user", content: "<rules>\n#work\n</rules>" },
+        { role: "assistant", content: '{"level":"low"}' },
+        { role: "user", content: "Shorter, please." },
+      ],
+    });
+  });
+
   it("sends no key when it has none, as in a cloud session", async () => {
     const fake = fakeFetch(() => completion('{"level":"high"}'));
     await model(fake.fetch, () => Promise.resolve(undefined)).reply(request);

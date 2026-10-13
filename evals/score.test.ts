@@ -122,6 +122,26 @@ describe("a model's report", () => {
     expect(report).toContain("Replies from the model: 3 of 4");
     expect(report).toContain("Median reply time: 1.2s");
   });
+
+  // #243: the follow-up a reply with a long reason gets, as in the service.
+  it("says how many follow-ups for a long reason were sent, and how many got a reply that fit", () => {
+    const report = lines(
+      modelReport({
+        model: "maker/model",
+        outcomes: [
+          { ...sorted(core("a hotfix"), "high"), followedUp: true },
+          { ...sorted(core("a rollback"), "low"), followedUp: true },
+          { ...unsorted(core("a flaky test")), followedUp: true },
+          { one: core("a deploy"), failure: "timeout", followedUp: true },
+          sorted(core("a release"), "high"),
+          unsorted(core("a migration")),
+        ],
+      }),
+    );
+    expect(report).toContain(
+      "Follow-ups for a long reason: 4 sent, 2 got a reply that fit",
+    );
+  });
 });
 
 // Three models over the same asks: b gets all four right, a and c three.

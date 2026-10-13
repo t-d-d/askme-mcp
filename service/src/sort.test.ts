@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { callerOf, type AccountId } from "./identity";
 import {
+  followUpForLongReason,
   levels,
   parseSortReply,
   reasonAsked,
@@ -249,5 +250,55 @@ describe("a sorting reply", () => {
     expect(
       parseSortReply({ hashtags: ["work"], level: "low", reason: "r" }, []),
     ).toBeUndefined();
+  });
+});
+
+// A reply that fits in every way but its reason's length goes back to the
+// model on the second try, which asks for the whole reply again with a
+// shorter reason (#243). Any other fault gets a plain second try.
+describe("a sorting reply whose only fault is a long reason", () => {
+  const hashtags = rules.hashtags;
+  const long = {
+    hashtags: ["shop"],
+    level: "high",
+    reason: "x".repeat(reasonLimit + 1),
+  };
+
+  it("goes back to the model as its own message, with a turn that says how long the reason was and asks again for a shorter one", () => {
+    expect(followUpForLongReason(long, hashtags)).toEqual({
+      reply: JSON.stringify(long),
+      user: `Your reason has ${String(reasonLimit + 1)} characters, which is too long. Reply again with the whole JSON the schema asks for, with a reason of at most ${String(reasonAsked)} characters.`,
+    });
+  });
+
+  it("counts the reason's characters as the limit does, without the spaces around it", () => {
+    const padded = { ...long, reason: `  ${"x".repeat(150)}  ` };
+    expect(followUpForLongReason(padded, hashtags)?.user).toMatch(
+      /^Your reason has 150 characters,/u,
+    );
+  });
+
+  it("goes back too when the rules name no hashtag", () => {
+    const reply = { level: "low", reason: "x".repeat(reasonLimit + 1) };
+    expect(followUpForLongReason(reply, [])?.reply).toBe(JSON.stringify(reply));
+  });
+
+  it.each([
+    ["it fits", { ...long, reason: "x".repeat(reasonLimit) }],
+    ["an invented hashtag as well", { ...long, hashtags: ["urgent"] }],
+    ["a hashtag twice as well", { ...long, hashtags: ["shop", "shop"] }],
+    ["a fourth level as well", { ...long, level: "critical" }],
+    ["an extra field as well", { ...long, note: "x" }],
+    ["two lines as well", { ...long, reason: `a\n${long.reason}` }],
+    [
+      "an invented hashtag alone",
+      { ...long, hashtags: ["urgent"], reason: "r" },
+    ],
+    ["no reason", { hashtags: [], level: "low" }],
+    ["a reason that is not a string", { ...long, reason: 141 }],
+    ["a string", "high"],
+    ["nothing", undefined],
+  ])("is not sent back when %s", (_, reply) => {
+    expect(followUpForLongReason(reply, hashtags)).toBeUndefined();
   });
 });

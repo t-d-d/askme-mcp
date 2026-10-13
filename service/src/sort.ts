@@ -9,6 +9,7 @@
 import { z } from "zod";
 import { levels, type Level } from "../../shared/page-api";
 import type { AccountId } from "./identity";
+import type { FollowUp } from "./model";
 
 // How much an ask matters, judged on what it would cost if the person never
 // acted (PRD, "The ask"). Used for order only, and never shown. The page
@@ -123,13 +124,30 @@ export function sortingPrompt(rules: SortingRules, ask: SortingAsk): Prompt {
   return { system, user, schema };
 }
 
-// One line of plain text, within the limit.
-const reasonSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(reasonLimit)
-  .regex(/^[^\p{Cc}]*$/u);
+// One line of plain text, within a limit.
+const reasonSchema = (limit: number) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(limit)
+    .regex(/^[^\p{Cc}]*$/u);
+
+// The reply the rules allow, with a reason of at most the given limit.
+function replySchema(hashtags: readonly string[], limit: number) {
+  const [first, ...rest] = hashtags;
+  return first === undefined
+    ? z
+        .strictObject({ level: z.enum(levels), reason: reasonSchema(limit) })
+        .transform((sort) => ({ hashtags: [], ...sort }))
+    : z.strictObject({
+        hashtags: z
+          .array(z.enum([first, ...rest]))
+          .refine((chosen) => new Set(chosen).size === chosen.length),
+        level: z.enum(levels),
+        reason: reasonSchema(limit),
+      });
+}
 
 // The sort a reply gives, or undefined when anything in it is out of place.
 // Its hashtags come back in the order the rules give them.
@@ -137,25 +155,31 @@ export function parseSortReply(
   reply: unknown,
   hashtags: readonly string[],
 ): Sort | undefined {
-  const [first, ...rest] = hashtags;
-  const parsed = (
-    first === undefined
-      ? z
-          .strictObject({ level: z.enum(levels), reason: reasonSchema })
-          .transform((sort) => ({ hashtags: [], ...sort }))
-      : z.strictObject({
-          hashtags: z
-            .array(z.enum([first, ...rest]))
-            .refine((chosen) => new Set(chosen).size === chosen.length),
-          level: z.enum(levels),
-          reason: reasonSchema,
-        })
-  ).safeParse(reply);
+  const parsed = replySchema(hashtags, reasonLimit).safeParse(reply);
   if (!parsed.success) return undefined;
   const chosen = new Set<string>(parsed.data.hashtags);
   return {
     hashtags: hashtags.filter((hashtag) => chosen.has(hashtag)),
     level: parsed.data.level,
     reason: parsed.data.reason,
+  };
+}
+
+// The turn that sends a reply back to the model when its only fault is a
+// reason over the limit (#243): the reply, and a message that says how long
+// its reason was and asks for the whole reply again with a shorter one.
+// Undefined for a reply that fits, or has any other fault. Nothing is kept
+// from the reply it sends back: the next reply is parsed on its own.
+export function followUpForLongReason(
+  reply: unknown,
+  hashtags: readonly string[],
+): FollowUp | undefined {
+  const unlimited = replySchema(hashtags, Infinity).safeParse(reply);
+  if (!unlimited.success) return undefined;
+  const { length } = unlimited.data.reason;
+  if (length <= reasonLimit) return undefined;
+  return {
+    reply: JSON.stringify(reply),
+    user: `Your reason has ${String(length)} characters, which is too long. Reply again with the whole JSON the schema asks for, with a reason of at most ${String(reasonAsked)} characters.`,
   };
 }
