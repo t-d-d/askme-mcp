@@ -2,7 +2,7 @@
 
 Agents write the code and the owner merges it, so the gate is the reviewer. Whatever the gate cannot see ships. There is one environment, so nothing is tried on a deployed copy before it merges.
 
-This page explains how the tests fit together. The rules they follow are in [test-tiers.md](constraints/test-tiers.md), and the reasons are in [ADR 9](adr/0009-test-pyramid.md), [ADR 15](adr/0015-conformance-tier.md), [ADR 16](adr/0016-live-sign-in.md) and [ADR 20](adr/0020-live-tier-reads.md).
+This page explains how the tests fit together. The rules they follow are in [test-tiers.md](constraints/test-tiers.md), and the reasons are in [ADR 9](adr/0009-test-pyramid.md), [ADR 15](adr/0015-conformance-tier.md), [ADR 16](adr/0016-live-sign-in.md), [ADR 20](adr/0020-live-tier-reads.md) and [ADR 23](adr/0023-live-tier-reads-the-repo.md).
 
 ## The tiers
 
@@ -14,7 +14,7 @@ A test's file name sets its tier, and its tier sets what it may touch. An assert
 | Unit | `*.test.ts` | Memory only | In the gate |
 | Integration | `*.int.ts` | Loopback: the local database, the fake model, test-key tokens | In the gate |
 | Browser | `*.browser.ts` | Loopback, with the API faked | In the gate |
-| Live | `*.live.ts` | The deployed site, reading only. It may sign in, or sign up once, as the one test account. | After each deploy, with `npm run test:live` |
+| Live | `*.live.ts` | The deployed site, reading only. It may sign in, or sign up once, as the one test account, and read the repo's own files to compare them with what the deploy produced. | After each deploy, with `npm run test:live` |
 | Conformance | `*.conformance.ts` | Setup outside the repo, such as GitHub's settings, read only | Every day, with `npm run conformance` |
 
 `npm run gate` runs format, lint, types, and the static, unit, integration and browser tests. It runs on every pull request, and again on main before each deploy. Main's ruleset requires it, so a pull request merges only when it passes. The test setup refuses any connection that is not to loopback, and the gate's job declares no secrets.

@@ -6,6 +6,7 @@ import {
   builtFrom,
   constantFor,
   controlNames,
+  fileSystemImports,
   liveTierFiles,
   typedValues,
 } from "../test/live-tier";
@@ -442,5 +443,49 @@ describe("fitness: the live tier presses only controls that read (test-tiers.md)
     const reading = new Set(readingControls.map((control) => `"${control}"`));
     expect(found.map(({ name }) => name)).toContain('"Sign out"');
     expect(found.filter(({ name }) => !reading.has(name))).toEqual([]);
+  });
+});
+
+// ADR 23: the live tier may read the repo's own files, and writes none.
+const reading = new Set([
+  "existsSync",
+  "readFile",
+  "readFileSync",
+  "readdir",
+  "readdirSync",
+  "stat",
+  "statSync",
+]);
+
+describe("fitness: the live tier writes no file (test-tiers.md)", () => {
+  it("reads the live file that reads the repo", () => {
+    expect(liveTierFiles()).toContain("test/readme.live.ts");
+  });
+
+  it("finds what a file takes from Node's file modules, by any route", () => {
+    expect(
+      fileSystemImports(
+        [
+          'import { readFileSync, writeFileSync as save } from "node:fs";',
+          'import fs from "fs";',
+          'import * as files from "node:fs/promises";',
+          'import { join } from "node:path";',
+          'import old = require("fs");',
+          'const lazy = await import("node:fs");',
+          'const required = require("fs/promises");',
+        ].join("\n"),
+      ),
+    ).toEqual(["readFileSync", "writeFileSync", "default", "*", "*", "*", "*"]);
+  });
+
+  it("takes from them only the functions that read", () => {
+    for (const path of liveTierFiles()) {
+      expect(
+        fileSystemImports(readRepoFile(path)).filter(
+          (name) => !reading.has(name),
+        ),
+        path,
+      ).toEqual([]);
+    }
   });
 });

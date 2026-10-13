@@ -28,6 +28,9 @@ most of it can only be read signed in.
   own to askme's store, and sends the page's API reads only. The
   service may write a rate counter to answer them. No other write may
   follow from them.
+- The live tier may read the repo's own files, from the checkout it
+  runs in, to compare them with what the deploy produced. It writes
+  no file.
 - The live tier may sign in as the one test account and no other,
   through Clerk's own screens, using Clerk's test mode and no stored
   secret. The account's address carries +clerk_test and is one
@@ -53,6 +56,8 @@ most of it can only be read signed in.
 - Add a second test runner.
 - Put a check of outside setup in the live tier: the live tier is for
   the deployed site, and says what its files touch.
+- Write a value the deploy produced back into the repo, from the
+  deploy or the live tier: main takes changes only by pull request.
 - Give a conformance check the deploy role: it only reads, and the
   deploy role can change everything.
 - Give a conformance check a key that can write when the service
@@ -73,5 +78,8 @@ Judgment: A real agent connecting and its ask reaching a card is
 checked by hand after a deploy, and how narrow a third-party
 conformance key is when it is made. No test can see either. A new
 write that the service makes to answer a read of the page's API also
-binds the live tier, and needs a decision before it lands.
-History: [ADR 9](../adr/0009-test-pyramid.md), [ADR 15](../adr/0015-conformance-tier.md), [ADR 16](../adr/0016-live-sign-in.md), [ADR 20](../adr/0020-live-tier-reads.md), [ADR 22](../adr/0022-sort-queue.md)
+binds the live tier, and needs a decision before it lands. A value
+the deploy produced, such as the page's address, is the deployed
+site's, so a check of it against the repo goes in the live tier. A
+setting made by hand outside the repo goes in the conformance tier.
+History: [ADR 9](../adr/0009-test-pyramid.md), [ADR 15](../adr/0015-conformance-tier.md), [ADR 16](../adr/0016-live-sign-in.md), [ADR 20](../adr/0020-live-tier-reads.md), [ADR 22](../adr/0022-sort-queue.md), [ADR 23](../adr/0023-live-tier-reads-the-repo.md)

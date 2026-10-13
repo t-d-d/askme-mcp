@@ -140,6 +140,58 @@ export function typedValues(text: string): string[] {
   return found;
 }
 
+// Node's file modules, by any name they can be imported under.
+const fileModules = new Set([
+  "fs",
+  "node:fs",
+  "fs/promises",
+  "node:fs/promises",
+]);
+
+// What a piece of source takes from Node's file modules (ADR 23): each
+// function imported by name, under the name it has there, "default" for a
+// default import, and "*" for the whole module, however it is reached: a
+// namespace import, an import with require, a dynamic import or require.
+export function fileSystemImports(text: string): string[] {
+  const source = parse(text);
+  const found: string[] = [];
+  const fromFiles = (node: ts.Node | undefined): boolean =>
+    node !== undefined &&
+    ts.isStringLiteralLike(node) &&
+    fileModules.has(node.text);
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && fromFiles(node.moduleSpecifier)) {
+      const clause = node.importClause;
+      if (clause?.name !== undefined) found.push("default");
+      const bindings = clause?.namedBindings;
+      if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
+        found.push("*");
+      } else if (bindings !== undefined) {
+        for (const element of bindings.elements) {
+          found.push((element.propertyName ?? element.name).text);
+        }
+      }
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      fromFiles(node.moduleReference.expression)
+    ) {
+      found.push("*");
+    } else if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) &&
+          node.expression.text === "require")) &&
+      fromFiles(node.arguments[0])
+    ) {
+      found.push("*");
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
+
 // The roles a person presses, ticks or picks on a page.
 const pressable = new Set([
   "button",

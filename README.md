@@ -89,7 +89,7 @@ A test's file name sets its tier, and its tier sets what it may touch ([ADR 9](d
 | Unit | Logic in memory, such as time windows, ordering and schemas | In the gate |
 | Integration | The API and the MCP tools from end to end, against a local DynamoDB, a fake model and test-key tokens | In the gate |
 | Browser | The built page in headless Chromium, with the API faked | In the gate |
-| Live | The deployed page, API and MCP endpoint. One check signs in as the one test account. | After each deploy |
+| Live | The deployed page, API and MCP endpoint, and that the README gives their addresses. One check signs in as the one test account. | After each deploy |
 | Conformance | Setup held outside the repo, such as main's ruleset in GitHub | Every day |
 
 Each decision record names checks for the rules it puts in force, and each check is a test named after it, called a fitness function. `npm run checks` lists any check a record names that has no test.
