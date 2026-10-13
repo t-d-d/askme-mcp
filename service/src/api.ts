@@ -20,10 +20,10 @@ import { authorizationOf, jsonBody } from "./http";
 import { AgentToken, TokenRejected, type AccountId } from "./identity";
 import { queueSorts, sortingMs, type SortRequests } from "./jobs";
 import { errorClass, type Logger } from "./log";
-import type { Model } from "./model";
-import { askLimit, pollLimit, rulesSaveLimit } from "./rate";
+import { CapReached, type CountedModel } from "./model";
+import { askLimit, modelCallLimit, pollLimit, rulesSaveLimit } from "./rate";
 import { mcpPath, type PageRoute } from "./routes";
-import { readRules } from "./rules";
+import { emptyRules, readRules } from "./rules";
 import { sendSamples } from "./samples";
 import {
   dailyAskCap,
@@ -41,8 +41,9 @@ export interface PageContext {
   // Queues asks' sorts: the open asks when the rules are saved, and each
   // sample ask. A poll queues none (ADR 22).
   sorts: SortRequests;
-  // Reads the rules when they are saved.
-  model: Model;
+  // Reads the rules when they are saved, counting each call against the
+  // account's daily cap.
+  model: CountedModel;
   log: Logger;
 }
 
@@ -89,6 +90,15 @@ function rulesSaveRefusal(secondsLeft: number): Response {
   return pageRefusal(
     "rate_limited",
     `The rules were saved more than ${String(rulesSaveLimit.saves)} times in ${inMinutes(rulesSaveLimit.windowMinutes)}, which is the limit for an account. Wait ${plural(secondsLeft, "second")}, then save again.`,
+  );
+}
+
+// A save refused at the daily cap on model calls (ADR 21), which says when
+// the count starts again, as the ask cap's refusal does.
+function modelCapRefusal(resetsAt: Date): Response {
+  return pageRefusal(
+    "cap_reached",
+    `Saving these rules needs model calls, to read them or to sort the asks again, and this account has made the ${String(modelCallLimit.calls)} model calls askme makes for an account in a day. Nothing was saved. The count starts again at ${resetsAt.toISOString()}, midnight UTC. Save the rules again after then.`,
   );
 }
 
@@ -210,7 +220,8 @@ async function sortAfterSave(
 // poll carried. A poll with a bad version is refused before the table is
 // touched. Every other poll counts against the account's limit first. A
 // poll only reads: it never queues a sort (ADR 22). It gives each ask behind
-// the rules the time it turns stopped instead.
+// the rules the time it turns stopped instead, and when the daily cap on
+// model calls resets, while that time is still ahead.
 async function poll(
   request: Request,
   account: AccountId,
@@ -235,7 +246,7 @@ async function poll(
   }
   const found = await store.asksSince(account, since.data, now);
   if ("unchanged" in found) return answer(asksUnchanged.parse(found));
-  const { version, everAsked, asks } = found;
+  const { version, everAsked, asks, modelCapResetsAt } = found;
   const rules = await store.rules(account);
   return answer(
     asksAnswer.parse({
@@ -244,6 +255,11 @@ async function poll(
       hashtags: hashtagsOf(rules),
       formerHashtags: formerHashtagsOf(rules, asks),
       timeZone: rules.timeZone,
+      modelCapResetsAt:
+        modelCapResetsAt !== undefined &&
+        Date.parse(modelCapResetsAt) > now.getTime()
+          ? modelCapResetsAt
+          : undefined,
       asks: asks.map((ask) => ({
         id: ask.id,
         summary: ask.summary,
@@ -278,6 +294,11 @@ async function poll(
 // when it was made, and queues only the asks still behind the rules, such
 // as those whose sorting stopped. "Try again" after a failed reading sends
 // the same text, and reads it again, as any other save does.
+//
+// While the account's daily cap on model calls is spent, a save is refused
+// with cap_reached before anything is saved (ADR 21): one that reads the
+// rules needs a call, and one of unchanged text queues sorts that do
+// (ADR 22). Empty rules sort with no call, so their save is never refused.
 async function saveRules(
   request: Request,
   account: AccountId,
@@ -299,6 +320,13 @@ async function saveRules(
     return rulesSaveRefusal(counted.secondsLeft);
   }
   const { text, timeZone } = input.data;
+  if (!emptyRules(text)) {
+    const resetsAt = await model.spent(account);
+    if (resetsAt !== undefined) {
+      log.info("rules-capped", { accountId: account });
+      return modelCapRefusal(resetsAt);
+    }
+  }
   const resaved = await store.resaveRules(account, { text, timeZone }, now);
   if (resaved !== undefined) {
     log.info("rules-resaved", { accountId: account });
@@ -307,7 +335,7 @@ async function saveRules(
   }
   let read: Awaited<ReturnType<typeof readRules>>;
   try {
-    read = await readRules(text, model);
+    read = await readRules(text, model.forAccount(account));
     if ("failed" in read) {
       log.warn("rules-read-failed", {
         accountId: account,
@@ -315,6 +343,12 @@ async function saveRules(
       });
     }
   } catch (error) {
+    // The cap ran out after the check above, so nothing was sent, and the
+    // save is refused as it would have been there.
+    if (error instanceof CapReached) {
+      log.info("rules-capped", { accountId: account });
+      return modelCapRefusal(error.resetsAt);
+    }
     // Not the model's failure but askme's own, such as its key being
     // unreadable, so it alerts. The text is kept all the same.
     log.error("request-failed", { errorClass: errorClass(error) });

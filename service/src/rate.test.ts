@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { secondsLeft, windowOf } from "./rate";
+import { modelCallLimit, secondsLeft, windowOf } from "./rate";
 
 const at = (time: string) => new Date(time);
 
@@ -28,6 +28,18 @@ describe("a rate window", () => {
       name: "2026-10-11T09:30",
       endsAt: Date.parse("2026-10-11T09:35:00.000Z"),
     });
+  });
+
+  it("counts model calls in a UTC day, from one midnight to the next", () => {
+    for (const time of [
+      "2026-10-12T00:00:00.000Z",
+      "2026-10-12T23:59:59.999Z",
+    ]) {
+      expect(windowOf(at(time), modelCallLimit.windowMinutes)).toEqual({
+        name: "2026-10-12T00:00",
+        endsAt: Date.parse("2026-10-13T00:00:00.000Z"),
+      });
+    }
   });
 
   it("counts the whole seconds left, rounding up", () => {

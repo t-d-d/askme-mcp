@@ -29,6 +29,19 @@ export const rulesSaveLimit: Readonly<{
   windowMinutes: 1,
 };
 
+// Model calls (ADR 21): every call the service makes for an account, the
+// reading of the rules and each try of a sort, counted just before it is
+// sent. The window is one UTC day. A day of normal use is a few hundred
+// calls, so only a scripted account reaches the cap. Tuning it needs no new
+// decision.
+export const modelCallLimit: Readonly<{
+  calls: number;
+  windowMinutes: number;
+}> = {
+  calls: 2000,
+  windowMinutes: 24 * 60,
+};
+
 export interface RateWindow {
   // The minute the window starts, such as "2026-10-11T09:30".
   name: string;

@@ -1434,3 +1434,28 @@ describe("sample asks", () => {
     ).toEqual([]);
   });
 });
+
+describe("the list while the cap on model calls is spent", () => {
+  const capResetsAt = async (account: string) =>
+    z
+      .object({ modelCapResetsAt: z.string().optional() })
+      .parse(await (await get(pagePaths.asks, await session(account))).json())
+      .modelCapResetsAt;
+
+  it("carries when the cap resets while that time is ahead, and drops it once it has passed", async () => {
+    const ahead = newAccount();
+    const resets = new Date(Date.now() + 60 * 60_000);
+    await store.recordModelCapReset(ownerOf(ahead), resets);
+    expect(await capResetsAt(ahead)).toBe(resets.toISOString());
+    const passed = newAccount();
+    await store.recordModelCapReset(
+      ownerOf(passed),
+      new Date(Date.now() - 60_000),
+    );
+    expect(await capResetsAt(passed)).toBeUndefined();
+  });
+
+  it("carries nothing for an account the cap never refused", async () => {
+    expect(await capResetsAt(newAccount())).toBeUndefined();
+  });
+});

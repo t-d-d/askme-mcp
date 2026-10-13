@@ -2,9 +2,14 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
-import { storedItems } from "../test/dynamodb";
+import { putItem, storedItems } from "../test/dynamodb";
 import { callerOf, type AccountId } from "./src/identity";
-import { askLimit, pollLimit, rulesSaveLimit } from "./src/rate";
+import {
+  askLimit,
+  modelCallLimit,
+  pollLimit,
+  rulesSaveLimit,
+} from "./src/rate";
 import { exampleRules, type HashtagWindow } from "./src/rules";
 import { keys } from "./src/store/keys";
 import {
@@ -732,6 +737,133 @@ describe("the poll's rate counter", () => {
     await store.countPoll(owner, new Date());
     await store.countPoll(owner, new Date());
     expect((await store.openAsks(owner, new Date())).version).toBe(1);
+  });
+});
+
+describe("the daily count of model calls", () => {
+  const morning = new Date("2026-10-11T09:30:10.000Z");
+  const day = "2026-10-11T00:00";
+
+  // Sets the day's count straight in the table, as thousands of calls would.
+  const countAt = (owner: AccountId, count: number) =>
+    putItem(endpoint, tableName, {
+      ...keys.modelCount(owner, day),
+      count,
+      expiresAt: Date.parse("2026-10-12T01:00:00.000Z") / 1000,
+    });
+
+  it(`counts ${String(modelCallLimit.calls)} calls in a UTC day, refuses the next, and counts afresh the next day`, async () => {
+    const owner = account();
+    await countAt(owner, modelCallLimit.calls - 1);
+    expect(await store.countModelCall(owner, morning)).toEqual({
+      counted: true,
+    });
+    expect(await store.countModelCall(owner, morning)).toEqual({
+      counted: false,
+      secondsLeft: 52_190,
+    });
+    const tomorrow = new Date("2026-10-12T00:00:00.000Z");
+    expect(await store.countModelCall(owner, tomorrow)).toEqual({
+      counted: true,
+    });
+  });
+
+  it("keeps one item a day under its own prefix, which expires an hour after its day ends, and leaves the version alone", async () => {
+    const owner = account();
+    await store.countModelCall(owner, morning);
+    await store.countModelCall(owner, new Date("2026-10-11T23:59:00.000Z"));
+    expect(await storedItems(endpoint, tableName, owner)).toEqual([
+      {
+        ...keys.modelCount(owner, day),
+        count: 2,
+        expiresAt: Date.parse("2026-10-12T01:00:00.000Z") / 1000,
+      },
+    ]);
+    expect(await versionOf(owner)).toBe(0);
+  });
+
+  it("says the cap is spent once every call is made, and counts nothing to say so", async () => {
+    const owner = account();
+    expect(await store.modelCapSpent(owner, morning)).toBe(false);
+    await countAt(owner, modelCallLimit.calls - 1);
+    expect(await store.modelCapSpent(owner, morning)).toBe(false);
+    await countAt(owner, modelCallLimit.calls);
+    expect(await store.modelCapSpent(owner, morning)).toBe(true);
+    expect(
+      await store.modelCapSpent(owner, new Date("2026-10-12T00:00:00.000Z")),
+    ).toBe(false);
+    expect(await countsOf(owner)).toEqual([
+      expect.objectContaining({ count: modelCallLimit.calls }),
+    ]);
+  });
+});
+
+describe("the time the cap on model calls resets", () => {
+  const resets = new Date("2026-10-12T00:00:00.000Z");
+  const metaOf = async (owner: AccountId) =>
+    (await storedItems(endpoint, tableName, owner)).find(
+      (item) => item.sk === keys.meta(owner).sk,
+    );
+
+  it("is recorded on META, and raises the version, once for each reset", async () => {
+    const owner = account();
+    expect(await store.recordModelCapReset(owner, resets)).toBe(true);
+    expect(await metaOf(owner)).toEqual(
+      expect.objectContaining({
+        version: 1,
+        modelCapResetsAt: resets.toISOString(),
+      }),
+    );
+    expect(await store.recordModelCapReset(owner, resets)).toBe(false);
+    expect(await versionOf(owner)).toBe(1);
+    const next = new Date("2026-10-13T00:00:00.000Z");
+    expect(await store.recordModelCapReset(owner, next)).toBe(true);
+    expect(await metaOf(owner)).toEqual(
+      expect.objectContaining({
+        version: 2,
+        modelCapResetsAt: next.toISOString(),
+      }),
+    );
+  });
+
+  it("raises the version once when two refusals record it together", async () => {
+    const owner = account();
+    const recorded = await Promise.all([
+      store.recordModelCapReset(owner, resets),
+      store.recordModelCapReset(owner, resets),
+    ]);
+    expect(recorded.filter(Boolean)).toHaveLength(1);
+    expect(await versionOf(owner)).toBe(1);
+  });
+
+  it("never moves back to an earlier reset", async () => {
+    const owner = account();
+    const next = new Date("2026-10-13T00:00:00.000Z");
+    await store.recordModelCapReset(owner, next);
+    expect(await store.recordModelCapReset(owner, resets)).toBe(false);
+    expect(await metaOf(owner)).toEqual(
+      expect.objectContaining({
+        version: 1,
+        modelCapResetsAt: next.toISOString(),
+      }),
+    );
+  });
+
+  it("comes with the open asks, and keeps what else META holds", async () => {
+    const owner = account();
+    await postNew(owner, ask, new Date());
+    await store.recordModelCapReset(owner, resets);
+    const listed = await store.openAsks(owner, new Date());
+    expect(listed).toEqual(
+      expect.objectContaining({
+        version: 2,
+        everAsked: true,
+        modelCapResetsAt: resets.toISOString(),
+      }),
+    );
+    expect(await store.asksSince(owner, 1, new Date())).toEqual(
+      expect.objectContaining({ modelCapResetsAt: resets.toISOString() }),
+    );
   });
 });
 

@@ -40,6 +40,11 @@ export class Refusal extends Error {
   }
 }
 
+// Whether an error is a refusal at a daily cap, which the page notes with
+// the time the cap resets.
+export const capped = (error: Error | null): error is Refusal =>
+  error instanceof Refusal && error.code === "cap_reached";
+
 // The time an answer's Date header gives, which the service's side sets by
 // its own clock, to the second.
 const httpDate = z

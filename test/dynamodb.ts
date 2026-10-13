@@ -20,7 +20,11 @@ import {
   DynamoDBClient,
   ListTablesCommand,
 } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  PutCommand,
+  QueryCommand,
+} from "@aws-sdk/lib-dynamodb";
 import type { TestProject } from "vitest/node";
 import { z } from "zod";
 import { readYaml } from "./repo";
@@ -177,6 +181,22 @@ export async function storedItems(
       }),
     );
     return Items ?? [];
+  } finally {
+    db.destroy();
+  }
+}
+
+// Puts an item straight into the table, as a test's setup, such as a rate
+// counter already near its limit, which the store would take thousands of
+// calls to reach.
+export async function putItem(
+  endpoint: string,
+  table: string,
+  item: Record<string, unknown>,
+): Promise<void> {
+  const db = DynamoDBDocumentClient.from(localClient(endpoint));
+  try {
+    await db.send(new PutCommand({ TableName: table, Item: item }));
   } finally {
     db.destroy();
   }

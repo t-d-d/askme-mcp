@@ -744,6 +744,19 @@ resources:
           filter message.event = "sort-failed"
           | stats count(*) as failures by message.errorClass, bin(1h)
 
+    # Sorts the daily cap on model calls stopped, by account, to tell one
+    # scripted account from a cap set too low (ADR 21).
+    SortCappedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/sort-capped
+        LogGroupNames:
+          - !Ref McpLogGroup
+          - !Ref SortLogGroup
+        QueryString: |
+          filter message.event = "sort-capped"
+          | stats count(*) as sorts by message.accountId, bin(1d)
+
     RulesSavedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
@@ -788,6 +801,18 @@ resources:
         QueryString: |
           filter message.event = "rules-limited"
           | stats count(*) as saves, count_distinct(message.accountId) as accounts by bin(1h)
+
+    # Saves of the rules refused at the daily cap on model calls (ADR 21).
+    RulesCappedQuery:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        Name: askme/rules-capped
+        LogGroupNames:
+          - !Ref McpLogGroup
+          - !Ref SortLogGroup
+        QueryString: |
+          filter message.event = "rules-capped"
+          | stats count(*) as saves by message.accountId, bin(1d)
 
     RequestFailedQuery:
       Type: AWS::Logs::QueryDefinition

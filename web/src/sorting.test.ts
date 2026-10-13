@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sortingLine, sortingState } from "./sorting";
+import { capSpentUntil, sortingLine, sortingState } from "./sorting";
 
 const now = Date.parse("2026-10-12T09:00:00.000Z");
 const minute = 60_000;
@@ -28,7 +28,32 @@ describe("how sorting stands", () => {
   });
 });
 
+describe("the daily cap on model calls", () => {
+  const resets = "2026-10-13T00:00:00.000Z";
+
+  it("is spent until the time the list gives, and not from then", () => {
+    expect(capSpentUntil(resets, Date.parse(resets) - 1)).toBe(
+      Date.parse(resets),
+    );
+    expect(capSpentUntil(resets, Date.parse(resets))).toBeNull();
+    expect(capSpentUntil(resets, Date.parse(resets) + minute)).toBeNull();
+  });
+
+  it("is not spent when the list gives no time", () => {
+    expect(capSpentUntil(undefined, now)).toBeNull();
+  });
+});
+
 describe("the sorting line", () => {
+  it("says the daily limit is reached and when it resets, before anything else", () => {
+    expect(sortingLine({ sorting: 40, stopped: 3 }, "01:00")).toBe(
+      "Today's sorting limit is reached. It resets at 01:00.",
+    );
+    expect(sortingLine({ sorting: 0, stopped: 0 }, "20:00")).toBe(
+      "Today's sorting limit is reached. It resets at 20:00.",
+    );
+  });
+
   it("says how many asks are being sorted, before any that stopped", () => {
     expect(sortingLine({ sorting: 40, stopped: 3 })).toBe(
       "Sorting 40 asks with your rules",
