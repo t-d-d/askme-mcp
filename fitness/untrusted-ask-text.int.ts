@@ -164,8 +164,17 @@ describe("fitness: no tools (untrusted-ask-text.md)", () => {
     }
   });
 
-  it("routes every request only to providers that keep no prompts", () => {
-    expect(fakes.model.calls.length).toBeGreaterThan(0);
+  it("routes every request only to providers that keep no prompts", async () => {
+    const sub = newAccount();
+    const summary = `Providers ${randomUUID()}`;
+    await saveRules(sub);
+    await callTool(sub, "ask", { ...ask, summary });
+    fakes.model.reply({
+      json: { hashtags: ["shop"], level: "high", reason: "Customers see it." },
+    });
+    await runSorts();
+    expect(sortingCallsFor(summary)).toHaveLength(1);
+    expect(fakes.model.calls.length).toBeGreaterThan(1);
     for (const call of fakes.model.calls) {
       expect(call.body).toMatchObject({
         provider: { data_collection: "deny", zdr: true },
