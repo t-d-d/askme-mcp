@@ -1,4 +1,4 @@
-import { useId, type ReactNode, type Ref } from "react";
+import { useId, type ReactNode } from "react";
 import styles from "./Held.module.css";
 
 export type HeldBy = "hours" | "lapse";
@@ -43,13 +43,11 @@ export function Held({
   count,
   showing,
   onToggle,
-  ref,
 }: {
   by: HeldBy;
   count: number;
   showing: boolean;
   onToggle: () => void;
-  ref?: Ref<HTMLButtonElement>;
 }) {
   const said = useId();
   return (
@@ -72,7 +70,6 @@ export function Held({
       </span>
       <button
         className={styles.toggle}
-        ref={ref}
         type="button"
         aria-describedby={said}
         onClick={onToggle}

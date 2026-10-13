@@ -9,6 +9,7 @@ import {
   createCountedModel,
   defaultModel,
   ModelFailed,
+  modelFaultIsOurs,
   type CountedModel,
   type FollowUp,
   type ModelRequest,
@@ -163,6 +164,12 @@ export async function runJob(
     outcome = { failed: errorClass(error) };
   }
   if (outcome === "done") return false;
+  // The model refused askme's own key or settings, which fails every sort,
+  // so it alerts on each delivery. The sort is still retried and let go as
+  // any failed sort is.
+  if (outcome.failed !== undefined && modelFaultIsOurs(outcome.failed)) {
+    log.error("request-failed", { errorClass: outcome.failed });
+  }
   if ("capped" in outcome) {
     // Let go: a retry would come round again before the cap resets
     // (ADR 22).

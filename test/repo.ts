@@ -103,10 +103,13 @@ export const templateSchema = z.object({
 const stepSchema = z.object({
   id: z.string().optional(),
   name: z.string().optional(),
+  if: z.string().optional(),
   uses: z.string().optional(),
   run: z.string().optional(),
   with: z.record(z.string(), z.unknown()).optional(),
   env: z.record(z.string(), z.unknown()).optional(),
+  // A boolean, or an expression that gives one.
+  "continue-on-error": z.union([z.boolean(), z.string()]).optional(),
 });
 
 const jobSchema = z.object({
@@ -120,6 +123,8 @@ const jobSchema = z.object({
     .optional(),
   environment: z.unknown().optional(),
   secrets: z.unknown().optional(),
+  outputs: z.record(z.string(), z.string()).optional(),
+  "continue-on-error": z.boolean().optional(),
   steps: z.array(stepSchema).optional(),
 });
 
@@ -138,6 +143,7 @@ export const workflowSchema = z.object({
 
 export type Workflow = z.infer<typeof workflowSchema>;
 export type Job = z.infer<typeof jobSchema>;
+export type Step = z.infer<typeof stepSchema>;
 
 export const runsIn = (job: Job | undefined): string[] =>
   (job?.steps ?? []).flatMap((step) =>

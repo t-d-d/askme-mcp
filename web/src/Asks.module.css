@@ -26,9 +26,9 @@
   flex-direction: column;
 }
 
-/* The screen's foot space, so All clear sits the same with or without the
-   lines under it. */
-.foot {
+/* On All clear the bar holds only the lines at the foot. The screen's foot
+   space above them keeps All clear the same with or without them. */
+.bar[data-all-clear]:not(:empty) {
   margin-top: var(--space-foot);
 }
 
@@ -51,15 +51,17 @@
     margin-left: 0;
   }
 
-  .bar,
-  .lines {
+  /* Beside the tabs. At the foot of All clear the lines stay one under
+     the other. */
+  .bar:not([data-all-clear]),
+  .bar:not([data-all-clear]) .lines {
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-4) var(--space-24);
   }
 
-  .bar {
+  .bar:not([data-all-clear]) {
     justify-content: space-between;
   }
 }

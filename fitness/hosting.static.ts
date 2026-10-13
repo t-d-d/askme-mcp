@@ -216,24 +216,31 @@ describe("fitness: nothing runs continuously (hosting.md)", () => {
 });
 
 describe("fitness: the deploy role is assumed (hosting.md)", () => {
-  const deployJob = () =>
-    readWorkflow(".github/workflows/deploy.yml").jobs.deploy;
+  // The rollback deploys too, in the same run (ADR 25).
+  const deployingJobs = () => {
+    const { jobs } = readWorkflow(".github/workflows/deploy.yml");
+    return { deploy: jobs.deploy, rollback: jobs.rollback };
+  };
 
   it("asks GitHub for a short-lived token", () => {
-    expect(deployJob()?.permissions).toEqual({
-      contents: "read",
-      "id-token": "write",
-    });
+    for (const [id, job] of Object.entries(deployingJobs())) {
+      expect(job?.permissions, id).toEqual({
+        contents: "read",
+        "id-token": "write",
+      });
+    }
   });
 
   it("assumes the role named in the repo variables, with no key", () => {
-    const credentials = (deployJob()?.steps ?? []).filter((step) =>
-      step.uses?.startsWith("aws-actions/configure-aws-credentials@"),
-    );
-    expect(credentials).toHaveLength(1);
-    expect(credentials[0]?.with).toEqual({
-      "role-to-assume": "${{ vars.AWS_DEPLOY_ROLE_ARN }}",
-      "aws-region": "${{ vars.AWS_REGION }}",
-    });
+    for (const [id, job] of Object.entries(deployingJobs())) {
+      const credentials = (job?.steps ?? []).filter((step) =>
+        step.uses?.startsWith("aws-actions/configure-aws-credentials@"),
+      );
+      expect(credentials, id).toHaveLength(1);
+      expect(credentials[0]?.with, id).toEqual({
+        "role-to-assume": "${{ vars.AWS_DEPLOY_ROLE_ARN }}",
+        "aws-region": "${{ vars.AWS_REGION }}",
+      });
+    }
   });
 });

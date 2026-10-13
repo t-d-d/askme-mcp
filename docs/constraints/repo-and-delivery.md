@@ -16,15 +16,24 @@ environment doubles sign-in and connection setup.
 - One command runs the whole gate, locally and in CI.
 - CI and deploys run on GitHub Actions, standard hosted runners only.
 - A pull request merges only with that gate green.
-- A green merge to main deploys. Nothing else deploys.
+- A green merge to main deploys. Nothing else deploys, but for one
+  exception: when the live check fails, the same run redeploys the
+  last build that passed it.
 - There is one environment. No staging, no per-PR previews. The GitHub
   environment "conformance" labels a token and holds keys. Nothing
   deploys to it.
 - CI reaches AWS with short-lived credentials only. Its stored
   secrets are the Serverless Framework access key, which only the
-  deploy uses, and keys for conformance checks, kept as secrets of the
-  GitHub environment "conformance" (test-tiers.md).
-- Roll back by reverting the pull request.
+  deploy and its rollback use, and keys for conformance checks, kept
+  as secrets of the GitHub environment "conformance" (test-tiers.md).
+- A failed live check redeploys the last build that passed it, and the
+  owner then reverts the pull request. The tag live-ok names that build.
+  Only the job that moves it may write contents, and only after the
+  live check passes. The run still ends failed.
+- The rollback puts back the stack and the page, then runs that
+  build's live tier. It does not touch the deploy role's stack.
+- A change to a stored item's shape keeps the previous build able to
+  read it, or its pull request says why it cannot.
 
 ## Do not
 
@@ -35,7 +44,13 @@ environment doubles sign-in and connection setup.
   pull request code on a personal machine, and larger runners cost.
 - Put the eval set in the gate: it costs money and is not
   deterministic.
+- Add a manual trigger or a second workflow to roll back: it is a
+  deploy path from somewhere other than the push to main.
+- Roll back the deploy role's stack: an older template could take
+  away what the current deploy needs, and the role runs the rollback.
 
 Judgment: Branch protection lives in repository settings, which no
-pull request can see. A scheduled check covers it.
-History: [ADR 4](../adr/0004-repo-and-delivery.md), [ADR 15](../adr/0015-conformance-tier.md)
+pull request can see. A scheduled check covers it. No check can see
+whether the build before a change can read the items it writes. Its
+pull request has to say.
+History: [ADR 4](../adr/0004-repo-and-delivery.md), [ADR 15](../adr/0015-conformance-tier.md), [ADR 25](../adr/0025-roll-back-to-live-ok.md)

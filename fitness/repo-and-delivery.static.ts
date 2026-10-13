@@ -15,6 +15,7 @@ import {
   triggers,
   workflowPaths,
   type Job,
+  type Step,
 } from "../test/repo";
 
 const allJobs = (): [string, Job][] =>
@@ -47,7 +48,9 @@ describe("fitness: deploys come only from main (repo-and-delivery.md)", () => {
     expect(jobs.deploy?.needs).toBe("gate");
   });
 
-  it("lets only the deploy job, and conformance jobs in their environment, ask for a cloud token", () => {
+  // The rollback redeploys the last build that passed its live check, in the
+  // same run (ADR 25).
+  it("lets only the deploy and rollback jobs, and conformance jobs in their environment, ask for a cloud token", () => {
     const asking = workflowPaths().flatMap((path) => {
       const workflow = readWorkflow(path);
       const jobs = Object.entries(workflow.jobs)
@@ -56,12 +59,15 @@ describe("fitness: deploys come only from main (repo-and-delivery.md)", () => {
         .map(([id]) => `${path} ${id}`);
       return asksForCloudToken(workflow.permissions) ? [path, ...jobs] : jobs;
     });
-    expect(asking).toEqual([`${deployPath} deploy`]);
+    expect(asking).toEqual([`${deployPath} deploy`, `${deployPath} rollback`]);
   });
 
-  it("runs no deploy command outside the deploy job", () => {
+  it("runs no deploy command outside the deploy and rollback jobs", () => {
     const deploying = allJobs()
-      .filter(([id]) => id !== `${deployPath} deploy`)
+      .filter(
+        ([id]) =>
+          id !== `${deployPath} deploy` && id !== `${deployPath} rollback`,
+      )
       .filter(([, job]) => runsIn(job).some((run) => deployCommand.test(run)))
       .map(([id]) => id);
     expect(deploying).toEqual([]);
@@ -244,7 +250,7 @@ describe("fitness: no long-lived keys (repo-and-delivery.md)", () => {
     expect("${{ SECRETS['KEY'] }}".match(/\bsecrets\b/giu)).toHaveLength(1);
   });
 
-  it("gives the Serverless key only to deploy, and other secrets only to conformance", () => {
+  it("gives the Serverless key only to deploy and rollback, and other secrets only to conformance", () => {
     for (const path of workflowPaths()) {
       const workflow = parsed(path);
       const text = JSON.stringify(workflow);
@@ -258,9 +264,11 @@ describe("fitness: no long-lived keys (repo-and-delivery.md)", () => {
         expect(new Set(secrets), path).toEqual(
           new Set(secrets.length === 0 ? [] : ["SERVERLESS_ACCESS_KEY"]),
         );
-        // Only the deploy job holds it, not the gate or the live check.
+        // Only the deploy and rollback jobs hold it, not the gate or a live
+        // check.
         const outside = { ...workflow, jobs: { ...workflow.jobs } };
         delete outside.jobs.deploy;
+        delete outside.jobs.rollback;
         expect(JSON.stringify(outside), path).not.toMatch(/\bsecrets\b/iu);
       } else if (path === conformancePath) {
         expect(secrets, path).not.toContain("SERVERLESS_ACCESS_KEY");
@@ -316,5 +324,270 @@ describe("fitness: standard runners only (repo-and-delivery.md)", () => {
         ([id, job]) => `${id}: ${JSON.stringify(job["runs-on"] ?? job.uses)}`,
       );
     expect(other).toEqual([]);
+  });
+});
+
+// The deploy job holds the deploy role, which can change everything, so what
+// it runs is fixed to its content, not to a label someone can move (#326).
+describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
+  // A local workflow or action is this repo's own code, at this commit.
+  const pinned = (uses: string): boolean =>
+    uses.startsWith("./") || /^[^@\s]+@[0-9a-f]{40}$/u.test(uses);
+
+  const usesIn = (path: string): string[] =>
+    Object.values(readWorkflow(path).jobs).flatMap((job) => [
+      ...(job.uses === undefined ? [] : [job.uses]),
+      ...(job.steps ?? []).flatMap((step) =>
+        step.uses === undefined ? [] : [step.uses],
+      ),
+    ]);
+
+  it("tells a commit from a tag, a branch or a short SHA", () => {
+    expect(
+      pinned("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"),
+    ).toBe(true);
+    expect(pinned("./.github/workflows/gate.yml")).toBe(true);
+    expect(pinned("actions/checkout@v7")).toBe(false);
+    expect(pinned("actions/checkout@main")).toBe(false);
+    expect(pinned("actions/checkout@3d3c42e")).toBe(false);
+    expect(pinned("actions/checkout")).toBe(false);
+    expect(pinned("docker://alpine:3")).toBe(false);
+  });
+
+  it("names every outside action by a full commit SHA", () => {
+    const unpinned = workflowPaths().flatMap((path) =>
+      usesIn(path)
+        .filter((uses) => !pinned(uses))
+        .map((uses) => `${path}: ${uses}`),
+    );
+    expect(usesIn(deployPath).length).toBeGreaterThan(0);
+    expect(unpinned).toEqual([]);
+  });
+
+  it("has Dependabot propose updates to the pinned actions", () => {
+    const config = readYaml(
+      ".github/dependabot.yml",
+      z.object({
+        version: z.literal(2),
+        updates: z.array(
+          z.looseObject({
+            "package-ecosystem": z.string(),
+            directory: z.string().optional(),
+          }),
+        ),
+      }),
+    );
+    expect(config.updates).toContainEqual(
+      expect.objectContaining({
+        "package-ecosystem": "github-actions",
+        directory: "/",
+      }),
+    );
+  });
+
+  it("holds the Serverless installer at one exact version in the lockfile", () => {
+    const { devDependencies } = z
+      .object({ devDependencies: z.record(z.string(), z.string()) })
+      .parse(JSON.parse(readRepoFile("package.json")));
+    const lock = z
+      .object({
+        packages: z.record(
+          z.string(),
+          z.looseObject({ version: z.string().optional() }),
+        ),
+      })
+      .parse(JSON.parse(readRepoFile("package-lock.json")));
+    expect(devDependencies.serverless).toMatch(/^\d+\.\d+\.\d+$/u);
+    expect(lock.packages["node_modules/serverless"]?.version).toBe(
+      devDependencies.serverless,
+    );
+  });
+
+  it("runs the framework from node_modules, never fetched by npx", () => {
+    // npm exec and npm x are npx under other names.
+    const npx = /\b(?:npx|npm\s+(?:exec|x))\b/u;
+    const framework = /\b(?:serverless|sls)\b/u;
+    const runs = allJobs().flatMap(([, job]) => runsIn(job));
+    expect(runs.filter((run) => npx.test(run) && framework.test(run))).toEqual(
+      [],
+    );
+    expect(
+      runs.filter((run) => /--yes\b|\s-y\b/u.test(run) && npx.test(run)),
+    ).toEqual([]);
+    expect(runsIn(readWorkflow(deployPath).jobs.deploy)).toContain(
+      "node_modules/.bin/serverless deploy",
+    );
+  });
+
+  // The installer package fetches a launcher, and the launcher fetches the
+  // framework. Serverless publishes no checksum for either (#344).
+  const frameworkVersion = () =>
+    readYaml("serverless.yml", z.looseObject({ frameworkVersion: z.string() }))
+      .frameworkVersion;
+  const checkName = "Check the Serverless launcher and framework";
+  const deploySteps = () => readWorkflow(deployPath).jobs.deploy?.steps ?? [];
+
+  it("names one exact framework version", () => {
+    expect(frameworkVersion()).toMatch(/^\d+\.\d+\.\d+$/u);
+  });
+
+  it("checks the launcher and that version's archive against committed sums", () => {
+    const check = deploySteps().find((step) => step.name === checkName);
+    const run = check?.run ?? "";
+    expect(run).toContain(`version=${frameworkVersion()}\n`);
+    expect(run).toContain(
+      '"https://install.serverless.com/archives/serverless-$version.tgz"',
+    );
+    expect(run).toContain("sha256sum --check --strict <<EOF\n");
+    // Nothing unchecked can come from the host once the check has passed.
+    expect(run.trimEnd().split("\n").at(-1)).toBe(
+      'echo "0.0.0.0 install.serverless.com" | sudo tee -a /etc/hosts > /dev/null',
+    );
+    expect(
+      [...run.matchAll(/^[0-9a-f]{64} {2}(\S+)$/gmu)].map((sum) => sum[1]),
+    ).toEqual([
+      "node_modules/serverless/node_modules/.bin/serverless-linux-amd64-0.0.2",
+      "$archive",
+    ]);
+  });
+
+  it("checks them before the job holds credentials, and so before the deploy", () => {
+    const steps = deploySteps();
+    const check = steps.findIndex((step) => step.name === checkName);
+    const credentials = steps.findIndex(
+      (step) =>
+        step.uses?.startsWith("aws-actions/configure-aws-credentials@") ??
+        false,
+    );
+    const deploy = steps.findIndex(
+      (step) => step.run === "node_modules/.bin/serverless deploy",
+    );
+    expect(check).toBeGreaterThan(-1);
+    expect(check).toBeLessThan(credentials);
+    expect(check).toBeLessThan(deploy);
+  });
+});
+
+// When the live check fails, the same run puts back the last build that
+// passed it, then still ends failed so the owner reverts (ADR 25).
+describe("fitness: a failed live check redeploys the last good build (repo-and-delivery.md)", () => {
+  const jobs = () => readWorkflow(deployPath).jobs;
+  const job = (id: string): Job => {
+    const found = jobs()[id];
+    if (found === undefined) throw new Error(`${deployPath} has no job ${id}`);
+    return found;
+  };
+  const needs = (id: string): string[] => {
+    const { needs: named } = job(id);
+    return named === undefined ? [] : [named].flat();
+  };
+  const lastGood = "${{ needs.find-live-ok.outputs.sha }}";
+  const isCheckout = (step: Step): boolean =>
+    step.uses?.startsWith("actions/checkout@") ?? false;
+  // The job's steps, with its checkout taken back to the commit the run built.
+  const checkingOutRun = (steps: Step[] | undefined): Step[] =>
+    (steps ?? []).map((step) =>
+      isCheckout(step) ? { ...step, with: undefined } : step,
+    );
+
+  it("moves live-ok only after the live check passes", () => {
+    const mark = job("mark-live-ok");
+    expect(needs("mark-live-ok")).toEqual(["live"]);
+    // A re-run after a rollback checks the build the rollback put back, not
+    // the commit the run is for, so only the first attempt moves the tag.
+    expect(mark.if).toBe("${{ success() && github.run_attempt == '1' }}");
+    expect(runsIn(mark).join("\n")).toMatch(
+      /refs\/tags\/live-ok[\s\S]*\$GITHUB_SHA/u,
+    );
+  });
+
+  it("cannot fail the run by failing to move the tag", () => {
+    expect(job("mark-live-ok")["continue-on-error"]).toBe(true);
+  });
+
+  it("gives contents: write to the job that moves the tag, and to no other", () => {
+    expect(job("mark-live-ok").permissions).toEqual({ contents: "write" });
+    const writing = workflowPaths().flatMap((path) => {
+      const workflow = readWorkflow(path);
+      const writes = (permissions: Job["permissions"]): boolean =>
+        permissions === "write-all" ||
+        (typeof permissions === "object" && permissions.contents === "write");
+      return [
+        ...(writes(workflow.permissions) ? [path] : []),
+        ...Object.entries(workflow.jobs)
+          .filter(([, each]) => writes(each.permissions))
+          .map(([id]) => `${path} ${id}`),
+      ];
+    });
+    expect(writing).toEqual([`${deployPath} mark-live-ok`]);
+  });
+
+  it("looks for live-ok only when the live check fails", () => {
+    expect(needs("find-live-ok")).toEqual(["live"]);
+    expect(job("find-live-ok").if).toBe(
+      "${{ failure() && needs.live.result == 'failure' }}",
+    );
+    expect(job("find-live-ok").permissions).toEqual({ contents: "read" });
+  });
+
+  it("says so in the run summary when there is no live-ok tag", () => {
+    expect(runsIn(job("find-live-ok")).join("\n")).toMatch(
+      /no live-ok tag[\s\S]*GITHUB_STEP_SUMMARY/iu,
+    );
+  });
+
+  it("redeploys only when live-ok names a commit", () => {
+    expect(needs("rollback")).toEqual(["find-live-ok"]);
+    expect(job("rollback").if).toBe(
+      "${{ !cancelled() && needs.find-live-ok.outputs.sha != '' }}",
+    );
+  });
+
+  it("deploys live-ok's stack and page as the deploy does, but not the role's stack", () => {
+    const deploy = job("deploy");
+    const rollback = job("rollback");
+    const checkout = (rollback.steps ?? []).find(isCheckout);
+    expect(checkout?.with).toEqual({ ref: lastGood });
+    expect(checkingOutRun(rollback.steps)).toEqual(
+      checkingOutRun(deploy.steps).filter(
+        (step) => !step.run?.includes("infra/github-oidc.cfn.yml"),
+      ),
+    );
+    expect(JSON.stringify(rollback)).not.toContain("github-oidc");
+    expect(rollback.permissions).toEqual(deploy.permissions);
+    expect(rollback.outputs).toEqual(deploy.outputs);
+  });
+
+  it("runs live-ok's own live tier against what it put back", () => {
+    const live = job("live");
+    const again = job("rollback-live");
+    expect(needs("rollback-live")).toEqual(["find-live-ok", "rollback"]);
+    // A job with no if is skipped once any job before it failed, and the
+    // live job has.
+    expect(again.if).toBe(
+      "${{ !cancelled() && needs.rollback.result == 'success' }}",
+    );
+    expect((again.steps ?? []).find(isCheckout)?.with).toEqual({
+      ref: lastGood,
+    });
+    const asLive = JSON.stringify(checkingOutRun(live.steps)).replaceAll(
+      "needs.deploy.outputs",
+      "needs.rollback.outputs",
+    );
+    expect(JSON.stringify(checkingOutRun(again.steps))).toBe(asLive);
+    expect(again.permissions).toEqual(live.permissions);
+  });
+
+  // The live job's failure fails the run. Nothing after it may hide that.
+  // A step's continue-on-error hides its failure from the job, as the job's
+  // own hides it from the run.
+  it("leaves the run failed after a rollback", () => {
+    for (const id of ["live", "find-live-ok", "rollback", "rollback-live"]) {
+      expect(job(id)["continue-on-error"], id).toBeUndefined();
+      const hiding = (job(id).steps ?? []).filter(
+        (step) => step["continue-on-error"] !== undefined,
+      );
+      expect(hiding, id).toEqual([]);
+    }
   });
 });

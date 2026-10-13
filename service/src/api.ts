@@ -14,7 +14,7 @@ import { authorizationOf, jsonBody } from "./http";
 import { AgentToken, TokenRejected, type AccountId } from "./identity";
 import { queueSorts, type SortRequests } from "./jobs";
 import { errorClass, type Logger } from "./log";
-import { CapReached, type CountedModel } from "./model";
+import { CapReached, modelFaultIsOurs, type CountedModel } from "./model";
 import { rateLimits } from "./rate";
 import { mcpPath, type PageRoute } from "./routes";
 import { emptyRules, readRules } from "./rules";
@@ -192,6 +192,10 @@ async function saveRules(
         accountId: account,
         errorClass: read.failed,
       });
+      // The model refused askme's own key or settings, so it alerts.
+      if (modelFaultIsOurs(read.failed)) {
+        log.error("request-failed", { errorClass: read.failed });
+      }
     }
   } catch (error) {
     // The cap ran out after the check above, so refuse as that check would.
