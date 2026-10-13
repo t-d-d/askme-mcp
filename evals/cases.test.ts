@@ -16,6 +16,8 @@ const timing = cases.filter((one): one is TimingCase => one.group === "timing");
 const hostile = cases.filter(
   (one): one is HostileCase => one.group === "hostile",
 );
+const level = (name: string) =>
+  cases.find((one) => one.name === name)?.expected.level;
 
 describe("the core eval set", () => {
   it("has about 30 asks, across three areas", () => {
@@ -95,8 +97,6 @@ describe("the core eval set", () => {
   });
 
   it("holds the levels the owner set by what never acting would cost, not by the price of the step or how it is done (#191)", () => {
-    const level = (name: string) =>
-      cases.find((one) => one.name === name)?.expected.level;
     expect(level("a plumber who can come today")).toBe("normal");
     expect(level("a delivery slot held until tonight")).toBe("high");
     expect(level("a sign-in code for the school's payment site")).toBe("high");
@@ -105,9 +105,7 @@ describe("the core eval set", () => {
   });
 
   it("holds the major upgrade at low, since never upgrading leaves the service working (#226)", () => {
-    expect(
-      cases.find((one) => one.name === "a major upgrade")?.expected.level,
-    ).toBe("low");
+    expect(level("a major upgrade")).toBe("low");
   });
 
   it("has rules that say nothing about when an ask is due, since the level ignores time (#101)", () => {
