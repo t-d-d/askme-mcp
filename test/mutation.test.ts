@@ -104,6 +104,20 @@ describe("Stryker's options for a suite", () => {
     expect(at(2)).toBe(1);
     expect(at(1)).toBe(1);
   });
+
+  // Each integration run polls a local DynamoDB of its own, and a test that
+  // polls it sixty times passes vitest's time limit with two other runs
+  // beside it. The run then fails with no help from the mutant, and Stryker
+  // counts the mutant killed (#286).
+  it("runs one mutant at a time when the suite has an integration test, however many cores there are", () => {
+    const integration = {
+      ...suite,
+      tests: ["service/src/rate.test.ts", "fitness/polling.int.ts"],
+    };
+    expect(strykerOptions(integration, "/tmp/sandboxes", 16).concurrency).toBe(
+      1,
+    );
+  });
 });
 
 describe("the count for each file", () => {
@@ -166,6 +180,45 @@ describe("the verdict on a run", () => {
         mutant("/repo/service/src/rate.ts", "Timeout"),
       ]),
     ).toBeUndefined();
+  });
+
+  // A slow machine times a run out whatever its mutant does, and a timeout
+  // counts as killed, so such a run hides its survivors.
+  it("fails a run in which most of the mutants that ran timed out", () => {
+    expect(
+      verdict([
+        mutant("/repo/service/src/rate.ts", "Timeout"),
+        mutant("/repo/service/src/rate.ts", "Timeout"),
+        mutant("/repo/service/src/rate.ts", "Killed"),
+        mutant("/repo/service/src/rate.ts", "CompileError"),
+        mutant("/repo/service/src/rate.ts", "CompileError"),
+      ]),
+    ).toMatch(/most of the mutants timed out/iu);
+  });
+
+  it("passes a run in which half the mutants that ran timed out, or fewer", () => {
+    expect(
+      verdict([
+        mutant("/repo/service/src/rate.ts", "Timeout"),
+        mutant("/repo/service/src/rate.ts", "Timeout"),
+        mutant("/repo/service/src/rate.ts", "Killed"),
+        mutant("/repo/service/src/rate.ts", "Survived"),
+        mutant("/repo/service/src/rate.ts", "CompileError"),
+      ]),
+    ).toBeUndefined();
+  });
+
+  // No test reached a mutant with no coverage, so it did not run.
+  it("leaves a mutant no test reached out of the mutants that ran", () => {
+    expect(
+      verdict([
+        mutant("/repo/service/src/rate.ts", "Timeout"),
+        mutant("/repo/service/src/rate.ts", "Timeout"),
+        mutant("/repo/service/src/rate.ts", "Killed"),
+        mutant("/repo/service/src/rate.ts", "NoCoverage"),
+        mutant("/repo/service/src/rate.ts", "NoCoverage"),
+      ]),
+    ).toMatch(/2 of the 3 that ran/iu);
   });
 });
 
