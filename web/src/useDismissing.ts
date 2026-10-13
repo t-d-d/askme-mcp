@@ -10,8 +10,9 @@
 // comes back for its full time.
 //
 // The page keeps its dismissals while another screen shows. A dismissal
-// sent as the list goes that fails brings the ask back, and its note shows
-// when the list shows again, for its full time.
+// sent as the list goes that fails brings the ask back. The note that a
+// dismissal failed keeps its time only while the list shows. Leaving the
+// list stops it, and the note gets its full time when the list shows again.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { askChangePaths } from "../../shared/page-api";
 import { useAuth } from "./auth";
@@ -54,16 +55,30 @@ export function useDismissing(listShown: boolean): Dismissing {
     due: () => void;
     timer: number;
   } | null>(null);
+  // The timer of the note that a dismissal failed, while it runs.
   const failedTimer = useRef<number | undefined>(undefined);
-  // Whether the list shows, and whether a dismissal failed while it did not.
-  const shown = useRef(listShown);
+  // Whether the list shows, and whether a note that a dismissal failed
+  // waits for it to show again.
+  const listShowing = useRef(listShown);
   const failedAway = useRef(false);
 
-  // Gives the note that a dismissal failed its full time. When it goes, a
-  // dismissal still waiting gets its note with Undo back for its full time.
-  const timeFailed = useCallback(() => {
+  // Stops the time of the note that a dismissal failed.
+  const stopFailed = useCallback(() => {
     window.clearTimeout(failedTimer.current);
+    failedTimer.current = undefined;
+  }, []);
+
+  // Gives the note that a dismissal failed its full time, from now if the
+  // list shows, or else from when it shows again. When it goes, a dismissal
+  // still waiting gets its note with Undo back for its full time.
+  const timeFailed = useCallback(() => {
+    stopFailed();
+    if (!listShowing.current) {
+      failedAway.current = true;
+      return;
+    }
     failedTimer.current = window.setTimeout(() => {
+      failedTimer.current = undefined;
       const pending = waiting.current;
       if (pending === null) {
         setNote(null);
@@ -73,7 +88,7 @@ export function useDismissing(listShown: boolean): Dismissing {
       window.clearTimeout(pending.timer);
       pending.timer = window.setTimeout(pending.due, undoMs);
     }, undoMs);
-  }, []);
+  }, [stopFailed]);
 
   // Sends a dismissal. An ask the API no longer has is gone either way.
   // A dismissal sent as the page closes is kept alive past it.
@@ -91,13 +106,7 @@ export function useDismissing(listShown: boolean): Dismissing {
         // its note with Undo comes back when this one goes.
         const held = waiting.current;
         if (held !== null) window.clearTimeout(held.timer);
-        if (shown.current) {
-          timeFailed();
-        } else {
-          // The note's time starts when the list shows again.
-          window.clearTimeout(failedTimer.current);
-          failedAway.current = true;
-        }
+        timeFailed();
       }
     },
     [timeFailed],
@@ -121,7 +130,7 @@ export function useDismissing(listShown: boolean): Dismissing {
     (id: string) => {
       sendWaiting();
       // This note takes the place of one that an earlier dismissal failed.
-      window.clearTimeout(failedTimer.current);
+      stopFailed();
       setDismissed((ids) => new Set(ids).add(id));
       setNote("dismissed");
       const due = () => {
@@ -129,7 +138,7 @@ export function useDismissing(listShown: boolean): Dismissing {
       };
       waiting.current = { id, due, timer: window.setTimeout(due, undoMs) };
     },
-    [sendWaiting],
+    [sendWaiting, stopFailed],
   );
 
   const undo = useCallback(() => {
@@ -141,13 +150,14 @@ export function useDismissing(listShown: boolean): Dismissing {
     setNote(null);
   }, []);
 
-  // Leaving the list for another screen sends the waiting dismissal at once.
-  // A note that a dismissal failed while the list was away gets its time as
-  // the list shows again.
+  // Leaving the list for another screen sends the waiting dismissal at once,
+  // and stops the time of a note that a dismissal failed. That note gets its
+  // full time as the list shows again.
   useEffect(() => {
-    shown.current = listShown;
+    listShowing.current = listShown;
     if (!listShown) {
       sendWaiting();
+      if (failedTimer.current !== undefined) timeFailed();
       return;
     }
     if (failedAway.current) {
@@ -166,9 +176,9 @@ export function useDismissing(listShown: boolean): Dismissing {
     return () => {
       window.removeEventListener("pagehide", leaving);
       sendWaiting();
-      window.clearTimeout(failedTimer.current);
+      stopFailed();
     };
-  }, [sendWaiting]);
+  }, [sendWaiting, stopFailed]);
 
   return { dismissed, note, dismiss, undo };
 }

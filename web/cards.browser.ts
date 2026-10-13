@@ -1004,6 +1004,31 @@ describe("dismissing", () => {
     expect(await page.getByRole("article").innerText()).toContain(both.summary);
   });
 
+  it("stops the note that a dismissal failed when the list is left, and gives it its full time when the list shows again", async () => {
+    const opened = await open(listOf(both, neither), {
+      clock: true,
+      change: unavailable,
+      api: { [pagePaths.rules]: noRules },
+    });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.clock.runFor(undoMs + 500);
+    const note = page.getByRole("status");
+    await expect.poll(() => note.innerText()).toBe(failed);
+    await page.getByRole("link", { name: "Rules" }).click();
+    await page
+      .getByRole("heading", { name: "Your rules", exact: true })
+      .waitFor();
+    await page.clock.runFor(undoMs * 2);
+    await page.goBack();
+    await page.getByRole("article").waitFor();
+    await expect.poll(() => note.innerText()).toBe(failed);
+    await page.clock.runFor(undoMs - 500);
+    expect(await note.innerText()).toBe(failed);
+    await page.clock.runFor(1000);
+    await expect.poll(() => note.count()).toBe(0);
+  });
+
   it("still lets a waiting dismissal be undone when an earlier one fails, once the note that says so goes", async () => {
     const opened = await open(listOf(both, sessionOnly, neither), {
       clock: true,
