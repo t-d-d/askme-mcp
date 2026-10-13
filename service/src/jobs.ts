@@ -24,10 +24,6 @@ export const sortJobSchema = z.strictObject({
   askId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/u),
 });
 
-// How long an ask behind the rules counts as sorting. The poll works the
-// sorting state out from it, so it lives with the page's view.
-export { sortingMs } from "./view";
-
 // How many jobs one call to the queue sends, which is the most SQS takes.
 export const jobsPerCall = 10;
 

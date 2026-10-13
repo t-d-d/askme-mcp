@@ -13,10 +13,10 @@ import {
 import { z } from "zod";
 import { handler } from "../service/src/handler";
 import { callerOf, type AccountId } from "../service/src/identity";
-import { sortingMs } from "../service/src/jobs";
 import { handler as sorter, sortDeliveries } from "../service/src/sorter";
 import { sortKeys } from "../service/src/store/keys";
 import { createStore, type NewAsk } from "../service/src/store/store";
+import { sortingMs } from "../service/src/view";
 import { pagePaths } from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
 import { fakes } from "../test/fakes";
