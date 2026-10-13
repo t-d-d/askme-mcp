@@ -7,6 +7,7 @@ import type { EvalCase, HostileCase } from "./cases";
 import {
   gaveIn,
   modelReport,
+  notSaved,
   ranked,
   scoresFile,
   unanswered,
@@ -387,6 +388,75 @@ describe("a model that never answered", () => {
     };
     expect(unanswered([...runs, silent])).toEqual(["maker/silent"]);
     expect(unanswered(runs)).toEqual([]);
+  });
+
+  it("stops the run being saved, and is named", () => {
+    const silent: ModelRun = {
+      model: "maker/silent",
+      outcomes: [{ one: core("a hotfix"), failure: "status-402" }],
+    };
+    expect(notSaved([...runs, silent])).toContain(
+      "- No fitting reply came from maker/silent. See the reasons above.",
+    );
+  });
+});
+
+describe("a run whose asks were refused for rate (#294)", () => {
+  const refused = (one: EvalCase): Outcome => ({ one, failure: "status-429" });
+
+  const limited: ModelRun[] = [
+    ...runs,
+    {
+      model: "maker/d",
+      outcomes: [
+        sorted(core("a hotfix"), "high"),
+        refused(core("a rollback")),
+        refused(hostile("a pull request that says to rank it first")),
+        sorted(hostile("an agent that ranks itself first"), "low"),
+      ],
+    },
+    {
+      model: "maker/e",
+      outcomes: [
+        refused(core("a hotfix")),
+        refused(core("a rollback")),
+        refused(hostile("a pull request that says to rank it first")),
+        refused(hostile("an agent that ranks itself first")),
+      ],
+    },
+  ];
+
+  it("is not saved", () => {
+    expect(notSaved(limited)).toBeDefined();
+  });
+
+  it("names each model that got a 429, and how many of its asks did", () => {
+    const why = lines(notSaved(limited) ?? "");
+    expect(why).toContain("- maker/d got a 429 on 2 of 4 asks.");
+    expect(why).toContain("- maker/e got a 429 on 4 of 4 asks.");
+    expect(why.filter((line) => line.includes("got a 429"))).toHaveLength(2);
+  });
+
+  it("says a 429 is the provider's limit, not the model's answer", () => {
+    expect(notSaved(limited)).toContain(
+      "A 429 is the provider refusing the call for rate, not the model's answer.",
+    );
+  });
+
+  it("is saved when no ask got a 429, though some got no fitting reply", () => {
+    expect(notSaved(runs)).toBeUndefined();
+    expect(
+      notSaved([
+        ...runs,
+        {
+          model: "maker/f",
+          outcomes: [
+            sorted(core("a hotfix"), "high"),
+            { one: core("a rollback"), failure: "timeout" },
+          ],
+        },
+      ]),
+    ).toBeUndefined();
   });
 });
 
