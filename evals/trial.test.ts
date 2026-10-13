@@ -182,6 +182,45 @@ describe("a trial's report", () => {
       trialReport(outcomes, { model: "a/model", sorts: 3, draft: undefined }),
     ).toContain("Draft: none, the prompt in service/src/sort.ts");
   });
+
+  it("says nothing of known misses when the set has none", () => {
+    expect(report).not.toMatch(/known miss/iu);
+  });
+});
+
+describe("a trial's report of an ask the owner accepts as a miss", () => {
+  // An ask kept at its level though the default model misses it (#262).
+  const settled: EvalCase = {
+    ...hotfix,
+    name: "a ticket the owner settled",
+    knownMiss: 262,
+  };
+  const report = trialReport(
+    [
+      ...outcomes,
+      sorted(settled, "normal"),
+      sorted(settled, "high"),
+      sorted(settled, "normal"),
+    ],
+    { model: "a/model", sorts: 3, draft: "drafts/money-high.txt" },
+  );
+
+  it("marks the ask with the issue that accepts it", () => {
+    expect(report).toContain(
+      `| ${settled.name} (known miss, #262) | core | high | 1/3 | normal 2, high 1 |`,
+    );
+  });
+
+  it("leaves the other asks unmarked", () => {
+    expect(report).toContain(`| ${hotfix.name} | core | high | 1/3 |`);
+    expect(report).toContain(`| ${towels.name} | hostile | low | 2/3 |`);
+  });
+
+  it("says what a known miss is, and that only its level is accepted", () => {
+    expect(report).toContain(
+      "\nA known miss is an ask the owner kept at its level though the default model misses it, in the issue named beside it. Only its level is accepted, so a sort of it with other hashtags or no fitting reply is a new miss.\n",
+    );
+  });
 });
 
 describe("a trial's record", () => {
@@ -223,6 +262,27 @@ describe("a trial's record", () => {
       right: false,
       followedUp: false,
     });
+  });
+
+  it("keeps the known miss of an ask that has one, and none for any other ask", () => {
+    const accepted: EvalCase = { ...hotfix, knownMiss: 262 };
+    const { sorts } = trialRecord(
+      [
+        sorted(accepted, "normal"),
+        sorted(hotfix, "normal"),
+        { one: accepted, failure: "timeout" },
+      ],
+      {
+        model: "a/model",
+        sorts: 1,
+        draft: undefined,
+        system: "The prompt sorted under.",
+        date: "2026-10-13",
+      },
+    );
+    expect(sorts[0]).toMatchObject({ ask: hotfix.name, knownMiss: 262 });
+    expect(sorts[1]).not.toHaveProperty("knownMiss");
+    expect(sorts[2]).toMatchObject({ failure: "timeout", knownMiss: 262 });
   });
 
   it("survives a trip through JSON unchanged", () => {

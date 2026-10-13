@@ -5,7 +5,6 @@ import {
   scratch,
   strykerOptions,
   survivorsTsv,
-  targetFile,
   testCommand,
   verdict,
   type Mutant,
@@ -65,7 +64,7 @@ describe("the command a mutant's tests run with", () => {
 describe("Stryker's options for a suite", () => {
   const suite = {
     about: "Rate windows.",
-    mutate: ["service/src/rate.ts", "service/src/api.ts:74-130"],
+    mutate: ["service/src/rate.ts", "service/src/api.ts"],
     tests: ["service/src/rate.test.ts"],
   };
   const options = strykerOptions(suite, "/tmp/askme-mutation/rate/sandboxes");
@@ -78,10 +77,10 @@ describe("Stryker's options for a suite", () => {
     expect(options.coverageAnalysis).toBe("off");
   });
 
-  it("mutates the suite's files and line ranges", () => {
+  it("mutates the suite's files", () => {
     expect(options.mutate).toEqual([
       "service/src/rate.ts",
-      "service/src/api.ts:74-130",
+      "service/src/api.ts",
     ]);
   });
 
@@ -207,16 +206,6 @@ describe("the verdict on a run", () => {
         mutant("/repo/service/src/rate.ts", "CompileError"),
       ]),
     ).toBeUndefined();
-  });
-});
-
-describe("the file a suite's target names", () => {
-  it("is the path without its range of lines, or of lines and columns", () => {
-    expect(targetFile("service/src/rate.ts")).toBe("service/src/rate.ts");
-    expect(targetFile("service/src/api.ts:74-130")).toBe("service/src/api.ts");
-    expect(targetFile("service/src/api.ts:74:3-130:5")).toBe(
-      "service/src/api.ts",
-    );
   });
 });
 
