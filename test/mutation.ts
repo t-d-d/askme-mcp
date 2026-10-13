@@ -24,12 +24,6 @@ export function scratch(root: string, kind: string): string {
   return join(tmpdir(), kind, checkout);
 }
 
-// The file a suite's target names, without its range of lines, written
-// "path:74-130", or of lines and columns, written "path:74:3-130:5".
-export function targetFile(target: string): string {
-  return target.replace(/:\d+(?::\d+)?-\d+(?::\d+)?$/u, "");
-}
-
 // The command runner hands its command to a shell, so a path is kept to
 // letters, digits and the marks a path needs, which the shell reads as text.
 const plainPath = /^[\w./-]+$/u;
@@ -38,8 +32,7 @@ const plainPath = /^[\w./-]+$/u;
 export interface Suite {
   // What the code does, in a line, for the list of suites.
   about: string;
-  // The files to mutate, each a path, or a path with a range of lines, as
-  // "service/src/api.ts:132-190".
+  // The files to mutate, each a whole file by its path.
   mutate: readonly string[];
   // The test files run against each mutant. Each mutant costs one run of
   // them all, so name only the files that exercise the code.
@@ -144,7 +137,7 @@ export function counts(
 // Why a run proves nothing, or undefined when it can be read.
 export function verdict(mutants: readonly Mutant[]): string | undefined {
   if (mutants.length === 0) {
-    return "The suite made no mutant. Check its paths and line ranges.";
+    return "The suite made no mutant. Check its paths.";
   }
   if (!mutants.some(killed)) {
     return "No mutant was killed, so the harness ran no tests, or ran them without the mutant switched on. Its survivors say nothing about the tests.";
