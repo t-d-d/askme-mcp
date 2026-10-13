@@ -34,7 +34,7 @@ export function Asks({
   const [showingLapsed, showLapsed] = useState(false);
   const [speak] = useState(browserSpeech);
   const { opened, markOpened } = useOpening();
-  const { dismissed, note, dismiss, undo } = dismissing;
+  const { dismissed, note, dismiss, undo, keep } = dismissing;
   const headline = useRef<HTMLHeadingElement>(null);
   const tabs = useRef<TabsHandle>(null);
   const bar = useRef<HTMLDivElement>(null);
@@ -110,7 +110,9 @@ export function Asks({
   return (
     <>
       {open !== undefined ? (
+        // Keyed, so another ask's card is a new screen and takes focus.
         <OpenCard
+          key={open.id}
           ask={open}
           tab={tab}
           now={receivedAt}
@@ -188,7 +190,7 @@ export function Asks({
           )}
         </div>
       )}
-      <DismissedNote note={note} onUndo={undo} />
+      <DismissedNote note={note} onUndo={undo} onKeep={keep} />
     </>
   );
 }

@@ -119,11 +119,20 @@ export async function handler(event: unknown): Promise<Result> {
   }
   const log = createLogger(request.requestId);
   try {
-    return await result(await serve(request, log));
+    return await result(readable(request.route, await serve(request, log)));
   } catch (error) {
     log.error("request-failed", { errorClass: errorClass(error) });
-    return result(unavailable());
+    return result(readable(request.route, unavailable()));
   }
+}
+
+// A browser-based client reads the metadata, so it must be able to read
+// every answer the metadata's route gives, its failure included.
+function readable(route: string, response: Response): Response {
+  if (isRoute(route) && routes[route] === "public") {
+    response.headers.set("access-control-allow-origin", "*");
+  }
+  return response;
 }
 
 async function serve(
@@ -131,6 +140,18 @@ async function serve(
   log: Logger,
 ): Promise<Response> {
   if (!isRoute(route)) return new Response(null, { status: 404 });
+  // The SDK's browser client sends MCP-Protocol-Version on the metadata GET,
+  // so the browser asks here first.
+  if (route === "OPTIONS /.well-known/oauth-protected-resource/mcp") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "access-control-allow-methods": "GET",
+        "access-control-allow-headers": "mcp-protocol-version",
+        "access-control-max-age": "86400",
+      },
+    });
+  }
   const { issuer, verifier, verifySession, store, sorts, model } = ready();
   if (isPageRoute(route)) {
     return servePage(route, request, {
@@ -144,9 +165,7 @@ async function serve(
   }
   const resource = new URL(mcpPath, origin);
   if (routes[route] === "public") {
-    return Response.json(resourceMetadata(resource, issuer), {
-      headers: { "access-control-allow-origin": "*" },
-    });
+    return Response.json(resourceMetadata(resource, issuer));
   }
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(resource);
   const authorization = authorizationOf(request);

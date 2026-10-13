@@ -2,7 +2,14 @@
 // web/src/clerk.tsx.
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { AuthContext, type Auth } from "../../web/src/auth";
-import { askedForKey, emailKey, sessionChangedEvent, sessionKey } from "./keys";
+import {
+  askedForKey,
+  brokenKey,
+  emailKey,
+  sessionChangedEvent,
+  sessionKey,
+  signInStuckKey,
+} from "./keys";
 
 const subscribe = (changed: () => void) => {
   window.addEventListener(sessionChangedEvent, changed);
@@ -12,12 +19,17 @@ const subscribe = (changed: () => void) => {
 };
 
 const currentToken = () => localStorage.getItem(sessionKey);
+const broken = () => localStorage.getItem(brokenKey) !== null;
+const stuck = localStorage.getItem(signInStuckKey) !== null;
 
 export function ClerkAuth({ children }: { children: ReactNode }) {
   const token = useSyncExternalStore(subscribe, currentToken);
+  if (useSyncExternalStore(subscribe, broken)) {
+    throw new Error("The stand-in was told to break.");
+  }
   const auth = useMemo<Auth>(() => {
     return {
-      status: token === null ? "signed-out" : "signed-in",
+      status: stuck ? "loading" : token === null ? "signed-out" : "signed-in",
       getToken: () => Promise.resolve(token),
       email: token === null ? null : localStorage.getItem(emailKey),
       signIn: () => {

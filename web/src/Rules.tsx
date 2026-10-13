@@ -13,11 +13,13 @@ import { useAfter } from "./useAfter";
 import { useAsks } from "./useAsks";
 import { useLeaveGuard } from "./useLeaveGuard";
 import { browserTimeZone, useRules } from "./useRules";
+import { screenTitle, useScreenHeading } from "./useScreenHeading";
 
 const leaving = "Leave without saving your rules?";
 
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   useLayer(layers.rules);
+  const heading = useScreenHeading(screenTitle("Your rules"));
   const auth = useAuth();
   const { loaded, save } = useRules();
   const { data } = loaded;
@@ -107,7 +109,9 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
       </header>
       <main className={styles.main}>
         <form className={styles.form} onSubmit={submit}>
-          <h1 className={styles.title}>Your rules</h1>
+          <h1 className={styles.title} ref={heading} tabIndex={-1}>
+            Your rules
+          </h1>
           <label className={styles.label} htmlFor={boxId}>
             Write them in plain English. Name your hashtags, say what comes
             first, and give any hours a hashtag should keep to.

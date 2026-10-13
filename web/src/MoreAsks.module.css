@@ -31,8 +31,8 @@
   user-select: none;
 }
 
-.row[data-opened] {
-  opacity: var(--opacity-opened);
+.row[data-opened] .summary {
+  color: var(--text-2);
 }
 
 .link {
