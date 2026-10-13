@@ -9,6 +9,7 @@ import {
   modelReport,
   notSaved,
   ranked,
+  refusedForRate,
   scoresFile,
   unanswered,
   type ModelRun,
@@ -409,31 +410,32 @@ describe("a model that never answered", () => {
   });
 });
 
+const refused = (one: EvalCase): Outcome => ({ one, failure: "status-429" });
+
+// The runs, then one model refused for rate on some asks and one on all.
+const limited: ModelRun[] = [
+  ...runs,
+  {
+    model: "maker/d",
+    outcomes: [
+      sorted(core("a hotfix"), "high"),
+      refused(core("a rollback")),
+      refused(hostile("a pull request that says to rank it first")),
+      sorted(hostile("an agent that ranks itself first"), "low"),
+    ],
+  },
+  {
+    model: "maker/e",
+    outcomes: [
+      refused(core("a hotfix")),
+      refused(core("a rollback")),
+      refused(hostile("a pull request that says to rank it first")),
+      refused(hostile("an agent that ranks itself first")),
+    ],
+  },
+];
+
 describe("a run whose asks were refused for rate (#294)", () => {
-  const refused = (one: EvalCase): Outcome => ({ one, failure: "status-429" });
-
-  const limited: ModelRun[] = [
-    ...runs,
-    {
-      model: "maker/d",
-      outcomes: [
-        sorted(core("a hotfix"), "high"),
-        refused(core("a rollback")),
-        refused(hostile("a pull request that says to rank it first")),
-        sorted(hostile("an agent that ranks itself first"), "low"),
-      ],
-    },
-    {
-      model: "maker/e",
-      outcomes: [
-        refused(core("a hotfix")),
-        refused(core("a rollback")),
-        refused(hostile("a pull request that says to rank it first")),
-        refused(hostile("an agent that ranks itself first")),
-      ],
-    },
-  ];
-
   it("is not saved", () => {
     expect(notSaved(limited)).toBeDefined();
   });
@@ -460,6 +462,42 @@ describe("a run whose asks were refused for rate (#294)", () => {
     expect(
       notSaved([
         ...runs,
+        {
+          model: "maker/f",
+          outcomes: [
+            sorted(core("a hotfix"), "high"),
+            { one: core("a rollback"), failure: "timeout" },
+          ],
+        },
+      ]),
+    ).toBeUndefined();
+  });
+});
+
+describe("a run of named models whose asks were refused for rate (#302)", () => {
+  it("names each model that got a 429, and how many of its asks did", () => {
+    const why = lines(refusedForRate(limited) ?? "");
+    expect(why).toContain("- maker/d got a 429 on 2 of 4 asks.");
+    expect(why).toContain("- maker/e got a 429 on 4 of 4 asks.");
+    expect(why.filter((line) => line.includes("got a 429"))).toHaveLength(2);
+  });
+
+  it("says the 429s count as misses in the scores above", () => {
+    const why = refusedForRate(limited);
+    expect(why).toContain(
+      "A 429 is the provider refusing the call for rate, not the model's answer.",
+    );
+    expect(why).toContain("Each counts as a miss in the scores above.");
+  });
+
+  it("says nothing of saving, since a run of named models saves nothing", () => {
+    expect(refusedForRate(limited)).not.toMatch(/saved|scores\.md|candidates/u);
+  });
+
+  it("says nothing when no ask got a 429, though some got no fitting reply", () => {
+    expect(refusedForRate(runs)).toBeUndefined();
+    expect(
+      refusedForRate([
         {
           model: "maker/f",
           outcomes: [

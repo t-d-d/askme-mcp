@@ -214,6 +214,31 @@ const rateLimited = (
     return refused === 0 ? [] : [{ model, refused, of: outcomes.length }];
   });
 
+// A line for each model the provider refused for rate, with how many of
+// its asks it refused.
+const refusedLines = (limited: ReturnType<typeof rateLimited>) =>
+  limited.map(
+    ({ model, refused, of }) =>
+      `- ${model} got a 429 on ${String(refused)} of ${String(of)} asks.`,
+  );
+
+const rateNote =
+  "A 429 is the provider refusing the call for rate, not the model's answer.";
+
+// What a run of the default model or of named models prints after the
+// scores when the provider refused any ask for rate, or nothing when it
+// refused none. Such a run saves nothing, but its score may go in a pull
+// request, and a 429 lowers it by an ask the model never saw (#302).
+export function refusedForRate(runs: readonly ModelRun[]): string | undefined {
+  const limited = rateLimited(runs);
+  if (limited.length === 0) return undefined;
+  return [
+    "Refused for rate:",
+    ...refusedLines(limited),
+    `${rateNote} Each counts as a miss in the scores above. Run the eval again before you quote them.`,
+  ].join("\n");
+}
+
 // Why a run across the candidates is not saved in evals/scores.md, or
 // nothing when it is saved. A model refused for rate on every ask is named
 // for its 429s only, since it never had the chance to reply.
@@ -233,15 +258,10 @@ export function notSaved(runs: readonly ModelRun[]): string | undefined {
       : [
           `- No fitting reply came from ${silent.join(", ")}. See the reasons above.`,
         ]),
-    ...limited.map(
-      ({ model, refused, of }) =>
-        `- ${model} got a 429 on ${String(refused)} of ${String(of)} asks.`,
-    ),
+    ...refusedLines(limited),
     ...(limited.length === 0
       ? []
-      : [
-          "A 429 is the provider refusing the call for rate, not the model's answer. Run the candidates again later.",
-        ]),
+      : [`${rateNote} Run the candidates again later.`]),
   ].join("\n");
 }
 
