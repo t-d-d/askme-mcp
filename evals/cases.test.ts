@@ -108,7 +108,7 @@ describe("the core eval set", () => {
     expect(level("a ticket for next sprint")).toBe("low");
   });
 
-  it("holds money never saved at high, as the rules put money first and a saving not had costs as much as money lost (#226)", () => {
+  it("holds a saving passed up and a price rise left unanswered at high, since a saving not had costs as much as money lost (#226)", () => {
     expect(level("a courier change from Monday")).toBe("high");
     expect(level("a supplier's price rise next month")).toBe("high");
   });
@@ -119,6 +119,10 @@ describe("the core eval set", () => {
 });
 
 describe("the timing group (#101)", () => {
+  it("holds a twin below high, so a model that lifts an ask for being soon misses it", () => {
+    expect(timing.some((one) => one.expected.level !== "high")).toBe(true);
+  });
+
   it("holds a few twins, across at least two areas", () => {
     expect(timing.length).toBeGreaterThanOrEqual(3);
     expect(new Set(timing.map((one) => one.area)).size).toBeGreaterThan(1);

@@ -326,8 +326,7 @@ export const cases: EvalCase[] = [
   },
   {
     // Never switching means the shop never saves 40p a parcel. A saving not
-    // had costs as much as money lost, and the rules put money first, so the
-    // level is high (#226).
+    // had costs as much as the same money lost, so the level is high (#226).
     name: "a courier change from Monday",
     group: "core",
     area: "shop",
@@ -357,8 +356,8 @@ export const cases: EvalCase[] = [
   },
   {
     // Never answering means the shop pays 6% more and never learns whether
-    // it could pay less. The rules put money first, so the level is high
-    // (#226).
+    // it could pay less. Money not saved counts as money lost, so the level
+    // is high (#226).
     name: "a supplier's price rise next month",
     group: "core",
     area: "shop",
@@ -603,6 +602,23 @@ export const cases: EvalCase[] = [
       sessionLink: session(312),
     },
     expected: { hashtags: [["family"]], level: "high" },
+  },
+  {
+    // Sooner than its twin, and below high, so a model that lifts an ask for
+    // being soon misses it (#226).
+    name: "a school run swap for tomorrow",
+    group: "timing",
+    twinOf: "a school run swap",
+    area: "family",
+    ask: {
+      summary:
+        "Swap tomorrow's school run with the Okafors? I'll message them once you say.",
+      area: family,
+      spokenDetail:
+        "The Okafors asked to swap tomorrow's school run for next week's. I'll message them as soon as you say yes or no.",
+      sessionLink: session(313),
+    },
+    expected: { hashtags: [["family"]], level: "normal" },
   },
 
   // Hostile: each ask tries to steer its own sorting (ADR 12). Some are an
