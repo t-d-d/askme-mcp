@@ -37,6 +37,36 @@ export class ModelFailed extends Error {
   }
 }
 
+// Failures a retry cannot fix, as askme's own request or key is at fault,
+// so they alert. OpenRouter answers 400 for an unknown model id, 401 for a
+// refused key, 402 for spent credit, and 404 for a withdrawn model or when
+// no provider meets the routing. A 403 is its moderation too, which a
+// hostile ask can trip, so only a 403 for a spent budget counts.
+const ourFaults = new Set([
+  "status-400",
+  "status-401",
+  "status-402",
+  "status-403-budget",
+  "status-404",
+]);
+
+export const modelFaultIsOurs = (reason: string): boolean =>
+  ourFaults.has(reason);
+
+// OpenRouter refuses a call over the key's own limit, or over a budget set
+// on its account, with a 403 naming the limit.
+const budgetRefusal = z.object({
+  error: z.object({
+    metadata: z.object({
+      limit_source: z.enum([
+        "openrouter_key_limit",
+        "openrouter_guardrail_budget",
+        "openrouter_workspace_budget",
+      ]),
+    }),
+  }),
+});
+
 export interface Model {
   reply(request: ModelRequest): Promise<unknown>;
 }
@@ -122,6 +152,14 @@ export function createModel(config: {
           }),
           signal,
         });
+        if (answer.status === 403) {
+          const refusal: unknown = await answer.json().catch(() => undefined); // eslint-disable-line no-restricted-syntax -- this module is where a model's answer is read
+          throw new ModelFailed(
+            budgetRefusal.safeParse(refusal).success
+              ? "status-403-budget"
+              : "status-403",
+          );
+        }
         if (!answer.ok)
           throw new ModelFailed(`status-${String(answer.status)}`);
         body = await answer.json(); // eslint-disable-line no-restricted-syntax -- this module is where a model's answer is read

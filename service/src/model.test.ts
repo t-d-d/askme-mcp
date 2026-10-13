@@ -5,6 +5,7 @@ import {
   CapReached,
   createCountedModel,
   createModel,
+  modelFaultIsOurs,
   ModelFailed,
   type CallCounter,
   type ModelRequest,
@@ -148,6 +149,39 @@ describe("a call to the model", () => {
       () => new Response("no", { status: 401 }),
       "status-401",
     ],
+    [
+      "a refusal for want of credit",
+      () => new Response("no", { status: 402 }),
+      "status-402",
+    ],
+    [
+      "a refusal of the input",
+      () =>
+        Response.json(
+          { error: { code: 403, metadata: { reasons: ["violence"] } } },
+          { status: 403 },
+        ),
+      "status-403",
+    ],
+    [
+      "a refusal as a budget is spent",
+      () =>
+        Response.json(
+          {
+            error: {
+              code: 403,
+              metadata: { limit_source: "openrouter_key_limit" },
+            },
+          },
+          { status: 403 },
+        ),
+      "status-403-budget",
+    ],
+    [
+      "a 403 whose body is not JSON",
+      () => new Response("no", { status: 403 }),
+      "status-403",
+    ],
     ["a reply that is not JSON", () => completion("high"), "reply-not-json"],
     ["a reply with no content", () => completion(null), "reply-unreadable"],
     [
@@ -190,6 +224,34 @@ describe("a call to the model", () => {
     expect(z.object({ reason: z.string() }).parse(failure).reason).toBe(
       "timeout",
     );
+  });
+});
+
+describe("whose fault a failed call is", () => {
+  it.each([
+    "status-400",
+    "status-401",
+    "status-402",
+    "status-403-budget",
+    "status-404",
+  ])("is askme's own on %s, which a retry cannot fix", (reason) => {
+    expect(modelFaultIsOurs(reason)).toBe(true);
+  });
+
+  it.each([
+    "status-403",
+    "status-408",
+    "status-429",
+    "status-500",
+    "status-502",
+    "status-503",
+    "timeout",
+    "unreachable",
+    "reply-unreadable",
+    "reply-not-json",
+    "reply-rejected",
+  ])("is not askme's own on %s", (reason) => {
+    expect(modelFaultIsOurs(reason)).toBe(false);
   });
 });
 

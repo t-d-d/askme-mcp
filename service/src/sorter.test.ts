@@ -403,6 +403,59 @@ describe("a job from the queue", () => {
     ]);
   });
 
+  it.each(["status-401", "status-402"])(
+    `is let go when the sort fails with %s on the delivery numbered ${String(sortDeliveries)}, with one error line, as the key is askme's own`,
+    async (reason) => {
+      const refused = memoryModel([
+        new ModelFailed(reason),
+        new ModelFailed(reason),
+      ]).model;
+      expect(
+        await deliver(sortDeliveries, memoryStore({ ask, rules }), refused),
+      ).toBe(false);
+      expect(logged()).toEqual([
+        expect.objectContaining({
+          level: "error",
+          event: "sort-failed",
+          accountId: owner,
+          askId: ask.id,
+          errorClass: reason,
+        }),
+      ]);
+    },
+  );
+
+  it.each(["status-401", "status-402"])(
+    `still goes back to the queue on %s before the delivery numbered ${String(sortDeliveries)}`,
+    async (reason) => {
+      const refused = memoryModel([
+        new ModelFailed(reason),
+        new ModelFailed(reason),
+      ]).model;
+      expect(await deliver(1, memoryStore({ ask, rules }), refused)).toBe(true);
+      expect(logged()).toEqual([
+        expect.objectContaining({ level: "info", event: "sort-retried" }),
+      ]);
+    },
+  );
+
+  it(`still logs a timeout on the delivery numbered ${String(sortDeliveries)} at warn`, async () => {
+    const slow = memoryModel([
+      new ModelFailed("timeout"),
+      new ModelFailed("timeout"),
+    ]).model;
+    expect(
+      await deliver(sortDeliveries, memoryStore({ ask, rules }), slow),
+    ).toBe(false);
+    expect(logged()).toEqual([
+      expect.objectContaining({
+        level: "warn",
+        event: "sort-failed",
+        errorClass: "timeout",
+      }),
+    ]);
+  });
+
   it("is let go at the cap on any delivery, with one info line, since the cap is working as designed", async () => {
     for (const receives of [1, sortDeliveries]) {
       capture.lines.length = 0;
@@ -444,6 +497,24 @@ describe("a job from the queue", () => {
         accountId: owner,
         askId: ask.id,
       }),
+    ]);
+  });
+
+  it("logs a refused key on the try before the cap at error", async () => {
+    expect(
+      await deliver(
+        1,
+        memoryStore({ ask, rules }),
+        memoryModel([new ModelFailed("status-402"), capped()]).model,
+      ),
+    ).toBe(false);
+    expect(logged()).toEqual([
+      expect.objectContaining({
+        level: "error",
+        event: "sort-failed",
+        errorClass: "status-402",
+      }),
+      expect.objectContaining({ level: "info", event: "sort-capped" }),
     ]);
   });
 

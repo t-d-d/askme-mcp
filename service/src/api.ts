@@ -14,7 +14,7 @@ import { authorizationOf, jsonBody } from "./http";
 import { AgentToken, TokenRejected, type AccountId } from "./identity";
 import { queueSorts, type SortRequests } from "./jobs";
 import { errorClass, type Logger } from "./log";
-import { CapReached, type CountedModel } from "./model";
+import { CapReached, modelFaultIsOurs, type CountedModel } from "./model";
 import { rateLimits } from "./rate";
 import { mcpPath, type PageRoute } from "./routes";
 import { emptyRules, readRules } from "./rules";
@@ -188,7 +188,9 @@ async function saveRules(
   try {
     read = await readRules(text, model.forAccount(account));
     if ("failed" in read) {
-      log.warn("rules-read-failed", {
+      // A refused key fails every reading, so it alerts.
+      const failed = modelFaultIsOurs(read.failed) ? log.error : log.warn;
+      failed("rules-read-failed", {
         accountId: account,
         errorClass: read.failed,
       });

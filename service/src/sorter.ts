@@ -9,6 +9,7 @@ import {
   createCountedModel,
   defaultModel,
   ModelFailed,
+  modelFaultIsOurs,
   type CountedModel,
   type FollowUp,
   type ModelRequest,
@@ -163,17 +164,26 @@ export async function runJob(
     outcome = { failed: errorClass(error) };
   }
   if (outcome === "done") return false;
+  // A refused key fails every sort, so it alerts. The job is still retried.
+  const failed = (reason: string) =>
+    modelFaultIsOurs(reason) ? log.error : log.warn;
   if ("capped" in outcome) {
     // Let go: a retry would come round again before the cap resets
     // (ADR 22).
     if (outcome.failed !== undefined) {
-      log.warn("sort-failed", { ...at, errorClass: outcome.failed });
+      failed(outcome.failed)("sort-failed", {
+        ...at,
+        errorClass: outcome.failed,
+      });
     }
     log.info("sort-capped", at);
     return false;
   }
   if (message.receives >= sortDeliveries) {
-    log.warn("sort-failed", { ...at, errorClass: outcome.failed });
+    failed(outcome.failed)("sort-failed", {
+      ...at,
+      errorClass: outcome.failed,
+    });
     return false;
   }
   log.info("sort-retried", { ...at, errorClass: outcome.failed });
