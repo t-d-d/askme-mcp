@@ -21,8 +21,8 @@ export function longSite(site: string): boolean {
 }
 
 // A site's name in the parts it may break between, each ending in its dot.
-// A name too long for one line breaks only after a dot, so no part of it is
-// split, and its end stays whole.
+// A name too long for one line breaks after a dot, so its end stays whole.
+// A part is split only when it alone is longer than the line.
 export function siteParts(site: string): string[] {
   return site.split(/(?<=\.)/u);
 }

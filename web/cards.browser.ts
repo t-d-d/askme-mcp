@@ -33,6 +33,7 @@ const ticket = "https://linear.app/askme/issue/ASK-3";
 const googleDoc = "https://docs.google.com/document/d/1AbC/edit";
 const cloudflare = "https://dash.cloudflare.com/a1b2/example.com/dns";
 const aws = "https://console.aws.amazon.com/s3/buckets/shop";
+const longPart = "https://averyveryverylongsubdomainname.example.com/a";
 const sessionLink = "https://claude.ai/code/session_01AbC";
 
 const ask = (
@@ -92,6 +93,11 @@ const cloudflareAndSession = ask(
 
 const awsAndSession = ask("bucket", "Empty the old bucket?", 40 * minute, {
   actionLink: aws,
+  sessionLink,
+});
+
+const longPartAndSession = ask("part", "Check the old host?", 40 * minute, {
+  actionLink: longPart,
   sessionLink,
 });
 
@@ -218,15 +224,16 @@ const lineEnds = (element: Locator) =>
     const ends: string[] = [];
     let before = "";
     let top: number | undefined;
+    const range = document.createRange();
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      for (let at = 0; at < (node.textContent ?? "").length; at += 1) {
-        const range = document.createRange();
+      const text = node.textContent ?? "";
+      for (let at = 0; at < text.length; at += 1) {
         range.setStart(node, at);
         range.setEnd(node, at + 1);
         const here = Math.round(range.getBoundingClientRect().top);
         if (top !== undefined && here !== top) ends.push(before);
         top = here;
-        before += node.textContent?.[at] ?? "";
+        before += text.charAt(at);
       }
     }
     return ends;
@@ -330,6 +337,22 @@ describe("the top card's buttons", () => {
     const ends = await lineEnds(name);
     expect(ends.length).toBeGreaterThan(0);
     for (const end of ends) expect(end).toMatch(/\.$/u);
+  });
+
+  // A part too long for a line on its own is split, so the name stays inside
+  // the button, and the rest still breaks after a dot (docs/design.md).
+  it("split only a part too long for a line on its own, and keep the name inside the button", async () => {
+    const card = await narrowCard(longPartAndSession);
+    const name = card.locator(`a[href="${longPart}"] span`).nth(1);
+    expect(
+      await name.evaluate((each) => each.scrollWidth <= each.clientWidth),
+    ).toBe(true);
+    const ends = await lineEnds(name);
+    const split = ends.filter((end) => !end.endsWith("."));
+    expect(split.length).toBeGreaterThan(0);
+    for (const end of split) {
+      expect("averyveryverylongsubdomainname".startsWith(end)).toBe(true);
+    }
   });
 
   it("say in each link's name that it opens a new tab, and show nothing new", async () => {
