@@ -59,6 +59,7 @@ The check lands with this record.
 - A rollback can meet items a newer build wrote, which the older code may not parse. Each change to a stored item's shape has to keep the previous build able to read it, or say why it cannot.
 - `live-ok` can be more than one build back: a re-run, a tag that did not move, or a commit that lands before a revert all leave it further behind. A rollback then crosses more than one change.
 - A rollback deploys an older template, so CloudFormation removes any resource the failed build added, unless that resource is retained. A new queue or table loses what it held.
+- The rollback checks the Serverless launcher and framework against the sums in the failing commit's workflow, as the deploy does. A rollback across a change of framework version fails that check, and puts nothing back.
 - A rollback does not touch the deploy role's stack, so a broken change to the role is not undone by it.
 - The run takes longer when it fails: one more build, deploy and live tier.
 - The tag move uses the workflow's own token. No ruleset covers tags today, so it can move the tag. A ruleset on tags added later would stop it, and the run summary would say the tag did not move.
