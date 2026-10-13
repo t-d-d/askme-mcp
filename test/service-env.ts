@@ -7,10 +7,9 @@ vi.stubEnv("MODEL_ENDPOINT", fakes.model.endpoint);
 vi.stubEnv("SSM_ENDPOINT", fakes.parameters.endpoint);
 vi.stubEnv("SQS_ENDPOINT", fakes.queue.endpoint);
 
-// Each test starts with no queued replies, recorded calls or waiting jobs.
+// Each test starts with every fake as it began.
 beforeEach(() => {
-  fakes.model.reset();
-  fakes.queue.purge();
+  fakes.reset();
 });
 
 // A failed test may stop before it takes its replies, and its own error

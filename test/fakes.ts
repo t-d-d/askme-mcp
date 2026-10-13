@@ -67,7 +67,10 @@ export interface FakeQueue {
   // when an answer is lost on its way back, so the SDK sends them again.
   loseAnswers(count: number): void;
   waiting(): number;
+  // Drops the waiting messages.
   purge(): void;
+  // Returns the queue to its starting state.
+  reset(): void;
   // One message per run. A message whose run fails or throws waits for the
   // next call, as SQS hides it for its visibility timeout, and holds back
   // the rest of its group until then. Gives the number of runs.
@@ -78,12 +81,16 @@ export interface FakeParameterStore {
   endpoint: string;
   asked: string[];
   hanging: boolean;
+  // Returns the store to its starting state.
+  reset(): void;
 }
 
 export interface Fakes {
   model: FakeModel;
   queue: FakeQueue;
   parameters: FakeParameterStore;
+  // Returns every fake to its starting state.
+  reset(): void;
   close(): Promise<void>;
 }
 
@@ -271,6 +278,17 @@ async function startQueue() {
     purge() {
       waiting.length = 0;
     },
+    reset() {
+      sent.length = 0;
+      calls.length = 0;
+      waiting.length = 0;
+      taken.clear();
+      lost = 0;
+      sequence = 0;
+      queue.failing = false;
+      queue.hanging = false;
+      queue.refusing = false;
+    },
     async deliver(run) {
       let runs = 0;
       const held = new Set<string>();
@@ -413,6 +431,10 @@ async function startParameterStore() {
     endpoint: "",
     asked: [],
     hanging: false,
+    reset() {
+      parameters.asked.length = 0;
+      parameters.hanging = false;
+    },
   };
   const server = await listen(async (incoming, outgoing) => {
     const body = z
@@ -462,6 +484,11 @@ export async function startFakes(): Promise<Fakes> {
     model: model.model,
     queue: queue.queue,
     parameters: parameters.parameters,
+    reset() {
+      model.model.reset();
+      queue.queue.reset();
+      parameters.parameters.reset();
+    },
     close: async () => {
       await Promise.all([model.close(), queue.close(), parameters.close()]);
     },
