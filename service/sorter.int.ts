@@ -2,7 +2,8 @@
 // stand-ins for the model and Parameter Store (ADR 9).
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, inject, it, vi } from "vitest";
-import { fakes } from "../test/fakes";
+import { fakes, modelKeyParameter, testModelKey } from "../test/fakes";
+import { captureLogs } from "../test/logs";
 import { jobAccount } from "./src/identity";
 import { handler as sorter } from "./src/sorter";
 import { createStore } from "./src/store/store";
@@ -37,6 +38,8 @@ const runFor = (accountId: string, askId: string) =>
     { awsRequestId: "sort-1" },
   );
 
+// The function keeps its services for the life of this file's module, so
+// this test must make the file's first run of it.
 it("reads the model's key on its first sort, and keeps it for the runs after", async () => {
   const sub = `user_${randomUUID().slice(0, 8)}`;
   const account = jobAccount(sub);
@@ -57,12 +60,27 @@ it("reads the model's key on its first sort, and keeps it for the runs after", a
   }
   const calls = fakes.model.calls.length;
   const reads = fakes.parameters.asked.length;
-  for (const askId of askIds) {
-    fakes.model.reply({
-      json: { hashtags: ["work"], level: "normal", reason: "Routine." },
-    });
-    expect(await runFor(sub, askId)).toEqual({ batchItemFailures: [] });
+  const capture = captureLogs();
+  try {
+    for (const askId of askIds) {
+      fakes.model.reply({
+        json: { hashtags: ["work"], level: "normal", reason: "Routine." },
+      });
+      expect(await runFor(sub, askId)).toEqual({ batchItemFailures: [] });
+    }
+  } finally {
+    capture.restore();
   }
-  expect(fakes.model.calls).toHaveLength(calls + askIds.length);
-  expect(fakes.parameters.asked.slice(reads)).toHaveLength(1);
+  // Each run stored its sort, and each call carried the key it kept.
+  expect(capture.lines).toEqual(
+    askIds.map((askId) => ({
+      method: "info",
+      args: [expect.objectContaining({ event: "ask-sorted", askId })],
+    })),
+  );
+  const keyed: unknown = expect.objectContaining({
+    authorization: `Bearer ${testModelKey}`,
+  });
+  expect(fakes.model.calls.slice(calls)).toEqual(askIds.map(() => keyed));
+  expect(fakes.parameters.asked.slice(reads)).toEqual([modelKeyParameter]);
 });

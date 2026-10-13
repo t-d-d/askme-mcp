@@ -161,8 +161,8 @@ describe("sorting an ask", () => {
     ]);
   });
 
-  // The eval sends these same three values, so its scores describe the
-  // service's own call.
+  // The eval sends the same token cap and timeout, so its scores describe
+  // the service's own call.
   it("asks the model with the schema's name, and the token cap and timeout it exports", async () => {
     const memory = memoryStore({ ask, rules });
     const { model, asked } = memoryModel([good]);
