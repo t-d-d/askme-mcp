@@ -102,8 +102,7 @@ export const knownMissNote =
   "A known miss is an ask the owner kept at its level though the default model misses it, in the issue named beside it.";
 
 // The mark beside an ask's name, with the issue that accepts the miss.
-export const knownMissMark = (one: EvalCase) =>
-  ` (known miss, ${issue(one)})`;
+export const knownMissMark = (one: EvalCase) => ` (known miss, ${issue(one)})`;
 
 function miss(outcome: Outcome): string {
   const { one, sort, failure } = outcome;
