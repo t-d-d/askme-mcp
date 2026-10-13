@@ -16,8 +16,10 @@ import {
   allClearGaps,
   answerPoll,
   Answering,
+  datedPolls,
   openPage,
   Status,
+  stepUntil,
   underTheNote,
   type OpenPage,
 } from "../test/browser";
@@ -118,6 +120,7 @@ const summaries = async (page: Page) =>
       "Renew the shop's domain?",
       "Approve the passkey on the shop's settings page?",
       "Pick a delivery slot before it goes?",
+      "Book the boiler service?",
     ].find((summary) => text.includes(summary));
     return found ?? text;
   });
@@ -149,6 +152,52 @@ const schoolRun = "Swap Saturday's school run?";
 const domain = "Renew the shop's domain?";
 const passkey = "Approve the passkey on the shop's settings page?";
 const slot = "Pick a delivery slot before it goes?";
+const boiler = "Book the boiler service?";
+
+// Opens the list on a page whose clock stands still two minutes before a
+// moment by the service's clock, which is serviceAhead ahead of the page's,
+// and waits for the summaries on the screen to read `before`, in order. A
+// second before the moment, by the page's clock, a poll brings a new ask,
+// which goes last, and the rest still read `before`. The first poll after
+// the moment finds them reading `after`. Each poll's answer gives the
+// service's time in its Date header, as it is then, because the page's
+// clock moves only when the test moves it.
+async function orderChangesAt(
+  moment: number,
+  serviceAhead: number,
+  asks: PageAsk[],
+  before: string[],
+  after: string[],
+): Promise<Page> {
+  const here = moment - serviceAhead;
+  let pageAt = here - 2 * minute;
+  let answer = listOf(...asks);
+  view = await openPage(inject("pageUrl"), phone, {
+    session,
+    clock: { stoppedAt: new Date(pageAt) },
+    api: {
+      [pagePaths.asks]: datedPolls(
+        () => answer,
+        () => pageAt + serviceAhead,
+      ),
+    },
+  });
+  const { page } = view;
+  const reads = (order: string[]) => async () =>
+    (await summaries(page)).join("\n") === order.join("\n");
+  await stepUntil(page, reads(before), "the list to read as before");
+  answer = {
+    ...listOf(...asks, ask("z", boiler, family("low"))),
+    version: 4,
+  };
+  pageAt = here - 1000;
+  await page.clock.pauseAt(new Date(pageAt));
+  await stepUntil(page, reads([...before, boiler]), "the new ask to show");
+  pageAt = here + pollMs;
+  await page.clock.pauseAt(new Date(pageAt));
+  await stepUntil(page, reads([...after, boiler]), "the list to read as after");
+  return page;
+}
 
 describe("ordering by the time asks lapse", () => {
   it("puts an ask that lapses within the hour first, above every level", async () => {
@@ -176,6 +225,30 @@ describe("ordering by the time asks lapse", () => {
     await page.getByRole("article").filter({ hasText: slot }).waitFor();
     expect(await summaries(page)).toEqual([slot, schoolRun]);
   });
+
+  // The service gives the time an ask lapses by its own clock, so the ask
+  // moves up when the service's time for its last hour comes, even on a page
+  // whose clock is a few minutes out. For an ask whose last hour starts at
+  // 18:01 UTC by the service's clock, a clock three minutes fast reads 18:04
+  // then, and one three minutes slow reads 17:58.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "moves an ask to the top when the service's time for its last hour comes, on a clock a few minutes %s",
+    async (_, serviceAhead) => {
+      await orderChangesAt(
+        evening.getTime() + minute,
+        serviceAhead,
+        [
+          ask("a", schoolRun, family("high")),
+          ask("b", slot, family("low"), 61 * minute),
+        ],
+        [schoolRun, slot],
+        [slot, schoolRun],
+      );
+    },
+  );
 });
 
 describe("the lapsed line", () => {
@@ -303,6 +376,31 @@ describe("the lapsed line", () => {
     await page.getByText("1 has lapsed").waitFor();
     expect(await summaries(page)).toEqual([schoolRun]);
   });
+
+  // The service gives the time an ask lapses by its own clock, so the ask
+  // goes behind the line when the service's time for it comes, even on a
+  // page whose clock is a few minutes out. For an ask that lapses at 18:20
+  // UTC by the service's clock, a clock three minutes fast reads 18:23 then,
+  // and one three minutes slow reads 18:17.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "takes an ask out of the list, behind the line, when the service's time for it comes, on a clock a few minutes %s",
+    async (_, serviceAhead) => {
+      const page = await orderChangesAt(
+        evening.getTime() + 20 * minute,
+        serviceAhead,
+        [
+          ask("a", schoolRun, family("low")),
+          ask("b", passkey, shop("high"), 20 * minute),
+        ],
+        [passkey, schoolRun],
+        [schoolRun],
+      );
+      expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
+    },
+  );
 
   it("sits at the foot of All clear when every ask has lapsed, and Show them brings the tabs back", async () => {
     const { page } = await open(

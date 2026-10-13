@@ -40,8 +40,9 @@ import { inListOrder, lapsedAsks } from "./waiting";
 // again. A hashtag the rules no longer name has no tab, but keeps its
 // colour on the asks that still carry it.
 //
-// The list is in order as of the last poll, so it follows the clock as asks
-// near the time they lapse (waiting.ts).
+// The list is in order as of the last poll, and an ask lapses then, by the
+// service's clock, which gives the time each ask lapses. So the list follows
+// that clock as asks near their time (waiting.ts).
 //
 // An ask with a hashtag outside its hours is held back, on every tab, as of
 // the last poll. So is an ask whose time has passed, which is lapsed, and
@@ -113,8 +114,8 @@ export function Asks({ card }: { card: string | null }) {
   // Counted over the list as polled, so an ask dismissed here still counts
   // until askme drops it, and Undo brings it back as it was.
   const lapsed = useMemo(
-    () => lapsedAsks(data?.asks ?? [], polledAt),
-    [data, polledAt],
+    () => lapsedAsks(data?.asks ?? [], polledAt, serviceAhead),
+    [data, polledAt, serviceAhead],
   );
   const held = useMemo(
     () =>
@@ -155,7 +156,7 @@ export function Asks({ card }: { card: string | null }) {
       : everything;
   if (tab !== chosen) choose(tab);
   const onThisTab = onTab(asks, tab);
-  const shown = inListOrder(waiting(onThisTab), polledAt);
+  const shown = inListOrder(waiting(onThisTab), polledAt, serviceAhead);
   const heldHere = onThisTab.filter(({ id }) => held.has(id)).length;
   const lapsedHere = onThisTab.filter(({ id }) => lapsed.has(id)).length;
   const list = useListPlace(
