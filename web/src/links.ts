@@ -20,6 +20,13 @@ export function longSite(site: string): boolean {
   return site.length > 15;
 }
 
+// A site's name in the parts it may break between, each ending in its dot.
+// A name too long for one line breaks after a dot, so its end stays whole.
+// A part is split only when it alone is longer than the line.
+export function siteParts(site: string): string[] {
+  return site.split(/(?<=\.)/u);
+}
+
 // The shapes askme recognises: a GitHub pull request or issue, by number.
 const shapes = [
   { kind: "pull", label: "Pull request" },

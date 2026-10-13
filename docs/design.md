@@ -193,7 +193,7 @@ askme knows only the link's address, so the label comes from its shape.
 
 The second line is always the site's name, such as github.com. The list of recognised shapes can grow. It never uses words the agent supplied.
 
-On the top card, a site's name of more than 15 characters, such as dash.cloudflare.com, is set at 11px. It then stays whole on one line beside the Listen and session buttons on a 360px phone. The name is never cut short with an ellipsis. Its end matters most, since github.com.example.net is not github.com. A name too long for one line even at 11px, such as console.aws.amazon.com, wraps onto a second line.
+On the top card, a site's name of more than 15 characters, such as dash.cloudflare.com, is set at 11px. It then stays whole on one line beside the Listen and session buttons on a 360px phone. The name is never cut short with an ellipsis. Its end matters most, since github.com.example.net is not github.com. A name too long for one line even at 11px, such as console.aws.amazon.com, breaks onto a second line just after a dot. A part between two dots is split only when it is too long for a line on its own.
 
 A recognised shape's label names what the link opens, with no verb. The button only ever opens a page, so a word such as "See" adds nothing, and the shorter label stays on one line beside the Listen and session buttons.
 
