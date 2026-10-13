@@ -2,11 +2,11 @@ import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { fakeStore } from "../../test/fake-store";
 import { captureLogs, lineText } from "../../test/logs";
 import { refusalOf } from "../../test/mcp";
 import { callerOf } from "./identity";
 import type { SortRequests } from "./jobs";
-import type { Store } from "./store/store";
 import { addTool, type ToolDefinition } from "./tools";
 
 let capture: ReturnType<typeof captureLogs>;
@@ -21,27 +21,12 @@ const input = z.strictObject({});
 const output = z.object({ id: z.string().min(3) });
 
 // A store this tool never reaches.
-const unused = () => Promise.reject(new Error("The store is not used here."));
-const store: Store = {
-  postAsk: unused,
-  resolveAsk: unused,
-  markOpened: unused,
-  dismissAsk: unused,
-  openAsks: unused,
-  asksSince: unused,
-  countCall: unused,
-  rules: unused,
-  saveRules: unused,
-  resaveRules: unused,
-  modelCapSpent: unused,
-  recordModelCapReset: unused,
-  askToSort: unused,
-  recordSort: unused,
-  close: () => undefined,
-};
+const store = fakeStore();
 
 // A queue this tool never reaches.
-const sorts: SortRequests = { queue: unused };
+const sorts: SortRequests = {
+  queue: () => Promise.reject(new Error("The queue is not used here.")),
+};
 
 // A tool whose answer passes its type but not its schema, as a bug in a
 // later store read might give.

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { fakeStore } from "../../test/fake-store";
 import { askTool } from "./ask";
 import { callerOf, type AccountId } from "./identity";
 import type { LimitName } from "./rate";
@@ -88,7 +89,7 @@ function storeAnswering({
   return {
     posted,
     counted: () => counted,
-    store: {
+    store: fakeStore({
       // Sample asks count against the ask limit, and no other.
       countCall: (_: AccountId, limit: LimitName): Promise<Counted> => {
         if (limit !== "ask") {
@@ -117,7 +118,7 @@ function storeAnswering({
             });
         }
       },
-    },
+    }),
   };
 }
 
