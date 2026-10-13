@@ -80,7 +80,9 @@ export function constraintHistory(): Map<string, number[]> {
 // Every fitness test in a test file of any tier, named as CLAUDE.md says,
 // `fitness: <check> (<file>.md)`. Only a describe's first argument counts,
 // either `describe(` or the second call of `describe.each(...)(`. A string
-// that only quotes a describe, as a static test may, does not.
+// that only quotes a describe, as a static test may, does not. A describe
+// whose tests are all skipped or left as todo still counts, so a check
+// answered that way passes here.
 const fitnessDescribe =
   /(?:(?<![\w"'`.])describe\(|\)\()\s*["'`]fitness: (.+?) \(([a-z0-9-]+)\.md\)/gu;
 
