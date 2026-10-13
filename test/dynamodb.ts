@@ -37,7 +37,7 @@ declare module "vitest" {
   }
 }
 
-const image = "amazon/dynamodb-local:3.3.1";
+export const image = "amazon/dynamodb-local:3.3.1";
 const tableName = "askme";
 
 const run = promisify(execFile);
@@ -127,6 +127,28 @@ export interface Owner {
 
 const label = "askme-mcp.dynamodb";
 
+// The labels that tie a container to the run it belongs to.
+export function ownerLabels(owner: Owner): string[] {
+  return [
+    "--label",
+    `${label}.pid=${String(owner.pid)}`,
+    "--label",
+    `${label}.host=${owner.host}`,
+  ];
+}
+
+// The run a container belongs to, read from its labels.
+export async function ownerOf(container: string): Promise<Owner> {
+  const { stdout } = await run("docker", [
+    "inspect",
+    "--format",
+    `{{index .Config.Labels "${label}.pid"}} {{index .Config.Labels "${label}.host"}}`,
+    container,
+  ]);
+  const [pid, host] = stdout.trim().split(" ");
+  return { pid: Number(pid), host: host ?? "" };
+}
+
 // Starts a local DynamoDB, labelled with the run it belongs to, and gives
 // the container's id.
 export async function startDatabase(owner: Owner): Promise<string> {
@@ -134,10 +156,7 @@ export async function startDatabase(owner: Owner): Promise<string> {
     "run",
     "--detach",
     "--rm",
-    "--label",
-    `${label}.pid=${String(owner.pid)}`,
-    "--label",
-    `${label}.host=${owner.host}`,
+    ...ownerLabels(owner),
     "--publish",
     "127.0.0.1::8000",
     image,
@@ -151,7 +170,7 @@ export async function startDatabase(owner: Owner): Promise<string> {
 
 // Whether a process on this machine is still running. A process that runs
 // as another user still exists, though it cannot be signalled.
-function alive(pid: number): boolean {
+export function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
@@ -173,10 +192,14 @@ export async function removeOrphans(): Promise<void> {
     "--format",
     `{{.ID}} {{.Label "${label}.pid"}}`,
   ]);
-  const orphans = [...stdout.matchAll(/^(\w+) (\d+)$/gmu)]
-    .filter(([, , pid]) => !alive(Number(pid)))
-    .map(([, id]) => id ?? "");
-  if (orphans.length > 0) await run("docker", ["rm", "--force", ...orphans]);
+  const orphans = [...stdout.matchAll(/^(\w+) (\d+)$/gmu)].flatMap(
+    ([, id, pid]) => (id !== undefined && !alive(Number(pid)) ? [id] : []),
+  );
+  if (orphans.length === 0) return;
+  // Another run starting at the same time may be removing the same ones.
+  // Whatever is left, the next run removes, so a failure here need not stop
+  // this one.
+  await run("docker", ["rm", "--force", ...orphans]).catch(() => undefined);
 }
 
 export default async function setup(
