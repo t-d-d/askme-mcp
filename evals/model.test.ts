@@ -6,8 +6,6 @@ import {
 } from "../service/src/model";
 import { rateWaitMs, rateWaits, retryingOnRate } from "./model";
 
-// A model that answers each call with the next reply in the list, a thrown
-// error included, and keeps the time of every call it was sent.
 function fakeModel(replies: unknown[]) {
   const sentAt: number[] = [];
   const model: Model = {
@@ -41,7 +39,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("a call the provider refuses for rate (#303)", () => {
+describe("a call the provider refuses for rate", () => {
   it("is sent again after the first wait, and its reply comes back", async () => {
     const { model, sentAt } = fakeModel([refused(), { level: "high" }]);
     const reply = retryingOnRate(model).reply(request);

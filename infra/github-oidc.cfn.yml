@@ -3,9 +3,8 @@ Description: >-
   askme bootstrap: the GitHub Actions OIDC provider and the role a push to
   main assumes to deploy. Stack askme, in us-east-1.
 
-# The owner applied this stack once by hand (issue #1), because nothing can
-# assume a role that does not exist yet. From then on the deploy job applies
-# it on every green merge to main, so main stays the only way in.
+# Applied once by hand, since nothing can assume a role that does not exist
+# yet. The deploy job applies it on every green merge to main.
 
 Parameters:
   GitHubOwner:
@@ -56,23 +55,16 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                # The repo was created after 15 July 2026, so GitHub signs its
-                # tokens with the subject that names the owner and repo by id
-                # as well as by name. A new repo that takes either name later
-                # gets a different id, so it cannot assume this role.
-                #
-                # Only a job on main matches. A job that names a GitHub
-                # environment gets an environment subject instead and is
-                # refused, so the deploy job sets none.
+                # GitHub names the owner and repo by id as well as by name for
+                # a repo created after 15 July 2026, so a new repo that takes
+                # either name cannot assume this role. A job that names a
+                # GitHub environment gets another subject, so the deploy job
+                # sets none.
                 token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepo}@${GitHubRepoId}:ref:refs/heads/main"
-      # Administrator access, by the owner's decision in issue #1. The account
-      # holds askme and nothing else. What guards it is the trust above, the
-      # owner being the only one who merges, and the gate a merge needs.
-      #
-      # A policy scoped to askme's resources was dropped: the role must create
-      # roles for its functions, and a role that can do that can make itself
-      # an administrator. A Deny list was dropped for the same reason: an
-      # administrator can remove it, or create a role without it.
+      # The account holds askme alone. A policy scoped to askme would not
+      # hold: the role must create roles for its functions, and a role that
+      # can do that can make itself an administrator. A Deny list fails the
+      # same way. The trust above, the owner's merges and the gate guard it.
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/AdministratorAccess"
 

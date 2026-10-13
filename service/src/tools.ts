@@ -1,5 +1,3 @@
-// Every MCP tool is registered here, together with its schemas (ADR 10), and
-// every refusal it makes follows the error contract (ADR 11).
 import type {
   CallToolResult,
   McpServer,
@@ -12,8 +10,6 @@ import type { SortRequests } from "./jobs";
 import { createLogger, errorClass, type Logger } from "./log";
 import type { Store } from "./store/store";
 
-// What a tool works with: the store, and the queue it hands new asks' sorts
-// to.
 export interface ToolServices {
   store: Store;
   sorts: SortRequests;
@@ -32,17 +28,15 @@ export interface ToolDefinition<
   description: string;
   input: Input;
   output: Output;
-  // The tool's answer, or a refusal it decided on as it ran.
   run(
     input: z.output<Input>,
     context: ToolContext,
   ): Promise<z.output<Output> | Refused>;
 }
 
-// The tool's own schema as the client sees it, with a check that lets every
-// value through. The SDK would otherwise reject bad arguments in its own
-// words, before the tool runs. The tool parses them with the same schema
-// instead, and refuses them as invalid_input.
+// The check lets every value through. The SDK would otherwise reject bad
+// arguments in its own words, before the tool can refuse them as
+// invalid_input.
 function advertised(schema: z.ZodObject): StandardSchemaWithJSON {
   return {
     "~standard": {
@@ -54,8 +48,7 @@ function advertised(schema: z.ZodObject): StandardSchemaWithJSON {
   };
 }
 
-// The problems with some arguments, one per field, in the schema's words.
-// It names fields and limits only, never the values sent.
+// Names fields and limits only, never the values sent.
 function problems(error: z.ZodError): string {
   return error.issues
     .map((issue) => {
@@ -109,9 +102,8 @@ export function addTool<Input extends z.ZodObject, Output extends z.ZodObject>(
         if (answer instanceof Refused) {
           return refusal(answer.code, answer.message);
         }
-        // The answer is parsed by the tool's own schema here, so one that
-        // breaks it is a failure under the error contract, not the SDK's
-        // own error text.
+        // Parsed here, so an answer that breaks its schema fails under the
+        // error contract, not with the SDK's own text.
         const output = tool.output.parse(answer);
         return {
           content: [{ type: "text", text: JSON.stringify(output) }],

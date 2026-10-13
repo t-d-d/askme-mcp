@@ -1,4 +1,3 @@
-// Read-only access to the repo's own files, for static tests.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -12,9 +11,8 @@ export function readRepoFile(path: string): string {
   return readFileSync(join(root, path), "utf8");
 }
 
-// Every file in the repo that git tracks or would track, so nothing ignored.
-// The list is read from git once per test file. With -z git writes each path
-// as it is, where it would otherwise quote one with a letter outside ASCII.
+// With -z git writes each path as it is, where it would otherwise quote one
+// with a letter outside ASCII.
 let files: string[] | undefined;
 export function repoFiles(): string[] {
   files ??= execFileSync(
@@ -27,7 +25,6 @@ export function repoFiles(): string[] {
   return [...files];
 }
 
-// The scripts in package.json, by name.
 export const scripts = (): Record<string, string> =>
   z
     .object({ scripts: z.record(z.string(), z.string()) })
@@ -142,7 +139,6 @@ export const workflowSchema = z.object({
 export type Workflow = z.infer<typeof workflowSchema>;
 export type Job = z.infer<typeof jobSchema>;
 
-// The shell commands a job runs, in order.
 export const runsIn = (job: Job | undefined): string[] =>
   (job?.steps ?? []).flatMap((step) =>
     step.run === undefined ? [] : [step.run],
@@ -152,9 +148,6 @@ export const gatePath = ".github/workflows/gate.yml";
 export const deployPath = ".github/workflows/deploy.yml";
 export const conformancePath = ".github/workflows/conformance.yml";
 
-// A conformance job that signs in runs in the GitHub environment
-// "conformance". Its token then names that environment, which the deploy
-// role does not trust, and its keys are that environment's secrets (ADR 15).
 // GitHub reads an environment's name in any case, written alone or as
 // { name, url }.
 export const inConformanceEnvironment = (path: string, job: Job): boolean => {

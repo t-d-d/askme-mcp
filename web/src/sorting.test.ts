@@ -27,10 +27,8 @@ describe("how sorting stands", () => {
     });
   });
 
-  // The service gives each ask's time by its own clock, which the poll's
-  // Date header gives (load.ts). For an ask that turns stopped at 09:01 by
-  // the service's clock, a clock three minutes fast reads 09:04 then, and
-  // one three minutes slow reads 08:58.
+  // Three minutes fast, this clock reads 4 minutes on as the service's
+  // reaches 1.
   it("moves an ask to stopped when the service's clock reaches its time, on a clock a few minutes out", () => {
     const asks = [until(minute)];
     const fast = -3 * minute;
@@ -69,10 +67,7 @@ describe("the daily cap on model calls", () => {
     expect(capSpentUntil(undefined, now, 0)).toBeNull();
   });
 
-  // The service counts the cap by its own clock, which the poll's Date
-  // header gives (load.ts). On a clock three minutes fast, the cap resets
-  // at 00:03 by this browser's clock, and on one three minutes slow at
-  // 23:57. Either way, it is the time the list gives that comes back.
+  // Either way the service's time comes back, not this clock's.
   it("is spent until the service's clock reaches the time, on a clock a few minutes out", () => {
     const fast = -3 * minute;
     expect(

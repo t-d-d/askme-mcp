@@ -73,7 +73,6 @@
   resize: none;
 }
 
-/* Ink when the text has changed, and --neutral-tint when it has not. */
 .save,
 .saved {
   min-height: var(--button-height-settings);
@@ -139,7 +138,6 @@
   list-style: none;
 }
 
-/* The pill at the left, and its hours at the right. */
 .hashtag {
   display: flex;
   align-items: center;
@@ -163,7 +161,6 @@
   font-weight: var(--weight-label);
 }
 
-/* One line for each window. */
 .hours {
   display: flex;
   flex-direction: column;
@@ -193,9 +190,6 @@
   margin: var(--space-10) 0 0;
 }
 
-/* Under a hairline at the foot: the address at the left, Sign out at the
-   right. A long address wraps in its own column rather than pushing Sign
-   out down or the page sideways. */
 .account {
   display: flex;
   align-items: center;

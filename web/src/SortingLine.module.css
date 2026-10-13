@@ -1,5 +1,5 @@
-/* The held line's text, with no clock and no control. One line of it is as
-   tall as the held line, so the list sits the same under either. */
+/* One line of it is as tall as the held line, so the list sits the same
+   under either. */
 .line {
   display: flex;
   align-items: center;
@@ -16,8 +16,7 @@
   white-space: nowrap;
 }
 
-/* At desktop width the held line sits beside the tabs. This line takes the
-   row under them. */
+/* The held lines sit beside the tabs, and this line takes the row under. */
 @media (min-width: 768px) {
   .line {
     flex-basis: 100%;

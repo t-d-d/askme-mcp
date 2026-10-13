@@ -27,7 +27,6 @@ const rules: SortingRules = {
   hashtags: ["work", "shop", "family"],
 };
 
-// The line of the sorting prompt that draws one level, if there is one.
 const levelLine = (system: string, level: string) =>
   new RegExp(`^${level}: .*$`, "mu").exec(system)?.[0];
 
@@ -118,7 +117,7 @@ describe("the sorting prompt", () => {
     });
   });
 
-  it("judges each level by what it would cost if the person never acted (issue #157)", () => {
+  it("judges each level by what it would cost if the person never acted", () => {
     const { system } = sortingPrompt(rules, ask);
     expect(system).toContain("what it would cost if the person never acted");
     for (const level of levels) {
@@ -128,20 +127,21 @@ describe("the sorting prompt", () => {
     }
   });
 
-  it("gives no weight to time, which the page orders by on its own (issue #157)", () => {
+  it("gives no weight to time, which the page orders by on its own", () => {
     const { system } = sortingPrompt(rules, ask);
     expect(system).toContain("never how soon");
     expect(system).toContain(
       "give no weight to a date, a deadline or a time limit the ask names",
     );
-    // Nothing about time makes an ask high, and the lines #91 added are gone.
+    // Nothing about time makes an ask high, and the prompt gives no example
+    // of a prompt that times out.
     const high = levelLine(system, "high");
     expect(high).toBeDefined();
     expect(high).not.toMatch(/deadline|soon|time/u);
     expect(system).not.toMatch(/passkey|sign-in|times out/u);
   });
 
-  it("draws low as nobody worse off, and normal without the unfinished work every ask has (issue #258)", () => {
+  it("draws low as nobody worse off, and normal without the unfinished work every ask has", () => {
     const { system } = sortingPrompt(rules, ask);
     expect(levelLine(system, "low")).toContain(
       "nobody worse off in a way they would notice: any answer, or none, would do",
@@ -154,10 +154,9 @@ describe("the sorting prompt", () => {
     );
   });
 
-  // The model moves on a change of a few words, in asks far from the edit,
-  // so these lines are pinned whole. A change to one needs an eval run
-  // before and after.
-  it("puts a money saving missed at high, and keeps savings out of normal (issue #262)", () => {
+  // Pinned whole: a change of a few words moves the levels of asks far from
+  // the edit. A change to one needs an eval run before and after.
+  it("puts a money saving missed at high, and keeps savings out of normal", () => {
     const { system } = sortingPrompt(rules, ask);
     expect(levelLine(system, "high")).toBe(
       "high: never acting would cost something, however small the job or the step: someone would go without something they need or were counting on, damage would go on, a customer would be lost, or money would be lost or a money saving missed. A loss at home counts as much as one at work;",
@@ -266,9 +265,6 @@ describe("a sorting reply", () => {
   });
 });
 
-// A reply that fits in every way but its reason's length goes back to the
-// model on the second try, which asks for the whole reply again with a
-// shorter reason (#243). Any other fault gets a plain second try.
 describe("a sorting reply whose only fault is a long reason", () => {
   const hashtags = rules.hashtags;
   const long = {

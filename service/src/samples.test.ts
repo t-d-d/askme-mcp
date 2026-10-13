@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { fakeStore } from "../../test/fake-store";
 import { askTool } from "./ask";
-import { callerOf, type AccountId } from "./identity";
-import type { LimitName } from "./rate";
+import { callerOf } from "./identity";
 import { sampleAreas, sendSamples, shuffled } from "./samples";
 import type { Counted, NewAsk, Posting } from "./store/store";
 
@@ -27,8 +27,6 @@ describe("the sample asks", () => {
     expect(new Set(summaries).size).toBe(summaries.length);
   });
 
-  // Each is posted as an agent would post it, so it keeps to the ask
-  // tool's limits.
   it("are each an ask the ask tool takes, as written", () => {
     for (const { area, asks } of sampleAreas) {
       for (const { summary, spokenDetail } of asks) {
@@ -47,8 +45,6 @@ describe("the sample asks", () => {
     }
   });
 
-  // An agent never sees the hashtags (ADR 2), and the spoken detail is
-  // written to be heard.
   it("name no hashtag, and hold no link, markdown or code", () => {
     for (const { area, asks } of sampleAreas) {
       for (const text of [area, ...asks.flatMap((ask) => Object.values(ask))]) {
@@ -74,7 +70,6 @@ describe("the order samples are tried in", () => {
   });
 });
 
-// A store that counts and posts as told, and records each post.
 function storeAnswering({
   counts = () => ({ counted: true }),
   posts = () => "posted",
@@ -88,16 +83,15 @@ function storeAnswering({
   return {
     posted,
     counted: () => counted,
-    store: {
-      // Sample asks count against the ask limit, and no other.
-      countCall: (_: AccountId, limit: LimitName): Promise<Counted> => {
+    store: fakeStore({
+      countCall: (_, limit) => {
         if (limit !== "ask") {
           return Promise.reject(new Error(`Counted against ${limit}.`));
         }
         counted += 1;
         return Promise.resolve(counts(counted));
       },
-      postAsk: (_: AccountId, ask: NewAsk): Promise<Posting> => {
+      postAsk: (_, ask) => {
         tried += 1;
         const kind = posts(ask, tried);
         switch (kind) {
@@ -117,11 +111,10 @@ function storeAnswering({
             });
         }
       },
-    },
+    }),
   };
 }
 
-// Tries each area's samples in the order they are written.
 const asWritten = <T>(items: readonly T[]): T[] => [...items];
 
 const areaOf = (ask: NewAsk) => ask.area;
@@ -150,8 +143,6 @@ describe("sending sample asks", () => {
     );
   });
 
-  // A sample posted in the last ten minutes would be matched to it, and
-  // nothing new would show (ADR 3).
   it("tries the area's next sample when one was posted in the last ten minutes", async () => {
     const recent = new Set(
       sampleAreas.flatMap(({ asks }) =>

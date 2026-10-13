@@ -1,15 +1,9 @@
-// How the list reads its asks: the order they come in, which asks have
-// lapsed, and how long each has waited, in the short forms docs/design.md
-// gives. The service gives the time an ask was posted, and the time it
-// lapses, by its own clock, so the page works out how long each ask has
-// waited, which asks have lapsed, and the order, by that clock.
+// The service gives its times by its own clock, serviceAhead ahead of this
+// browser's (load.ts).
 import { levels, type Level } from "../../shared/page-api";
 
 const minuteMs = 60_000;
 
-// How long an ask has waited at a moment on this browser's clock, as
-// "Just now", "4 min", "1 h" or "2 d". The service gives the time it was
-// posted by its own clock, serviceAhead ahead of this one (load.ts).
 export function age(
   postedAt: string,
   now: number,
@@ -25,7 +19,6 @@ export function age(
   return `${String(Math.floor(hours / 24))} d`;
 }
 
-// The top card says "Waiting 4 min", or "Just now".
 export function waiting(
   postedAt: string,
   now: number,
@@ -35,8 +28,7 @@ export function waiting(
   return words === "Just now" ? words : `Waiting ${words}`;
 }
 
-// Longest waiting first, and by id when two were posted at once, so the
-// order is the same on every load.
+// By id on a tie, so the order is the same on every load.
 export function longestWaitingFirst<
   Ask extends { id: string; postedAt: string },
 >(asks: readonly Ask[]): Ask[] {
@@ -47,7 +39,6 @@ export function longestWaitingFirst<
   );
 }
 
-// An ask that may carry the time it lapses, as the page's API gives it.
 interface MayLapse {
   lapsesAt?: string | undefined;
 }
@@ -55,22 +46,13 @@ interface MayLapse {
 const hourMs = 60 * minuteMs;
 const dayMs = 24 * hourMs;
 
-// How long until an ask lapses at a moment on this browser's clock, or
-// undefined for an ask with no time to lapse at. The service gives the time
-// by its own clock, serviceAhead ahead of this one (load.ts).
 const timeLeft = ({ lapsesAt }: MayLapse, now: number, serviceAhead: number) =>
   lapsesAt === undefined
     ? undefined
     : Date.parse(lapsesAt) - (now + serviceAhead);
 
-// Whether an ask's time has passed, by the time left. It has from the
-// moment it lapses.
 const passed = (left: number | undefined) => left !== undefined && left <= 0;
 
-// The ids of the asks that have lapsed at a moment on this browser's clock
-// (PRD, "Web page"), once the service's clock, serviceAhead ahead of this
-// one, reaches each time. A lapsed ask is not closed. It leaves the order
-// and waits behind a line of its own.
 export function lapsedAsks(
   asks: readonly (MayLapse & { id: string })[],
   now: number,
@@ -83,33 +65,19 @@ export function lapsedAsks(
   );
 }
 
-// The part of the list an ask goes in, by its level and the time it has
-// left: first the asks that lapse within the hour, whatever their level,
-// then each level, then the asks not sorted yet, and last the lapsed asks,
-// when they are shown.
+// Parts in order: lapsing within the hour, each level, not sorted yet, lapsed.
 function part(sort: { level: Level } | null, left: number | undefined) {
   if (passed(left)) return levels.length + 2;
   if (left !== undefined && left <= hourMs) return 0;
   return sort === null ? levels.length + 1 : levels.indexOf(sort.level) + 1;
 }
 
-// An ask's place in its part, by the time it has left: that time, when it
-// lapses within the next day, so those come first, soonest first. Every
-// other ask has the same place after them, and keeps the order it waited
-// in. So does every lapsed ask, in the part of its own.
+// An ask that lapses within a day is placed by its time left. The rest tie,
+// so a far-off time gains an ask nothing.
 const placeInPart = (left: number | undefined) =>
   left !== undefined && !passed(left) && left <= dayMs ? left : dayMs + 1;
 
-// The order of the list at a moment on this browser's clock (PRD, "Web
-// page"), with the time each ask has left by the service's clock,
-// serviceAhead ahead of this one. An ask that lapses within the hour comes
-// first, whatever its level, soonest first. Then come the levels, higher
-// first, and an ask not sorted yet waits below them until it is. At each, the
-// asks that lapse within the next day come first, soonest first, and the rest
-// follow, longest waiting first, so a far-off time gains an ask nothing. An
-// opened ask sinks below the unopened ones in its part, and no further, and
-// the opened ones keep the same order. A lapsed ask, when shown, comes after
-// all of them, longest waiting first.
+// Ties keep the longest-waiting order, since sort is stable.
 export function inListOrder<
   Ask extends MayLapse & {
     id: string;

@@ -2,8 +2,8 @@ import type { CSSProperties } from "react";
 import type { Hashtag } from "../../shared/page-api";
 import { shownUnder, type Tab } from "./tab";
 
-// The eight hashtag colours of docs/design.md, in the order new hashtags take
-// them. White on every strong, and each ink on its tint, is at least 4.5 to 1.
+// In the order new hashtags take them (docs/design.md). White on each
+// strong, and each ink on its tint, has a contrast of at least 4.5 to 1.
 export const palette = {
   blue: { strong: "#1F3BB3", tint: "#DCE4FF", ink: "#1B3399" },
   orange: { strong: "#B8460B", tint: "#FFE2CC", ink: "#8A3A08" },
@@ -21,17 +21,12 @@ export interface HashtagColour {
   ink: string;
 }
 
-// An ask that is not sorted yet has no colour (docs/design.md): its main
-// button is --text-2, and its pill and second button --neutral-tint.
 export const unsorted: HashtagColour = {
   strong: "var(--text-2)",
   tint: "var(--neutral-tint)",
   ink: "var(--text-2)",
 };
 
-// An ask sorted into none of the account's hashtags belongs to no part of
-// the person's life, so it is neutral, in ink (docs/design.md, "Colour
-// rules").
 export const neutral: HashtagColour = {
   strong: "var(--ink)",
   tint: "var(--neutral-tint)",
@@ -40,23 +35,18 @@ export const neutral: HashtagColour = {
 
 const inOrder: readonly HashtagColour[] = Object.values(palette);
 
-// A hashtag takes the next colour in the table when it first appears, and
-// keeps it. The service numbers each hashtag by the place it first appeared
-// in the account's rules. A ninth hashtag starts the table again.
+// place is where the hashtag first appeared in the account's rules, as the
+// service numbers it, so a hashtag keeps its colour.
 export function colourOf(place: number): HashtagColour {
   return inOrder[place % inOrder.length] ?? neutral;
 }
 
-// The colour of each of the account's hashtags, by name.
 export function hashtagColours(
   hashtags: readonly Hashtag[],
 ): ReadonlyMap<string, HashtagColour> {
   return new Map(hashtags.map(({ name, colour }) => [name, colourOf(colour)]));
 }
 
-// The colour an ask's card hands to its buttons. An ask not sorted yet has
-// none. A sorted one takes the colour of the hashtag it is shown under: its
-// first on Everything, and the tab's own on a hashtag's tab.
 export function askColour(
   sort: { hashtags: readonly string[] } | null,
   tab: Tab,
@@ -76,7 +66,6 @@ declare module "react" {
   }
 }
 
-// The inline style that gives an element, and what it holds, a hashtag's colour.
 export function tagColour(colour: HashtagColour): CSSProperties {
   return {
     "--tag-strong": colour.strong,

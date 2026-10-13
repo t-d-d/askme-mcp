@@ -22,7 +22,6 @@ const definitionSchema = z.object({
 
 const definition = () => readYaml("serverless.yml", definitionSchema);
 
-// The page's code, the service's and the module they share.
 const sourceFiles = () =>
   repoFiles().filter(
     (path) =>

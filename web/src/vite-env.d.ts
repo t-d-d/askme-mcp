@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-// The values the page is built with. Each is public.
+// Each is public, as Vite builds it into the page.
 interface ImportMetaEnv {
   readonly VITE_CLERK_PUBLISHABLE_KEY?: string;
 }

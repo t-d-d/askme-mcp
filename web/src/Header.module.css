@@ -19,7 +19,6 @@
   gap: var(--space-20);
 }
 
-/* On a phone, one control opens the rules. */
 .icon {
   display: flex;
   align-items: center;

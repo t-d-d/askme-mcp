@@ -1,5 +1,4 @@
-// Cursor's one-click link for adding a remote MCP server. Its page opens
-// Cursor and offers to add the server, which it reads from base64 JSON.
+// Cursor's one-click install link carries the server's config as base64 JSON.
 export function cursorInstallLink(mcpUrl: string): string {
   const params = new URLSearchParams({
     name: "askme",

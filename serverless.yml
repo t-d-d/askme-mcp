@@ -1,8 +1,6 @@
-# The deployment definition (ADR 5). One stage, deployed only by a green merge
-# to main (ADR 4). The deploy role and its OIDC provider are a separate stack,
+# The deploy role and its OIDC provider are a separate stack,
 # infra/github-oidc.cfn.yml, which the deploy job applies first.
 service: askme
-# Patch releases only, as Serverless advises. A minor upgrade is a pull request.
 frameworkVersion: "~4.43.0"
 
 provider:
@@ -11,32 +9,27 @@ provider:
   stage: prod
   runtime: nodejs22.x
   timeout: 10
-  # Logs are kept as long as the data (ADR 7).
+  # As long as an ask is kept (ADR 7).
   logRetentionInDays: 30
   logs:
     lambda:
-      # Every function logs JSON, so each line carries the level its console
-      # method sets. There is no debug level (ADR 7).
+      # JSON lets each line carry the level its console method sets (ADR 7).
       logFormat: JSON
       applicationLogLevel: INFO
       systemLogLevel: INFO
   environment:
-    # The Clerk instance whose tokens the service accepts. Its keys are
-    # public, so no Clerk secret reaches the function (ADR 6).
+    # Clerk's keys are public, so no Clerk secret reaches the function
+    # (ADR 6).
     CLERK_ISSUER: ${env:CLERK_ISSUER}
-    # The one table (ADR 13).
     TABLE_NAME: !Ref Table
-    # The queue that hands asks to the sort function (ADR 22).
     SORT_QUEUE: !Ref SortQueue
-    # The name of the service's OpenRouter key in Parameter Store, which
-    # issue #1 fixed. The functions read the key when they first need it,
-    # so it is in neither this file nor their settings.
+    # The functions read the key itself when they first need it, so it is in
+    # neither this file nor their settings.
     MODEL_KEY_PARAMETER: /askme/openrouter/api-key
   iam:
     role:
       statements:
-        # Reads along one account's keys and transactional writes. No scan,
-        # and nothing beyond the one table (ADR 13).
+        # No scan (ADR 13).
         - Effect: Allow
           Action:
             - dynamodb:GetItem
@@ -46,15 +39,14 @@ provider:
             - dynamodb:DeleteItem
             - dynamodb:ConditionCheckItem
           Resource: !GetAtt Table.Arn
-        # The service's model key, and nothing else in Parameter Store. It
-        # is encrypted with AWS's own key for Parameter Store, which lets
-        # any role in the account that may read the parameter decrypt it.
+        # The parameter is encrypted with AWS's own Parameter Store key, which
+        # any role allowed to read it may decrypt, so no KMS grant is needed.
         - Effect: Allow
           Action:
             - ssm:GetParameter
           Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/askme/openrouter/api-key"
-        # Queueing an ask's sort (ADR 22). The framework lets the sort
-        # function's trigger read the queue by itself.
+        # The framework grants the sort function's trigger its own read of
+        # the queue.
         - Effect: Allow
           Action:
             - sqs:SendMessage
@@ -62,16 +54,12 @@ provider:
 
 build:
   esbuild:
-    # The repo is ES modules. Lambda loads a .mjs bundle as one.
+    # Lambda loads a .mjs bundle as an ES module.
     format: esm
     outExtension:
       ".js": ".mjs"
 
 functions:
-  # The MCP endpoint, the metadata that says where to sign in, and the
-  # page's API. Every route here is one the service knows, and all but the
-  # metadata check a token (ADR 6). The page reaches its API through the
-  # distribution, under /api/.
   mcp:
     handler: service/src/handler.handler
     events:
@@ -87,22 +75,15 @@ functions:
       - httpApi: "POST /api/asks/dismissed"
       - httpApi: "POST /api/asks/samples"
 
-  # Sorts one ask after the service has stored it and answered, so posting
-  # never waits on the model. The mcp function queues a job, with an ask's
-  # id, for a new ask and for the open asks when the rules are saved, and
-  # the queue is this function's only trigger (ADR 22). It has no route. A
-  # sort that fails is reported to the queue as a failed message, never
-  # thrown, and the queue delivers it again once the message's visibility
-  # timeout ends. After the third delivery the function lets it go.
+  # Off the request path, so posting never waits on the model (ADR 22).
   sort:
     handler: service/src/sorter.handler
     # Two tries at the model, of up to 20 seconds each.
     timeout: 60
     events:
-      # One message per run. At most five runs at once, to stay inside the
-      # model provider's rate limit. The limit is the trigger's, not the
-      # function's reserved concurrency, which would trip the
-      # function-failures alarm each time it throttled a run.
+      # Five runs at most, to stay inside the model provider's rate limit.
+      # Reserved concurrency would instead trip the function-failures alarm
+      # each time it throttled a run.
       - sqs:
           arn: !GetAtt SortQueue.Arn
           batchSize: 1
@@ -111,10 +92,8 @@ functions:
 
 resources:
   Resources:
-    # The one table (ADR 13). Every item's partition key is the account, and
-    # its sort key says what the item is. No secondary index. Billed per
-    # request, so it costs nothing while idle (ADR 5). DynamoDB removes
-    # expired items late, so every read checks expiresAt itself.
+    # No secondary index (ADR 13). DynamoDB removes expired items late, so
+    # every read checks expiresAt itself.
     Table:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -133,13 +112,10 @@ resources:
           AttributeName: expiresAt
           Enabled: true
 
-    # Sort jobs (ADR 22). FIFO, with each ask as its own message group, so
-    # one ask's jobs run one after another and never at once. A received job
-    # is hidden for six times the sort function's timeout, as AWS advises,
-    # so a failed sort comes round again about six minutes later. No
-    # dead-letter queue: a sort that never works is a warn line. Billed per
-    # request, but Lambda polls it for the trigger even while it is empty,
-    # and AWS bills those polls too (hosting.md).
+    # Each ask is its own message group, so one ask's jobs never run at once
+    # (ADR 22). VisibilityTimeout is six times the sort function's timeout,
+    # as AWS advises. No dead-letter queue: a sort that never works is a
+    # warn line.
     SortQueue:
       Type: AWS::SQS::Queue
       Properties:
@@ -148,8 +124,7 @@ resources:
         ContentBasedDeduplication: false
         VisibilityTimeout: 360
 
-    # Only the service's own role may queue a job, so the account a job names
-    # always comes from the service that checked a token for it.
+    # So the account a job names always comes from a checked token.
     SortQueuePolicy:
       Type: AWS::SQS::QueuePolicy
       Properties:
@@ -167,7 +142,6 @@ resources:
                 ArnNotEquals:
                   aws:PrincipalArn: !GetAtt IamRoleLambdaExecution.Arn
 
-    # The page's static files. Private: only the distribution below reads it.
     WebBucket:
       Type: AWS::S3::Bucket
       Properties:
@@ -205,8 +179,8 @@ resources:
               OriginAccessControlId: !GetAtt WebOriginAccessControl.Id
               S3OriginConfig:
                 OriginAccessIdentity: ""
-            # The page's API, on the page's own address, so the page needs
-            # no API address at build time and no cross-origin rules.
+            # On the page's own address, so the page needs no API address at
+            # build time and no cross-origin rules.
             - Id: api
               DomainName: !Sub "${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
               CustomOriginConfig:
@@ -222,12 +196,11 @@ resources:
             CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
             ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03
           CacheBehaviors:
-            # Each answer is one account's, and the token is in the
-            # Authorization header, so nothing is cached and every header
-            # but Host goes on. AWS managed policies: CachingDisabled,
-            # AllViewerExceptHostHeader and SecurityHeadersPolicy.
-            # Saving the rules is a PUT, and CloudFront allows it only
-            # within its full set of methods.
+            # Each answer is one account's and the token is in a header, so
+            # nothing is cached and every header but Host goes on. AWS managed
+            # policies: CachingDisabled, AllViewerExceptHostHeader and
+            # SecurityHeadersPolicy. CloudFront allows PUT only within its
+            # full set of methods.
             - PathPattern: /api/*
               TargetOriginId: api
               ViewerProtocolPolicy: https-only
@@ -262,10 +235,8 @@ resources:
                       - ":distribution/"
                       - !Ref WebDistribution
 
-    # Alerts (ADR 8). Four alarms, all publishing to this one topic, which
-    # emails the owner. The address is the parameter issue #1 fixed. AWS
-    # sends a confirmation link first, and nothing arrives until the owner
-    # clicks it.
+    # AWS sends a confirmation link first, and nothing arrives until the
+    # owner clicks it.
     AlertTopic:
       Type: AWS::SNS::Topic
       Properties:
@@ -279,10 +250,8 @@ resources:
         TopicArn: !Ref AlertTopic
         Endpoint: ${ssm:/askme/alerts/email}
 
-    # The net: every function gets one filter on the error level, and every
-    # filter feeds the one metric the error-lines alarm reads. A function
-    # added without one fails the gate. With no default value, a filter
-    # publishes nothing while nothing goes wrong.
+    # Every function needs one of these filters, or the gate fails. With no
+    # default value, a filter publishes nothing while nothing goes wrong.
     McpErrorLines:
       Type: AWS::Logs::MetricFilter
       Properties:
@@ -322,8 +291,7 @@ resources:
           - !Ref AlertTopic
 
     # Failures that write no line: a crash, a timeout, running out of memory
-    # (all counted as Errors) and throttling. Each function's two metrics
-    # are added together.
+    # (all counted as Errors) and throttling.
     FunctionFailuresAlarm:
       Type: AWS::CloudWatch::Alarm
       Properties:
@@ -388,8 +356,8 @@ resources:
         AlarmActions:
           - !Ref AlertTopic
 
-    # The API failing for users in a way the first two did not see, such as
-    # API Gateway failing to invoke the function.
+    # Catches what the first two miss, such as API Gateway failing to invoke
+    # the function.
     ServerErrorsAlarm:
       Type: AWS::CloudWatch::Alarm
       Properties:
@@ -431,13 +399,10 @@ resources:
         AlarmActions:
           - !Ref AlertTopic
 
-    # The month's AWS bill. The account holds askme alone, so its bill is
-    # askme's (ADR 17). AWS publishes it about every six hours, and only in
-    # us-east-1, where askme runs. The amount is the parameter issue #1
-    # fixed, in US dollars. A gap between bills keeps the alarm where it
-    # was, so it does not leave ALARM and email again on the next bill. With
-    # no bill at all, the account's billing alerts are off, and the alarm
-    # shows INSUFFICIENT_DATA.
+    # The account holds askme alone, so its bill is askme's (ADR 17). AWS
+    # publishes it about every six hours, and only in us-east-1. Ignoring a
+    # gap between bills stops the alarm emailing again on the next one.
+    # INSUFFICIENT_DATA means the account's billing alerts are off.
     SpendAlarm:
       Type: AWS::CloudWatch::Alarm
       Properties:
@@ -459,10 +424,8 @@ resources:
         AlarmActions:
           - !Ref AlertTopic
 
-    # Saved queries (ADR 8). Product numbers are counted here, by event,
-    # never by a metric. There is one for each event the service logs, and
-    # one for each alarm to name as its first step. Each reads every
-    # function's log group.
+    # Product numbers are counted by these queries, never by a metric
+    # (ADR 8). Each query reads every function's log group.
     ErrorsQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
@@ -489,8 +452,7 @@ resources:
           | sort @timestamp desc
           | limit 100
 
-    # Every line, counted by level and event. Warnings are counted here,
-    # never alarmed.
+    # Warnings are counted here, never alarmed.
     LinesByEventQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
@@ -624,8 +586,6 @@ resources:
           filter message.event = "ask-not-found"
           | stats count(*) as calls, count_distinct(message.accountId) as accounts by bin(1d)
 
-    # How often the person goes where the work is, and how often they clear
-    # an ask themselves rather than its agent resolving it.
     AskOpenedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
@@ -648,8 +608,6 @@ resources:
           filter message.event = "ask-dismissed"
           | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
 
-    # How often an ask repeats one posted in the last ten minutes, to tune
-    # the window (ADR 3).
     AskDeduplicatedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
@@ -694,7 +652,6 @@ resources:
           filter message.event = "poll-limited"
           | stats count(*) as polls, count_distinct(message.accountId) as accounts by bin(1h)
 
-    # How often the sort queue did not take an ask's job.
     SortRequestFailedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
@@ -706,8 +663,6 @@ resources:
           filter message.event = "sort-request-failed"
           | stats count(*) as failures by message.errorClass, bin(1h)
 
-    # How often a failed sort went back to the queue to be tried again, by
-    # why it failed.
     SortRetriedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
@@ -730,9 +685,6 @@ resources:
           filter message.event = "ask-sorted"
           | stats count(*) as asks, count_distinct(message.accountId) as accounts by bin(1d)
 
-    # Sorts let go after their last delivery, by why the last one failed: a
-    # status, a timeout, a reply the check discarded, a failure of askme's
-    # own, or deliveries-spent for a delivery past the last.
     SortFailedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
@@ -744,8 +696,7 @@ resources:
           filter message.event = "sort-failed"
           | stats count(*) as failures by message.errorClass, bin(1h)
 
-    # Sorts the daily cap on model calls stopped, by account, to tell one
-    # scripted account from a cap set too low (ADR 21).
+    # By account, to tell one scripted account from a cap set too low.
     SortCappedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
@@ -768,7 +719,6 @@ resources:
           filter message.event = "rules-saved"
           | stats count(*) as saves, count_distinct(message.accountId) as accounts by bin(1d)
 
-    # Saves of unchanged rules, which sort again only the asks behind them.
     RulesResavedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:
@@ -802,7 +752,6 @@ resources:
           filter message.event = "rules-limited"
           | stats count(*) as saves, count_distinct(message.accountId) as accounts by bin(1h)
 
-    # Saves of the rules refused at the daily cap on model calls (ADR 21).
     RulesCappedQuery:
       Type: AWS::Logs::QueryDefinition
       Properties:

@@ -15,7 +15,6 @@ const pageFiles = () =>
       path !== palettePath,
   );
 
-// The custom properties a stylesheet declares, by name.
 function declared(css: string): Map<string, string> {
   return new Map(
     [...css.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gu)].map((match) => [
@@ -57,7 +56,6 @@ const namedColours = new Set(
   ).split(" "),
 );
 
-// The words in every declaration's value in a stylesheet, comments removed.
 function valueWords(css: string): string[] {
   const code = css.replace(/\/\*[\s\S]*?\*\//gu, "");
   return [...code.matchAll(/:([^;{}]+)/gu)].flatMap((match) =>

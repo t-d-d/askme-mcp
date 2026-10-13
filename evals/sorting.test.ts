@@ -10,8 +10,6 @@ import { cases } from "./cases";
 import { rateWaitMs, rateWaits } from "./model";
 import { evalPrompt, inPool, sortEvalAsk, sortingTimeoutMs } from "./sorting";
 
-// A model that answers each request with the next reply in the list, a
-// thrown error included, and keeps every request it was sent.
 function fakeModel(replies: unknown[]) {
   const requests: ModelRequest[] = [];
   const model: Model = {
@@ -65,7 +63,7 @@ describe("one sort of an eval ask", () => {
     expect(requests[0]?.user).toBe(evalPrompt(one).user);
   });
 
-  it("sends a reply whose only fault is a long reason back, and keeps the next reply (#243)", async () => {
+  it("sends a reply whose only fault is a long reason back, and keeps the next reply", async () => {
     const long = { ...fits, reason: "x".repeat(reasonLimit + 1) };
     const { model, requests } = fakeModel([long, fits]);
     const outcome = await sortEvalAsk(model, one);
@@ -84,7 +82,7 @@ describe("one sort of an eval ask", () => {
     expect(outcome.failure).toBe("reply-rejected");
   });
 
-  it("scores a reply that came after a 429 like any other, with no wait in its time (#303)", async () => {
+  it("scores a reply that came after a 429 like any other, with no wait in its time", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "performance"] });
     onTestFinished(() => {
       vi.useRealTimers();
@@ -139,7 +137,7 @@ describe("a pool of tasks", () => {
 });
 
 describe("the time limit for sorting asks", () => {
-  it("covers every sort timing out, with its follow-up, each call after waiting out every 429 (#303)", () => {
+  it("covers every sort timing out, with its follow-up, each call after waiting out every 429", () => {
     // 96 sorts, 5 at once: 20 turns, each up to two calls.
     expect(sortingTimeoutMs(96, 5)).toBeGreaterThanOrEqual(
       20 * 2 * (sortTimeoutMs + rateWaitMs),

@@ -1,11 +1,8 @@
 /*
- * Every value the page's styles use, named as in docs/design.md (ADR 14).
- * No other stylesheet holds a colour, a font or a pixel font size.
- * A hashtag's colour is not here: the palette module sets --tag-strong,
- * --tag-tint and --tag-ink on the element that shows it.
+ * Named as in docs/design.md. A hashtag's colour is not here: the palette
+ * module sets --tag-strong, --tag-tint and --tag-ink on the element.
  */
 :root {
-  /* Neutral colours */
   --ground: #eef1ec;
   --surface: #ffffff;
   --ink: #16211b;
@@ -15,14 +12,11 @@
   --border: #c3ccc3;
   --neutral-tint: #dde2dc;
 
-  /* Type: one family, bundled with the site */
   --font: "Bricolage Grotesque Variable", sans-serif;
 
-  /* "clear." is 2.1 times as wide as its type. Where All clear's column
-     is too narrow for it at 146px, the headline shrinks with the column,
-     so the word stays inside its side padding, with a pixel or two to
-     spare. The column is a container (AllClear.module.css), so 100cqi is
-     the width inside its padding, without the screen's scroll bar. */
+  /* "clear." is 2.1 times as wide as its type, so on a narrow column the
+     headline shrinks to stay inside the padding. All clear is a container
+     (AllClear.module.css), so 100cqi is the width inside its padding. */
   --size-all-clear: min(146px, 100cqi / 2.12);
   --size-headline: 42px;
   --size-top-ask-wide: 48px;
@@ -64,7 +58,6 @@
   --weight-strong: 650;
   --weight-bold: 700;
 
-  /* Shape */
   --radius-card: 28px;
   --radius-button: 18px;
   --radius-pill: 10px;
@@ -76,7 +69,6 @@
   --button-height: 56px;
   --button-height-settings: 52px;
 
-  /* Space: the steps the mockup uses, then the ones docs/design.md names */
   --space-2: 2px;
   --space-4: 4px;
   --space-6: 6px;
@@ -102,15 +94,12 @@
   --space-note: calc(var(--tap) + 2 * var(--space-6) + var(--hairline));
   --gap-buttons: var(--space-8);
 
-  /* An opened ask, which sinks below the unopened ones at its level */
   --opacity-opened: 0.55;
 
-  /* Movement: a swiped card going back to its place */
+  /* A swiped card going back to its place */
   --duration-move: 150ms;
-  /* Movement: a screen sliding in or out */
   --duration-screen: 250ms;
 
-  /* Width */
   --content-width: 1080px;
   --measure: 34rem;
 }

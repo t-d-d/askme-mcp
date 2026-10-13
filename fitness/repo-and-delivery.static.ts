@@ -119,8 +119,8 @@ describe("fitness: only main can assume the deploy role (repo-and-delivery.md)",
 });
 
 describe("fitness: main is protected (repo-and-delivery.md)", () => {
-  // The check reads the repo's settings, which the offline gate cannot reach,
-  // so it is a conformance test and runs every day (ADR 15).
+  // The offline gate cannot read the repo's settings, so this check is in the
+  // conformance tier (ADR 15).
   it("is a conformance check", () => {
     expect(readRepoFile("conformance/github.conformance.ts")).toContain(
       'describe("fitness: main is protected (repo-and-delivery.md)"',
@@ -228,10 +228,7 @@ describe("fitness: no long-lived keys (repo-and-delivery.md)", () => {
     expect(found).toEqual([]);
   });
 
-  // Only the deploy workflow holds the Serverless key, and only the
-  // conformance workflow holds any other secret: read-only keys for the
-  // services it checks (test-tiers.md).
-  // The workflow as parsed, so comments drop out and every key stays.
+  // Parsed, so YAML comments drop out.
   const parsed = (path: string) =>
     readYaml(path, z.looseObject({ jobs: z.record(z.string(), z.unknown()) }));
   // GitHub reads context and secret names in any case.

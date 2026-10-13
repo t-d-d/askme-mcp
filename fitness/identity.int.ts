@@ -25,7 +25,6 @@ afterAll(async () => {
   await otherIssuer.close();
 });
 
-// Every route but the metadata, as "METHOD /path".
 const checked = Object.entries(routes)
   .filter(([, access]) => access !== "public")
   .map(([route]) => route);

@@ -148,9 +148,7 @@ describe("fitness: MCP goes through a real client (test-tiers.md)", () => {
     expect(handWritten).toEqual([]);
   });
 
-  // An integration test that calls the service's handler, by its import,
-  // and reaches its MCP endpoint. A test of the page's API alone never
-  // speaks MCP.
+  // A test of the page's API alone imports the handler but never speaks MCP.
   function mcpTests(): string[] {
     return repoFiles()
       .filter((path) => path.endsWith(".int.ts"))
@@ -237,15 +235,12 @@ describe("fitness: conformance runs daily and only reads (test-tiers.md)", () =>
   });
 });
 
-// The one test account of ADR 16: every address the live tier holds, with
-// the file that holds it.
 const liveAddresses = () =>
   liveTierFiles().flatMap((path) =>
     addressesIn(readRepoFile(path)).map((address) => ({ path, address })),
   );
 
-// The test account's address, the file that holds it, and the names of the
-// constants that hold the address and Clerk's test code.
+// 424242 is Clerk's test verification code.
 function testAccount() {
   const found = liveAddresses();
   const [account] = found;
@@ -392,9 +387,7 @@ describe("fitness: the live tier makes no other account (test-tiers.md)", () => 
   });
 });
 
-// The controls the live tier may find: Clerk's buttons, to sign in and up,
-// and the page's own, to move between screens and to sign out. None of them
-// writes to askme's store (ADR 20).
+// None of these writes to askme's store (ADR 20).
 const readingControls = [
   "Sign in",
   "Sign up",

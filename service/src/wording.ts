@@ -1,7 +1,4 @@
-// The words a refusal uses for a rate limit and for how long to wait, from
-// the limit's own constants (ADR 11). Each refusal keeps its own sentence,
-// since an agent and the page are told different things, and builds it
-// from these.
+// Parts of sentences only: an agent and the page are told different things.
 import type { RateLimit } from "./rate";
 
 const plural = (count: number, word: string) =>
@@ -10,7 +7,6 @@ const plural = (count: number, word: string) =>
 const minutesOf = (minutes: number) =>
   minutes === 1 ? "a minute" : plural(minutes, "minute");
 
-// "Wait 12 seconds", or "Wait 1 second".
 export const waitFor = (seconds: number): string =>
   `Wait ${plural(seconds, "second")}`;
 

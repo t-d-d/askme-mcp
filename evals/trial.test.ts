@@ -190,7 +190,6 @@ describe("a trial's report", () => {
 });
 
 describe("a trial's report of an ask the owner accepts as a miss", () => {
-  // An ask kept at its level though the default model misses it (#262).
   const settled: EvalCase = {
     ...hotfix,
     name: "a ticket the owner settled",
@@ -306,7 +305,7 @@ describe("where a trial's record is saved", () => {
 });
 
 describe("a trial's time limit", () => {
-  it("covers every sort at the most sorts timing out, with its follow-up, each call after waiting out every 429 (#303)", () => {
+  it("covers every sort at the most sorts timing out, with its follow-up, each call after waiting out every 429", () => {
     // 48 asks, 20 sorts each, 8 at once: 120 turns, each up to two calls.
     expect(trialTimeoutMs(48, 8)).toBeGreaterThanOrEqual(
       Math.ceil((48 * mostSorts) / 8) * 2 * (sortTimeoutMs + rateWaitMs),

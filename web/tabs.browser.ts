@@ -1,5 +1,3 @@
-// The tabs over the list: Everything, then one per hashtag, with Clerk and
-// the page's API faked on loopback (ADR 9).
 import { afterEach, describe, expect, inject, it } from "vitest";
 import {
   pagePaths,
@@ -90,11 +88,9 @@ const tab = (page: Page, name: string) =>
     .getByRole("navigation", { name: "Hashtags" })
     .getByRole("button", { name, exact: true });
 
-// Whether a control has the keyboard's focus.
 const focused = (control: Locator) =>
   control.evaluate((element) => element === document.activeElement);
 
-// The style of the outline around an element, as drawn now.
 const outline = (element: Locator) =>
   element.evaluate((each) => getComputedStyle(each).outlineStyle);
 
@@ -106,7 +102,6 @@ const summaries = async (page: Page) => [
   ...(await page.getByRole("listitem").allInnerTexts()),
 ];
 
-// How a tab is drawn: the colour behind its name, and its text.
 const looks = (control: Locator) =>
   control
     .locator("span")
@@ -121,8 +116,7 @@ const drawn = async (page: Page, behind: string, text: string) => ({
   text: await computedColour(page, text),
 });
 
-// The colour an ask's buttons take: the strong colour its card or row
-// hands to what it holds (styling.md).
+// A card or row sets --tag-strong for what it holds (styling.md).
 const buttonColour = (element: Locator) =>
   element.evaluate((holder) => {
     const probe = document.createElement("span");
@@ -353,7 +347,6 @@ describe("the tabs", () => {
     await page.clock.fastForward(pollMs);
     await tab(page, "#work").waitFor({ state: "detached" });
     expect(await focused(allClear(page))).toBe(true);
-    // The heading is not a control, so it draws no outline.
     expect(await outline(allClear(page))).toBe("none");
   });
 

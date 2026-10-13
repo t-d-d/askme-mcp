@@ -1,13 +1,9 @@
-// The service's environment, parsed once (ADR 10). This is the only module
-// that reads process.env.
 import { z } from "zod";
 import { openRouterEndpoint } from "./model";
 
 const loopback = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
-// Clerk's issuer: the address of the instance that signs agents' tokens,
-// which publishes its keys under /.well-known/jwks.json. It must be https,
-// except on loopback, where the tests run a stand-in for Clerk.
+// Plain http is allowed only on loopback, where the tests run stand-ins.
 const issuerSchema = z
   .url({ error: "CLERK_ISSUER must be the Clerk issuer's address." })
   .transform((value) => new URL(value))
@@ -28,10 +24,8 @@ const issuerSchema = z
   )
   .transform((url) => url.origin);
 
-// An address in place of a cloud service's, for the stand-ins the
-// integration tier runs (ADR 9): the local DynamoDB, the model faked with
-// recorded replies, and fakes of Parameter Store and SQS. In production
-// each is unset, and the real service's address is used.
+// Only the integration tier's stand-ins set these (ADR 9). Production leaves
+// them unset.
 const loopbackEndpoint = (name: string) =>
   z
     .url({ error: `${name} must be an address.` })
@@ -40,8 +34,6 @@ const loopbackEndpoint = (name: string) =>
       { error: `${name} may only point to this machine.` },
     );
 
-// The sort queue's address. It must be https, except on loopback, where
-// the tests run a stand-in for the queue.
 const queueSchema = z
   .url({ error: "SORT_QUEUE must be the sort queue's address." })
   .refine(
@@ -64,10 +56,7 @@ const named = (name: string, what: string) =>
 const envSchema = z.object({
   CLERK_ISSUER: issuerSchema,
   TABLE_NAME: named("TABLE_NAME", "the table"),
-  // The queue that hands asks to the sort function (ADR 22).
   SORT_QUEUE: queueSchema,
-  // The Parameter Store name of the service's OpenRouter key, which issue
-  // #1 fixed.
   MODEL_KEY_PARAMETER: named(
     "MODEL_KEY_PARAMETER",
     "the parameter that holds the model's key",

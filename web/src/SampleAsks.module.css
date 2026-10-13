@@ -4,10 +4,6 @@
   gap: var(--gap-buttons);
 }
 
-/*
- * A neutral second button: no hashtag is in play. It is a main button on
- * the list, and a settings screen's on Connect your agents.
- */
 .send,
 .settings {
   display: flex;

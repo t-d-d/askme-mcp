@@ -1,11 +1,5 @@
-// The reading eval: sets of rules, each with the hashtags and the hours a
-// person would expect askme to read from them. `npm run eval` reads each one
-// with the real model, through the service's own call, and scores what came
-// back. Like the sorting eval, it is not in the gate.
-//
-// Hours are scored by what they mean, not how they are written: two
-// readings agree when every hashtag shows in the same minutes of the week.
-// So "weekends, all day" and two windows, one for each day, are the same.
+// Hours are scored by what they mean, not how they are written, so
+// "weekends, all day" and one window for each weekend day agree.
 import type { Weekday } from "../shared/page-api";
 import type { HashtagWindow } from "../service/src/rules";
 import { evalRules } from "./cases";
@@ -14,10 +8,9 @@ export interface ReadingCase {
   name: string;
   text: string;
   expected: {
-    // The hashtags, in the order the rules first write them.
+    // In the order the rules first write them.
     hashtags: string[];
-    // The windows the rules limit hashtags to. A hashtag with none shows at
-    // any time.
+    // A hashtag with no window shows at any time.
     hours: HashtagWindow[];
   };
 }

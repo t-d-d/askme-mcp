@@ -1,6 +1,4 @@
-// The README gives the deployed site's addresses, so a reader can open the
-// page or connect an agent without opening a deploy run (#316). A deploy
-// that changes either address fails here until the README gives the new one.
+// A deploy that changes either address fails here until the README gives it.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { mcpUrl, pageUrl } from "./live";

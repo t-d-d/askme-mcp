@@ -1,12 +1,9 @@
 import { useId, type ComponentPropsWithoutRef } from "react";
 
-// A link that opens in a new tab and tells the new page nothing about
-// askme. Its spoken name ends with "(opens in a new tab)", so a screen
-// reader user knows why Back does nothing there. The words are in a hidden
-// span, which aria-labelledby names after the link itself, and the screen
-// shows nothing new. The span is outside the link because Playwright,
-// unlike Chromium, leaves a hidden span inside the link out of the name,
-// and the browser tests read names through Playwright.
+// The spoken name ends "(opens in a new tab)", so a screen reader user knows
+// why Back does nothing there. The hidden span sits outside the link because
+// Playwright, unlike Chromium, leaves a hidden span inside a link out of its
+// name, and the browser tests read names through Playwright.
 export function NewTabLink({
   children,
   ...link

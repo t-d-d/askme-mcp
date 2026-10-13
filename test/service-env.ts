@@ -1,6 +1,3 @@
-// Setup for every integration test: the service finds the stand-ins for the
-// model, Parameter Store and the sort queue (test/fakes.ts) through the
-// environment it reads in production, so no call leaves the machine (ADR 9).
 import { afterAll, vi } from "vitest";
 import { fakes, modelKeyParameter } from "./fakes";
 

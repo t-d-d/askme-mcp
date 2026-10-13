@@ -1,7 +1,3 @@
-// Dismissing an ask (docs/design.md, "The open card"). What happens next
-// is decided in dismissing.ts. This hook keeps its state, runs its timers
-// and sends its dismissals, and tells it when a timer runs out, a send
-// fails, the list shows or goes, the page closes or the person signs out.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { askChangePaths } from "../../shared/page-api";
 import { useAuth } from "./auth";
@@ -14,12 +10,10 @@ import {
 } from "./dismissing";
 import { changeAsk } from "./load";
 
-// How long the note with Undo shows before the dismissal is sent, and how
-// long a note that it failed stays.
+// Also how long the note that a dismissal failed stays.
 export const undoMs = 5000;
 
 export interface Dismissing {
-  // The asks dismissed on this page, which the list leaves out.
   dismissed: ReadonlySet<string>;
   note: DismissNote | null;
   dismiss: (id: string) => void;
@@ -28,14 +22,14 @@ export interface Dismissing {
 
 export function useDismissing(listShown: boolean): Dismissing {
   const { getToken } = useAuth();
-  // The latest way to get a token, so that the functions below keep their
-  // identity, and nothing but leaving the list or the page sends early.
+  // A ref, so dispatch keeps its identity and a new getToken does not run
+  // the cleanup below, which sends early.
   const token = useRef(getToken);
   useEffect(() => {
     token.current = getToken;
   }, [getToken]);
   const [first] = useState(() => initial(listShown));
-  // The latest state, which events step from before the page renders it.
+  // Events step from this before React renders the new state.
   const state = useRef(first);
   const [dismissed, setDismissed] = useState(first.dismissed);
   const [note, setNote] = useState(first.note);
@@ -62,7 +56,6 @@ export function useDismissing(listShown: boolean): Dismissing {
           });
           return;
         case "start":
-          // A timer started again runs once, from now.
           window.clearTimeout(timers.current[effect.timer]);
           timers.current[effect.timer] = window.setTimeout(() => {
             dispatch({ type: "timeUp", timer: effect.timer });

@@ -1,6 +1,3 @@
-// The test tiers of ADR 9, with conformance from ADR 15. A test's file suffix
-// fixes its tier, and the tier fixes what the test may touch. Live runs after
-// each deploy, conformance every day, and the rest in the gate.
 export const tiers = [
   { name: "static", suffix: ".static.ts", inGate: true },
   { name: "unit", suffix: ".test.ts", inGate: true },

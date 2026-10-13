@@ -184,7 +184,6 @@ describe("what the model read from the rules", () => {
   });
 });
 
-// docs/design/mockup/rules.html shows the rules a new account starts with.
 describe("the example rules a new account starts with", () => {
   it("name #work, #shop and #family, with hours for #work on weekdays", () => {
     expect(exampleRules.reading).toEqual({
@@ -193,8 +192,6 @@ describe("the example rules a new account starts with", () => {
     });
   });
 
-  // They are read here, with no model call, so the reading must be one a
-  // model's reply of the same could give.
   it("are read as a model's reply of the same would be", () => {
     expect(parseReading(exampleRules.reading, exampleRules.text)).toEqual(
       exampleRules.reading,

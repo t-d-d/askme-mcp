@@ -4,10 +4,11 @@ import { captureLogs } from "../../test/logs";
 import { callerOf, type AccountId } from "./identity";
 import { createLogger } from "./log";
 import { CapReached, ModelFailed, type ModelRequest } from "./model";
-import { reasonAsked, reasonLimit } from "./sort";
+import { parseSortReply, reasonAsked, reasonLimit } from "./sort";
 import type { NewSort, StoredAsk, AccountRules } from "./store/store";
 import {
   emptyRulesSort,
+  handler,
   runJob,
   sortAsk,
   sortAttempts,
@@ -44,8 +45,6 @@ const rules: AccountRules = {
   readFailed: false,
 };
 
-// The parts of the store the sorter uses, in memory. It counts its reads,
-// and fails each one when told to, as the table would when it is down.
 function memoryStore(
   found: { ask: StoredAsk; rules: AccountRules } | undefined,
   failing = false,
@@ -72,9 +71,6 @@ function memoryStore(
   };
 }
 
-// A model that gives each reply in turn, and keeps what it was asked. A
-// failure in the list, of the model or at the cap, is thrown in its turn.
-// Every call is made for the owner's account.
 function memoryModel(replies: unknown[]) {
   const asked: ModelRequest[] = [];
   const model: SortContext["model"] = {
@@ -94,7 +90,6 @@ function memoryModel(replies: unknown[]) {
   return { model, asked };
 }
 
-// The cap refusing a call, as the counted model does, having sent nothing.
 const capped = () => new CapReached(new Date("2026-10-12T00:00:00.000Z"));
 
 const good = { hashtags: ["shop"], level: "high", reason: "Customers see it." };
@@ -108,7 +103,6 @@ afterEach(() => {
   capture.restore();
 });
 
-// Each line the sorter logged, with its level.
 const logged = () =>
   capture.lines.map(({ method, args }) => ({
     level: method,
@@ -160,18 +154,26 @@ describe("sorting an ask", () => {
     ]);
   });
 
-  // The eval sends these same two values, so its scores describe the
-  // service's own call.
-  it("asks the model with the token cap and timeout it exports", async () => {
+  // The eval sends the same token cap and timeout, so its scores describe
+  // the service's own call.
+  it("asks the model with the schema's name, and the token cap and timeout it exports", async () => {
     const memory = memoryStore({ ask, rules });
     const { model, asked } = memoryModel([good]);
     await run(memory, model);
     expect(asked).toEqual([
       expect.objectContaining({
+        schemaName: "sort",
         maxTokens: sortMaxTokens,
         timeoutMs: sortTimeoutMs,
       }),
     ]);
+  });
+
+  it("logs nothing when the store keeps no sort, as the ask closed meanwhile, and is done", async () => {
+    const memory = memoryStore({ ask, rules });
+    memory.store.recordSort = () => Promise.resolve(false);
+    expect(await run(memory, memoryModel([good]).model)).toBe("done");
+    expect(logged()).toEqual([]);
   });
 
   it("asks no model when the rules are empty, and lists the ask with no hashtag", async () => {
@@ -188,6 +190,11 @@ describe("sorting an ask", () => {
     expect(emptyRulesSort.hashtags).toEqual([]);
   });
 
+  it("gives the ask a level and a one-line reason when the rules are empty, as a model's reply with no hashtags would", () => {
+    const { level, reason } = emptyRulesSort;
+    expect(parseSortReply({ level, reason }, [])).toEqual(emptyRulesSort);
+  });
+
   it("does nothing when the ask is no longer open, and is done", async () => {
     const memory = memoryStore(undefined);
     const { model, asked } = memoryModel([good]);
@@ -196,7 +203,6 @@ describe("sorting an ask", () => {
     expect(memory.recorded).toEqual([]);
   });
 
-  // The ask, sorted with the given version of the rules.
   const sortedWith = (rulesVersion: number): StoredAsk => ({
     ...ask,
     sort: {
@@ -231,8 +237,6 @@ describe("sorting an ask", () => {
     expect(memory.recorded).toHaveLength(1);
   });
 
-  // #243: a reply that fits but for its reason's length goes back to the
-  // model, which is asked for the whole reply again with a shorter reason.
   const long = {
     hashtags: ["work"],
     level: "low",
@@ -324,6 +328,17 @@ describe("sorting an ask", () => {
     expect(asked).toHaveLength(sortAttempts);
     expect(memory.recorded).toEqual([]);
   });
+
+  it("tries no more when a call fails for a reason that is not the model's, and passes the error on to the job", async () => {
+    const memory = memoryStore({ ask, rules });
+    const { model, asked } = memoryModel([
+      new TypeError("The key could not be read."),
+      good,
+    ]);
+    await expect(run(memory, model)).rejects.toThrow(TypeError);
+    expect(asked).toHaveLength(1);
+    expect(memory.recorded).toEqual([]);
+  });
 });
 
 describe("a job from the queue", () => {
@@ -336,8 +351,6 @@ describe("a job from the queue", () => {
     receives,
   });
 
-  // Runs one delivery of the job, and gives whether it goes back to the
-  // queue to be delivered again.
   const deliver = (
     receives: number,
     memory: ReturnType<typeof memoryStore>,
@@ -491,9 +504,72 @@ describe("a job from the queue", () => {
         ),
       ).toBe(false);
       expect(logged()).toEqual([
-        expect.objectContaining({ level: "error", event: "request-failed" }),
+        expect.objectContaining({
+          level: "error",
+          event: "request-failed",
+          errorClass: "UnreadableJob",
+        }),
       ]);
     }
     expect(memory.reads.count).toBe(0);
+  });
+});
+
+describe("a run of the sort function", () => {
+  // A record as the queue's trigger gives one, with a receive count and a
+  // body no job can be read from, so no run reaches the services.
+  const record = (receives: string) => ({
+    messageId: "message-1",
+    body: "not json",
+    attributes: { ApproximateReceiveCount: receives },
+  });
+
+  it.each([
+    ["no event", undefined],
+    ["no records", {}],
+    ["a receive count that is not one number", { Records: [record("1 1")] }],
+  ])(
+    "lets an event with %s go at once, at error, since only the trigger sends one",
+    async (_, event) => {
+      expect(await handler(event, { awsRequestId: "sort-7" })).toEqual({
+        batchItemFailures: [],
+      });
+      expect(logged()).toEqual([
+        {
+          level: "error",
+          event: "request-failed",
+          requestId: "sort-7",
+          errorClass: "UnreadableEvent",
+        },
+      ]);
+    },
+  );
+
+  it.each([
+    ["the run's request id", { awsRequestId: "sort-7" }, "sort-7"],
+    ["unknown with no context", undefined, "unknown"],
+    ["unknown for an id with a space", { awsRequestId: "sort 7" }, "unknown"],
+  ])("logs under %s", async (_, context, requestId) => {
+    await handler({ Records: [record("1")] }, context);
+    expect(logged()).toEqual([
+      expect.objectContaining({ errorClass: "UnreadableJob", requestId }),
+    ]);
+  });
+
+  it("hands the job the trigger's count of its deliveries, of more than one digit, so a late one is let go before any work", async () => {
+    const late = {
+      ...record("12"),
+      body: JSON.stringify({ accountId: owner, askId: ask.id }),
+    };
+    expect(
+      await handler({ Records: [late] }, { awsRequestId: "sort-7" }),
+    ).toEqual({ batchItemFailures: [] });
+    expect(logged()).toEqual([
+      expect.objectContaining({
+        level: "warn",
+        event: "sort-failed",
+        errorClass: "deliveries-spent",
+      }),
+    ]);
   });
 });

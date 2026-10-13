@@ -1,30 +1,20 @@
-// What the rules screen shows, worked out from the rules loaded, the list
-// polled, what the person typed and the last save (Rules.tsx says how each
-// reads): the text in the box, whether it changed, whether "Save rules" is
-// awake, and the one note under the button. The service gives its times by
-// its own clock, serviceAhead ahead of this browser's (load.ts).
 import type { AsksAnswer, RulesAnswer } from "../../shared/page-api";
 import type { RefusalNote } from "./refusalNote";
 import { capSpentUntil, sortingState } from "./sorting";
 
 export interface RulesStateInput {
-  // The rules as loaded or last saved, and whether the load failed.
   loaded: { data: RulesAnswer | undefined; failed: boolean };
-  // The list as last polled: when that poll was made and when its answer
-  // arrived, on this browser's clock.
+  // polledAt and receivedAt are on this browser's clock.
   listed: {
     data: AsksAnswer | undefined;
     polledAt: number;
     serviceAhead: number;
     receivedAt: number;
   };
-  // What the person has typed since the rules last loaded or saved.
   draft: string | null;
-  // Whether the last save sent the text unchanged, after a reading that
-  // succeeded, so askme sorts the asks again and reads nothing.
+  // The last save sent unchanged text after a good read, so askme sorts the
+  // asks again and reads nothing.
   resorting: boolean;
-  // The last save: whether it is under way or succeeded, when it was sent,
-  // and its refusal or failure, if it had one.
   save: {
     pending: boolean;
     succeeded: boolean;
@@ -33,7 +23,6 @@ export interface RulesStateInput {
   };
 }
 
-// The one note under the button.
 export type NoteKind =
   | { kind: "none" }
   | { kind: "notConnected" }
@@ -73,8 +62,8 @@ export function rulesState({
   // A save of unchanged text would be refused while the limit is reached.
   const awake = stopped && !capSpent;
   const ready = changed || awake;
-  // The note for a save of unchanged text stands until a poll that came
-  // back after the save finds asks stopped again, or the limit reached.
+  // The note for a save of unchanged text stands until a poll answered after
+  // the save finds asks stopped again, or the limit reached.
   const resorted =
     resorting &&
     !(
@@ -100,7 +89,6 @@ export function rulesState({
   };
 }
 
-// The first note that holds, in this order.
 function noteOf(state: {
   failed: boolean;
   pending: boolean;
@@ -123,8 +111,6 @@ function noteOf(state: {
   if (state.changed) return { kind: "none" };
   if (state.readFailed) return { kind: "readFailed" };
   if (state.resorted) return { kind: "sorting" };
-  // While some asks couldn't be sorted, and the limit is not reached, the
-  // button is already awake.
   if (!state.saved) return { kind: "none" };
   return { kind: state.awake ? "saved" : "savedAsleep" };
 }

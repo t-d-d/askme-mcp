@@ -35,11 +35,8 @@ describe("how far the service's clock is ahead of this browser's", () => {
 
 describe("how far the service's clock is ahead after polls that failed", () => {
   const minute = 60 * 1000;
-  // The last poll that reached askme, on both of this browser's clocks,
-  // when the service's clock was three minutes ahead.
   const then = { date: at("2026-10-12T23:55:00Z"), steady: 1_000 };
   const ahead = 3 * minute;
-  // The service's time at a later moment, by how far ahead it is then.
   const serviceAt = (now: Moment, visibleThroughout: boolean) =>
     now.date + aheadSince(ahead, then, now, visibleThroughout);
 
@@ -68,8 +65,6 @@ describe("how far the service's clock is ahead after polls that failed", () => {
     expect(serviceAt(now, false)).toBe(then.date + ahead + 60 * minute);
   });
 
-  // A device putting its clock right is unlikely to move it on an hour, so a
-  // visible page reads that much as the device sleeping without hiding it.
   it("counts the time a visible page's device slept, which performance.now() may not, once its clock has moved on an hour", () => {
     const now = { date: then.date + 60 * minute, steady: then.steady };
     expect(serviceAt(now, true)).toBe(then.date + ahead + 60 * minute);
@@ -94,25 +89,18 @@ describe("how far the service's clock is ahead after polls that failed", () => {
 
 describe("how far the service's clock is ahead, counted on from poll to poll while polls fail", () => {
   const minute = 60 * 1000;
-  // The last poll that reached askme, on both of this browser's clocks.
   const reached = (ahead: number) => ({
     serviceAhead: ahead,
     at: { date: at("2026-10-12T23:55:00Z"), steady: 1_000 },
     visibilityChanges: 0,
   });
-  // A failed poll ten seconds later, by performance.now(), after the device
-  // moved its clock on by `moved` as well.
   const failedAfter = (from: { at: Moment }, moved: number) => ({
     date: from.at.date + 10_000 + moved,
     steady: from.at.steady + 10_000,
   });
 
-  // A device with a clock three minutes slow puts it forward, then sleeps an
-  // hour, and one with a clock three minutes fast puts it back, then sleeps
-  // 61 minutes. Counted across both steps at once, the correction and the
-  // sleep add up to 63 or 58 minutes, which reads as a sleep of 63 or as no
-  // sleep. Counted a step at a time, the correction counts as no time and
-  // the sleep as the time it was.
+  // Counted in one step, the correction and the sleep add up to 63 or 58
+  // minutes, which would read as a sleep of 63 minutes, or as no sleep.
   it.each([
     ["slow", 3 * minute, 60 * minute],
     ["fast", -3 * minute, 61 * minute],

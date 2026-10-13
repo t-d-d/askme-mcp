@@ -1,11 +1,7 @@
-// What every agent is told about using askme (PRD, "MCP server"). The
-// server sends it as its instructions, and the tool descriptions repeat it,
-// because not every client passes server instructions on. It is the same
-// for every account (ADR 2), so it is written once, here, as constants.
+// The tool descriptions repeat the server instructions, because not every
+// client passes them on.
 import { retryBudget } from "./errors";
 
-// What to do when a call to a tool times out: send it again, unchanged,
-// within the retry budget (ADR 11).
 export const resendAfterTimeout = (tool: "ask" | "resolve") =>
   `If a call times out, send the same ${tool} again unchanged, at most ${String(retryBudget)} times.`;
 

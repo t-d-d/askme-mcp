@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { askRefusalOf, pageRefusalOf } from "../../test/refusals";
 
-// The whole of each refusal that names a rate limit, with the limits as
-// they are: every window is one minute. A refactor of how these are worded
-// keeps every word (#224).
 describe("a refusal at a rate limit, word for word", () => {
   it("says a poll's limit and the seconds left", async () => {
     expect(await pageRefusalOf("GET /api/asks", 12)).toEqual({

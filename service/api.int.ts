@@ -1,5 +1,3 @@
-// The page's API end to end, in process: API Gateway's event, the session
-// token check, and the store on the local DynamoDB.
 import { randomUUID } from "node:crypto";
 import {
   afterAll,
@@ -53,7 +51,7 @@ afterAll(async () => {
   await issuer.close();
 });
 
-// A fresh account for each test: the table is shared by every test file.
+// Every test file shares the table, so each test makes its own account.
 const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
 
 const get = (path: string, token?: string) =>
@@ -71,7 +69,6 @@ const ask = {
   action_link: "https://github.com/t-d-d/askme-mcp/pull/1",
 };
 
-// One tool call, as an agent of the account.
 async function call(
   account: string,
   name: string,
@@ -95,8 +92,6 @@ async function post(
     .id;
 }
 
-// The list as the page reads it: the version, and each ask's id and when
-// it was posted.
 async function list(account: string) {
   const response = await get(
     pagePaths.asks,
@@ -116,8 +111,6 @@ const refusalSchema = z.strictObject({
   message: z.string(),
 });
 
-// The hashtags a new account starts with, read from the example rules, each
-// with its colour, and the hours of #work.
 const exampleHashtags = [
   {
     name: "work",
@@ -189,7 +182,6 @@ describe("the list of open asks", () => {
     const postedAt = Date.parse(posted);
     expect(postedAt).toBeGreaterThanOrEqual(before - 1000);
     expect(postedAt).toBeLessThanOrEqual(Date.now());
-    // Not sorted yet, so it shows as sorting for half an hour.
     expect(Date.parse(until)).toBe(postedAt + sortingMs);
   });
 
@@ -260,7 +252,6 @@ describe("the list of open asks", () => {
   });
 });
 
-// A change from the page to one ask, as the signed-in person.
 async function change(
   account: string,
   path: string,
@@ -279,7 +270,6 @@ async function change(
   );
 }
 
-// Each ask's id and whether it was opened, as the page reads them.
 async function openedOf(account: string) {
   const response = await get(
     pagePaths.asks,
@@ -475,7 +465,6 @@ describe.each(Object.values(pagePaths))("a call to %s", (path) => {
 const session = (account: string) =>
   issuer.sessionToken({ claims: { sub: account } });
 
-// Saves the rules as the page does.
 const saveRules = async (account: string, body: unknown) =>
   invoke(
     handler,
@@ -491,7 +480,6 @@ const saveRules = async (account: string, body: unknown) =>
 
 const rulesText = "#work is my day job.\n\n#shop is my online shop.";
 
-// Weekdays, 8am to 6pm.
 const officeHours = {
   days: ["mon", "tue", "wed", "thu", "fri"],
   from: "08:00",
@@ -499,9 +487,6 @@ const officeHours = {
 };
 
 describe("the rules", () => {
-  // PRD, "Rules": a new account starts with example rules in the box. They
-  // are read already, so no model is asked, and they name no time zone, so
-  // the page uses its own.
   it("are the example rules for a new account, with the hashtags read from them", async () => {
     const calls = fakes.model.calls.length;
     const response = await get(pagePaths.rules, await session(newAccount()));
@@ -533,7 +518,6 @@ describe("the rules", () => {
     expect(
       await (await get(pagePaths.rules, await session(account))).json(),
     ).toEqual(saved);
-    // One call, with the service's own key from Parameter Store.
     expect(fakes.model.calls.slice(calls)).toEqual([
       expect.objectContaining({ authorization: `Bearer ${testModelKey}` }),
     ]);
@@ -571,8 +555,6 @@ describe("the rules", () => {
     ).toMatchObject({ hashtags: saved.hashtags, timeZone: "Europe/London" });
   });
 
-  // The page applies the hours, in a zone its own browser knows, so the
-  // service keeps a name it does not know itself.
   it("keep a time zone as it was sent, even one the service does not know", async () => {
     const account = newAccount();
     fakes.model.reply({ json: { hashtags: ["work"], hours: [] } });
@@ -734,12 +716,10 @@ describe("the rules", () => {
     expect(refusal.class).toBe("retry");
     expect(refusal.message).toContain(String(rateLimits.rulesSave.limit));
     expect(refusal.message).toContain("Wait 30 seconds, then save again.");
-    // Another account is not held back by it.
     expect((await saveRules(newAccount(), { text: "" })).status).toBe(200);
   });
 });
 
-// The list with each ask's sort, as the page reads it.
 async function sorted(account: string) {
   const response = await get(pagePaths.asks, await session(account));
   const hashtags = z.array(z.object({ name: z.string(), colour: z.number() }));
@@ -759,7 +739,6 @@ async function sorted(account: string) {
     .parse(await response.json());
 }
 
-// The account's id as the token check gives it, for the store.
 const ownerOf = (account: string) =>
   callerOf({
     token: "test",
@@ -768,7 +747,7 @@ const ownerOf = (account: string) =>
     extra: { accountId: account, requestId: "r" },
   }).accountId;
 
-// The store, for writing past the service.
+// For writing past the service.
 const store = createStore({
   tableName: inject("tableName"),
   endpoint: inject("databaseEndpoint"),
@@ -777,8 +756,8 @@ afterAll(() => {
   store.close();
 });
 
-// Posts an ask straight to the store at a time in the past, so no job is
-// queued for it, as when its sorting stopped back then. Gives its id.
+// Straight to the store, so no job is queued, as when an ask's sorting
+// stopped long ago.
 async function postEarlier(
   account: string,
   newAsk: NewAsk,
@@ -789,21 +768,18 @@ async function postEarlier(
   return posting.id;
 }
 
-// A job for one of the account's asks, as the queue took it.
 const sortOf = (account: string, askId: string) => ({
   groupId: askId,
   body: { accountId: account, askId },
   taken: true,
 });
 
-// The jobs sent to the queue since a point in its record.
 const sentSince = (from: number) =>
   fakes.queue.sent
     .slice(from)
     .map(({ groupId, body, taken }) => ({ groupId, body, taken }));
 
 describe("an ask that stops mattering", () => {
-  // Each ask as the page lists it, with its lapse time when it has one.
   async function lapses(account: string) {
     const response = await get(pagePaths.asks, await session(account));
     return z
@@ -878,7 +854,6 @@ describe("sorting", () => {
     await runSorts();
     const calls = fakes.model.calls.length;
     const id = await post(account);
-    // Posting asked the model nothing: it queued the ask's sort.
     expect(fakes.model.calls).toHaveLength(calls);
     expect(sentSince(fakes.queue.sent.length - 1)).toEqual([
       sortOf(account, id),
@@ -1036,8 +1011,8 @@ describe("sorting", () => {
     expect(fakes.queue.sent.slice(from)).toEqual([]);
   });
 
-  // A replacing ask keeps the posting time of the ask it replaces (ADR 13),
-  // but is queued, and judged, from when it was stored.
+  // A replacing ask keeps the old ask's postedAt, but is queued and judged
+  // from when it was stored.
   it("queues a replacing ask's sort as it is posted, and only then", async () => {
     const account = newAccount();
     const old = await postEarlier(
@@ -1053,8 +1028,6 @@ describe("sorting", () => {
   });
 });
 
-// An ask posted at a time in the past, sorted then into #work with the
-// rules saved then. Gives its id.
 async function sortedEarlier(account: string, at: Date): Promise<string> {
   const owner = ownerOf(account);
   const { version } = await store.saveRules(
@@ -1131,8 +1104,6 @@ describe("saving the rules again", () => {
 
     fakes.model.reply({ json: { hashtags: ["shop", "family"], hours: [] } });
     await saveRules(account, { text: "#shop first, then #family." });
-    // A hashtag still in the rules keeps its colour, and one that left
-    // them keeps its colour on the asks that still carry it.
     expect(await sorted(account)).toEqual({
       hashtags: [
         { name: "shop", colour: 1 },
@@ -1290,7 +1261,6 @@ describe("saving the rules again", () => {
   });
 });
 
-// Sends sample asks, as the page's "Send sample asks" does.
 const sendSamples = async (account: string) =>
   invoke(
     handler,
@@ -1300,14 +1270,12 @@ const sendSamples = async (account: string) =>
     }),
   );
 
-// The area each sample's summary belongs to.
 const sampleArea = new Map(
   sampleAreas.flatMap(({ area, asks }) =>
     asks.map(({ summary }) => [summary, area] as const),
   ),
 );
 
-// The summaries of the account's open asks, as the page reads them.
 async function summaries(account: string): Promise<string[]> {
   const response = await get(pagePaths.asks, await session(account));
   return z
@@ -1365,8 +1333,6 @@ describe("sample asks", () => {
     ]);
   });
 
-  // ADR 3: an ask the same as one posted in the last ten minutes would be
-  // matched to it, and show nothing new.
   it("are different on each press, so none is matched to one sent before, until every sample has been sent", async () => {
     const account = newAccount();
     const presses = Math.min(...sampleAreas.map(({ asks }) => asks.length));

@@ -1,34 +1,17 @@
-// The model (PRD, "Stack"): one chat completion through OpenRouter, which
-// puts several models behind one key. This module is the boundary where a
-// model's answer comes in. It hands its caller the reply's JSON unchecked,
-// and the caller parses it with its own schema (ADR 10).
-//
-// It is also the one module in the service that builds the model client,
-// and it counts every call against the account's daily cap just before
-// sending it (ADR 21). The service reaches the model only through
-// createCountedModel. The eval builds the client with createModel, on its
-// own key, outside the cap.
-//
-// Every call asks for a reply that follows a JSON Schema, declares no
-// tools, and is routed only to providers that keep no prompts (ADR 12).
-// It also turns reasoning off. The provider counts the tokens a model spends
-// thinking against max_tokens, so a model that thinks first can run out
-// before its reply, or partway through it.
+// The service reaches the model only through createCountedModel (ADR 21).
+// The eval uses createModel, on its own key, outside the cap.
 import { z } from "zod";
 import type { AccountId } from "./identity";
 import { rateLimits, windowOf } from "./rate";
 import type { Store } from "./store/store";
 
-// The model that sorts, chosen with the eval set: the best of the
-// candidates in evals/scores.md. Changing it needs a run of the eval before
-// and after.
+// The best of the candidates in evals/scores.md. Changing it needs a run of
+// the eval before and after.
 export const defaultModel = "anthropic/claude-haiku-5.5";
 
-// OpenRouter's API, which speaks OpenAI's chat completions.
 export const openRouterEndpoint = "https://openrouter.ai/api/v1";
 
-// A turn after the model's own earlier reply to the same system and user
-// messages: that reply, as the JSON it gave, and a user message about it.
+// reply is the model's earlier answer, as the JSON text it gave.
 export interface FollowUp {
   reply: string;
   user: string;
@@ -37,17 +20,14 @@ export interface FollowUp {
 export interface ModelRequest {
   system: string;
   user: string;
-  // When set, the call goes on from the model's earlier reply.
   followUp?: FollowUp;
-  // The name and JSON Schema the reply must follow.
   schemaName: string;
   schema: Record<string, unknown>;
   maxTokens: number;
   timeoutMs: number;
 }
 
-// Why a call gave no reply to parse. The reason is safe to log: a status,
-// "timeout", or a word for the shape of the answer, never its content.
+// reason is logged, so it never holds the reply's content.
 export class ModelFailed extends Error {
   readonly reason: string;
   constructor(reason: string) {
@@ -61,9 +41,7 @@ export interface Model {
   reply(request: ModelRequest): Promise<unknown>;
 }
 
-// The account's daily cap on model calls is spent, so nothing was sent. The
-// cap is working as designed, so this is not a failure of the model, and
-// not askme's own. It says when the cap resets: the next midnight UTC.
+// The cap working as designed, not a failure of the model or of askme.
 export class CapReached extends Error {
   readonly resetsAt: Date;
   constructor(resetsAt: Date) {
@@ -78,7 +56,6 @@ type Fetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
-// The parts of a chat completion this module reads.
 const completionSchema = z.object({
   choices: z
     .array(z.object({ message: z.object({ content: z.string() }) }))
@@ -88,18 +65,16 @@ const completionSchema = z.object({
 export function createModel(config: {
   endpoint: string;
   model: string;
-  // The key for OpenRouter, or undefined to send none, as in a Claude cloud
-  // session, where the key is added after the request leaves the session.
+  // Undefined sends no key, as in a cloud session, where the key is added
+  // after the request leaves the session.
   key: () => Promise<string | undefined>;
   fetch?: Fetch;
 }): Model {
   const send = config.fetch ?? fetch;
   return {
     async reply(request) {
-      // One time limit covers reading the key as well as the call, so a slow
-      // read leaves the call less time and never adds to it. A key that
-      // cannot be read is askme's own failure, not the model's, so it is
-      // thrown as it came.
+      // The time limit covers reading the key too. A key that cannot be
+      // read is askme's own failure, so its error is not wrapped.
       const signal = AbortSignal.timeout(request.timeoutMs);
       const key = await config.key();
       if (signal.aborted) throw new ModelFailed("timeout");
@@ -132,11 +107,16 @@ export function createModel(config: {
                 schema: request.schema,
               },
             },
+            // Only providers that keep no prompts (ADR 12). No temperature
+            // is sent: with require_parameters, OpenRouter would refuse the
+            // call, as no endpoint for the default model takes one.
             provider: {
               data_collection: "deny",
               zdr: true,
               require_parameters: true,
             },
+            // The provider counts thinking tokens against max_tokens, so a
+            // model that thinks first can run out before its reply.
             reasoning: { enabled: false },
             max_tokens: request.maxTokens,
           }),
@@ -167,35 +147,28 @@ export function createModel(config: {
   };
 }
 
-// The parts of the store that keep the count of model calls.
 export type CallCounter = Pick<
   Store,
   "countCall" | "modelCapSpent" | "recordModelCapReset"
 >;
 
-// The model as the service reaches it: every call is made for one account,
-// and counted against that account's daily cap just before it is sent.
 export interface CountedModel {
-  // The model for one account's calls: the reading of its rules, or a try
-  // of a sort of one of its asks. A call over the cap sends nothing, and
-  // throws CapReached.
+  // A call over the cap sends nothing and throws CapReached.
   forAccount(account: AccountId): Model;
-  // When the account's cap is spent, the time it resets. Undefined while it
-  // has calls left. It counts nothing, for a save that makes no call.
+  // The time the cap resets, while it is spent. Counts no call.
   spent(account: AccountId): Promise<Date | undefined>;
 }
 
 export function createCountedModel(
   config: Parameters<typeof createModel>[0] & {
     store: CallCounter;
-    // The time now, which names the day a call is counted in.
     now?: () => Date;
   },
 ): CountedModel {
   const { store, now = () => new Date() } = config;
   const client = createModel(config);
-  // The cap refused, so META records when it resets, the first time in its
-  // day, raising the version so every open page learns of it (ADR 22).
+  // Recording the reset raises the version, so open pages learn of it
+  // (ADR 22).
   async function refuse(account: AccountId, at: Date): Promise<Date> {
     const resetsAt = new Date(
       windowOf(at, rateLimits.modelCall.windowMinutes).endsAt,

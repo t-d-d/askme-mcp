@@ -1,6 +1,3 @@
-// The commands that measure how well the tests guard the code: coverage of
-// the unit and integration tiers, and mutation testing by named suite. Both
-// run by hand, outside the gate (test-tiers.md).
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -71,7 +68,7 @@ describe("the mutation suites", () => {
   });
 
   // A line number moves when code above it changes, and a suite that names
-  // one goes on running clean while it measures another line (#280).
+  // one goes on running clean while it measures another line.
   it.each(all)("%s mutates whole files, not ranges of lines", (_, suite) => {
     for (const target of suite.mutate) {
       expect(target, target).not.toMatch(/:\d/u);

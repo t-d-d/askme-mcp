@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { incoming, result } from "./http";
 
-// An event in the shape API Gateway's HTTP API sends, payload version 2.0.
 const event = (overrides: Record<string, unknown> = {}) => ({
   version: "2.0",
   routeKey: "POST /mcp",

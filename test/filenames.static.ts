@@ -1,5 +1,3 @@
-// A Mac reads some names as one that Linux keeps apart, so the gate on Linux
-// checks for them. test/filenames.ts says which names those are.
 import { describe, expect, it } from "vitest";
 import { clashes } from "./filenames";
 import { repoFiles } from "./repo";

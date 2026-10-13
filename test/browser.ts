@@ -1,11 +1,3 @@
-// Opens a page in headless Chromium for the browser tier. Any request that is
-// not to loopback is refused and recorded, so a test can see that it happened.
-//
-// The page's API is faked here (ADR 9): a test gives the answer for each
-// path, and every call the page makes is recorded with its token.
-//
-// Headless Chromium always reports a page as visible, so the page's
-// visibility is replaced before it loads, and a test hides and shows it.
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, type Locator, type Page } from "playwright";
@@ -24,10 +16,9 @@ import { isLoopbackHost } from "./loopback";
 export interface ApiCall {
   method: string;
   path: string;
-  // The query string, such as "?since=5", or "" for none.
+  // url.search: "?since=5", or "" for none.
   query: string;
   authorization: string | null;
-  // What the page sent, such as the rules it saved, or null for none.
   body: string | null;
 }
 
@@ -35,49 +26,35 @@ export interface OpenPage {
   page: Page;
   refused: string[];
   apiCalls: ApiCall[];
-  // Which of Clerk's screens the page asked for, if any.
+  // Which of Clerk's screens the page asked for.
   askedFor(): Promise<string | null>;
-  // What the page asked the browser's speech to read aloud, in order, when
-  // the page was opened with speech "recorded".
+  // Needs the page opened with speech "recorded".
   spoken(): Promise<string[]>;
-  // Hide or show the page, as switching tabs or locking the phone would.
   hide(): Promise<void>;
   show(): Promise<void>;
-  // Sign in with another session token, or out with null, without a
-  // reload, as Clerk does when another tab signs in or out.
+  // Without a reload, as Clerk does when another tab signs in or out.
   signInAs(session: string | null): Promise<void>;
   close(): Promise<void>;
 }
 
 export interface PageOptions {
-  // Signed in with this session token. Signed out when it is not set.
   session?: string;
-  // The signed-in person's email address. Left out, Clerk has none for them.
   email?: string;
-  // The page's API: each path's answer as JSON, a status alone, or an
-  // answer worked out for each call. A path with no answer gets a 404.
+  // By path: JSON, a Status or an Answering. Any other path gets a 404.
   api?: Record<string, unknown>;
-  // Give the page Playwright's clock, which runs as usual until a test
-  // moves it on with page.clock. Given a time, the clock starts there.
-  // "stopped", it stands still from before the page loads, and moves only
-  // when a test moves it on. Stopped at a time, it stands still there.
+  // true runs Playwright's clock from now, and a Date runs it from then.
+  // "stopped" stands still from before the page loads, and stoppedAt stands
+  // still at that time. A stopped clock moves only when a test moves it.
   clock?: boolean | Date | "stopped" | { stoppedAt: Date };
-  // The browser's time zone, such as Europe/London. Without one it is the
-  // machine's.
   timeZone?: string;
-  // The browser's speech: "absent", as in a browser that cannot speak, or
-  // "recorded", which says nothing and records what it was asked to read.
-  // Left out, the page has Chromium's own.
+  // "recorded" says nothing and records what it was asked to read. Left
+  // out, the page has Chromium's own.
   speech?: "absent" | "recorded";
-  // Let the page move. Left out, the device asks for reduced motion, so
-  // screens change at once, and a test can tap as soon as one shows: taps
-  // are lost while screens slide.
+  // Left out, the device asks for reduced motion, so a test can tap as soon
+  // as a screen shows: taps are lost while screens slide.
   motion?: boolean;
 }
 
-// An answer that is a status, such as a failure, with a JSON body when one
-// is given, such as a refusal, and any headers given, such as the Date the
-// service's clock gave it.
 export class Status {
   constructor(
     readonly code: number,
@@ -86,9 +63,7 @@ export class Status {
   ) {}
 }
 
-// An answer worked out for each call, from the address the page asked for,
-// the Authorization header it sent, and its method and body. It may give
-// JSON or a status, at once or after a while.
+// The answer may be JSON or a Status, or a promise of either.
 export class Answering {
   constructor(
     readonly answer: (
@@ -99,7 +74,7 @@ export class Answering {
   ) {}
 }
 
-// Every file of the page as test/page-server.ts built it.
+// The page as test/page-server.ts built it.
 export async function builtFiles(): Promise<string[]> {
   const dir = inject("pageDir");
   const entries = await readdir(dir, { recursive: true, withFileTypes: true });
@@ -108,13 +83,10 @@ export async function builtFiles(): Promise<string[]> {
     .map((entry) => join(entry.parentPath, entry.name));
 }
 
-// Moves a page's stopped clock on a millisecond at a time until a check
-// holds, so the page's own timers run as they fall due, such as the one
-// React Query waits on before it draws an answer. The page's requests take
-// real time, which the stopped clock does not count. Steps are at least
-// 10ms of real time apart, so in the wait's 10 seconds the clock moves on a
-// second at most. An error thrown by one of the page's timers as the clock
-// moves fails the test.
+// Moves a stopped clock on 1ms per step, so the page's timers run as they
+// fall due. Steps are 10ms of real time apart, for the page's requests,
+// which the stopped clock does not count, so in the 10 second wait the
+// clock moves a second at most.
 export async function stepUntil(
   page: Page,
   holds: () => Promise<boolean>,
@@ -128,22 +100,16 @@ export async function stepUntil(
   }
 }
 
-// Steps a page's stopped clock, as above, until a part of the page shows.
 export const stepUntilShown = (page: Page, part: Locator): Promise<void> =>
   stepUntil(page, async () => (await part.count()) > 0, "the part to show");
 
-// Answers a poll for the list as the service does: with nothing new when it
-// carries the list's version, and with the whole list otherwise.
+// Answers a poll as the service does.
 export function answerPoll(url: URL, list: AsksAnswer): unknown {
   return url.searchParams.get(sinceParam) === String(list.version)
     ? { version: list.version, unchanged: true }
     : list;
 }
 
-// Answers each poll for the list as answerPoll does, with a Date header that
-// gives the service's time as it is when the poll arrives. Both the list and
-// the service's time are read afresh for each poll, so a test can change
-// them between polls.
 export const datedPolls = (
   list: () => AsksAnswer,
   serviceNow: () => number,
@@ -155,9 +121,6 @@ export const datedPolls = (
       }),
   );
 
-// Answers each poll for the list as datedPolls does until the test calls
-// fail, and with a failure from then on, as when the page loses its
-// connection or askme is down.
 export function failingPolls(
   list: () => AsksAnswer,
   serviceNow: () => number,
@@ -174,18 +137,15 @@ export function failingPolls(
   };
 }
 
-// Moves the device's clock on a page with Playwright's clock, as a device
-// does when it puts its clock right. That moves Date.now() and leaves
-// performance.now() as it was. On most systems a device that sleeps moves
-// them in the same way.
+// Moves Date.now() and leaves performance.now() as it was, as a device does
+// when it puts its clock right or, on most systems, when it sleeps.
 export async function moveDeviceClock(page: Page, by: number): Promise<void> {
   const now = await page.evaluate(() => Date.now());
   await page.clock.setSystemTime(now + by);
 }
 
-// A colour, or a custom property that holds one, as the page's browser
-// computes it. A test compares an element's colour with this, so no colour
-// is written in a test of the page (styling.md).
+// A test compares against this, from the palette or a token, and writes no
+// colour of its own (styling.md).
 export async function computedColour(
   page: Page,
   colour: string,
@@ -200,11 +160,8 @@ export async function computedColour(
   }, colour);
 }
 
-// The space between whatever sits above All clear, the header or the tabs,
-// and its headline, and between its last line and the foot: the line at
-// the foot with the given words, held, lapsed or sorting, or else the foot of
-// the screen. A missing part
-// throws, so a test never measures from 0.
+// The foot is the line with footText, or else the bottom of the screen. A
+// missing part throws, so a test never measures from 0.
 export async function allClearGaps(
   page: Page,
   footText?: string,
@@ -236,9 +193,6 @@ export async function allClearGaps(
   }, footText);
 }
 
-// With the page scrolled to its foot, where the note at the foot of the
-// screen starts, and where All clear's last line ends, and the line at the
-// foot with the given words. A missing part throws.
 export async function underTheNote(
   page: Page,
   footText?: string,
@@ -270,8 +224,6 @@ export async function underTheNote(
 
 const hiddenFlag = "testHidden";
 
-// Sets the flag the replaced visibility reads, and tells the page, as the
-// browser does when a tab is hidden or shown.
 async function setHidden(page: Page, hidden: boolean): Promise<void> {
   await page.evaluate(
     ([flag, value]) => {
@@ -343,6 +295,7 @@ export async function openPage(
       }
     },
   );
+  // Headless Chromium always reports a page as visible.
   await context.addInitScript((flag) => {
     const hidden = () => document.documentElement.dataset[flag] === "true";
     Object.defineProperty(Document.prototype, "hidden", {
@@ -359,9 +312,8 @@ export async function openPage(
   } else if (options.clock === true) {
     await context.clock.install();
   } else if (options.clock !== undefined && options.clock !== false) {
-    // Paused before there is a page, so it stops at this time exactly. A
-    // page's clock is running by the time a test could pause it, and a
-    // pause at a time already gone is refused.
+    // Paused before there is a page: by the time a test could pause it, the
+    // clock has run on, and a pause at a time already gone is refused.
     const start =
       options.clock === "stopped" ? new Date() : options.clock.stoppedAt;
     await context.clock.install({ time: start });
@@ -431,11 +383,9 @@ export async function openPage(
         },
         [sessionKey, sessionChangedEvent, session] as const,
       ),
-    // A route can still be running as the browser closes, such as the guard
-    // aborting a link opened in a new tab. Its error would land after the
-    // test and fail the run, so the routes go first and their errors with
-    // them. Once the browser has closed there are no routes left, so
-    // closing again does nothing more.
+    // A route still running as the browser closes, such as the guard
+    // aborting a link opened in a new tab, would throw after the test and
+    // fail the run, so the routes go first.
     close: async () => {
       if (browser.isConnected()) {
         await context.unrouteAll({ behavior: "ignoreErrors" });

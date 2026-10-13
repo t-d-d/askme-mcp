@@ -1,9 +1,5 @@
-// Writes that meet another transaction, end to end in process. Every write
-// to an account also raises the version on its META item (ADR 13), so two
-// writes to one account at the same moment meet there. Real DynamoDB cancels
-// one of them with the reason TransactionConflict, and the store tries it
-// again. The local DynamoDB runs one transaction at a time and never does
-// this, so a recorder in front of it cancels the transactions a test names.
+// The local DynamoDB runs one transaction at a time and never cancels one
+// for a conflict, so a recorder in front of it cancels the ones a test names.
 import { randomUUID } from "node:crypto";
 import type { Client } from "@modelcontextprotocol/client";
 import {
@@ -32,7 +28,7 @@ import { createStore, writeTries, type Resolution } from "./src/store/store";
 const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
 
-// A store that reaches the local DynamoDB directly, for the other writer.
+// The other writer, which bypasses the recorder.
 const elsewhere = createStore({ tableName, endpoint });
 
 let issuer: FakeIssuer;
@@ -53,7 +49,6 @@ afterAll(async () => {
   await issuer.close();
 });
 
-// A fresh account for each test, and its id as the token check gives it.
 function newAccount(): { sub: string; owner: AccountId } {
   const sub = `user_${randomUUID().slice(0, 8)}`;
   const { accountId } = callerOf({
@@ -81,18 +76,14 @@ const post = async (agent: Client) =>
       (await agent.callTool({ name: "ask", arguments: ask })).structuredContent,
     ).id;
 
-// How many transactions the service has sent, cancelled ones included.
 const transactions = () =>
   database.calls.filter((call) => call.action === "TransactWriteItems").length;
 
-// The account's version, raised once by each write that landed, and the
-// ids of its open asks.
 async function listed(owner: AccountId) {
   const { version, asks } = await elsewhere.openAsks(owner, new Date());
   return { version, open: asks.map((open) => open.id) };
 }
 
-// What is stored for one ask, open or closed, read straight from the table.
 const itemsOf = async (owner: AccountId, id: string) =>
   (await storedItems(endpoint, tableName, owner)).filter(
     (item) => item.id === id,
@@ -141,9 +132,6 @@ describe("a write that meets another transaction", () => {
     }
   });
 
-  // Two resolves of one ask at the same moment: the second meets the first,
-  // and by its next try the first has closed the ask. Both answer resolved
-  // (ADR 2), and the ask closes once.
   it("answers resolved when another resolve closed the ask while it waited", async () => {
     const { sub, owner } = newAccount();
     const agent = await agentFor(sub);
@@ -160,8 +148,6 @@ describe("a write that meets another transaction", () => {
         name: "resolve",
         arguments: { id },
       });
-      // The other resolve closed the ask, so this one's next try found it
-      // closed.
       expect(other).toEqual(["resolved"]);
       expect(transactions() - before).toBe(2);
       expect(result.isError).not.toBe(true);
@@ -178,9 +164,7 @@ describe("a write that meets another transaction", () => {
     }
   });
 
-  // DynamoDB can name a failed condition and a conflict in one answer. The
-  // failed condition is the answer the store acts on, so it does not try
-  // again.
+  // DynamoDB can name a failed condition and a conflict in one answer.
   it("does not try again when a condition failed as well", async () => {
     const { sub, owner } = newAccount();
     const agent = await agentFor(sub);
@@ -202,9 +186,6 @@ describe("a write that meets another transaction", () => {
     }
   });
 
-  // The ask's rate counter is counted before the transaction, and stays
-  // counted (ADR 18). Nothing in the transaction lands, so the agent's
-  // retry posts the ask afresh.
   it("answers service_unavailable when every try is cancelled, and posts nothing", async () => {
     const { sub, owner } = newAccount();
     const agent = await agentFor(sub);

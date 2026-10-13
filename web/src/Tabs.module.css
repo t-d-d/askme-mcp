@@ -20,8 +20,6 @@
   border-radius: var(--radius-pill);
 }
 
-/* Everything is the neutral tint with ink text, and ink with ground-colour
-   text when selected. */
 .everything {
   padding: var(--space-6) var(--space-12);
   background: var(--neutral-tint);
@@ -33,8 +31,6 @@
   color: var(--ground);
 }
 
-/* A hashtag is its tint with its ink, and its strong colour with white text
-   when selected. White is the surface colour. */
 .hashtag {
   padding: var(--space-6) var(--space-10);
   background: var(--tag-tint);

@@ -1,11 +1,5 @@
-// The Lambda function behind API Gateway's HTTP API (ADR 5): the MCP
-// endpoint, the metadata that tells a client where to sign in, and the
-// page's API.
-//
-// Every route but the metadata checks a token first (ADR 6). On the MCP
-// endpoint, a call with no token, or one the service cannot verify, gets a
-// 401 that points to the metadata. Anything after that, refusals included,
-// is the MCP server's. The page's routes are served in api.ts.
+// The function behind API Gateway: the MCP endpoint, its OAuth metadata and
+// the page's API.
 import {
   bearerAuthChallengeResponse,
   createMcpHandler,
@@ -53,9 +47,7 @@ export { routes };
 // OAuthError's code is typed as any string, so compare it as one.
 const invalidToken: string = OAuthErrorCode.InvalidToken;
 
-// A fresh MCP server for each request, as the SDK's stateless serving does.
-// It sees the caller the token check verified. Its tools and instructions
-// are the same for every caller (ADR 2).
+// A fresh server for each request, as the SDK's stateless serving does.
 function buildServer(context: McpRequestContext): McpServer {
   const server = new McpServer(
     { name: "askme", version: "1.0.0" },
@@ -68,22 +60,16 @@ function buildServer(context: McpRequestContext): McpServer {
   return server;
 }
 
-// Every exchange is a short request and response (ADR 1). A client on the
-// 2026-07-28 revision may ask to hold a stream open for change notices, and
-// with no subscriptions allowed it is refused at once.
+// Every exchange is a short request and response, so a client asking to
+// hold a stream open for change notices is refused at once (ADR 1).
 const mcp = createMcpHandler(buildServer, { maxSubscriptions: 0 });
 
 interface Services {
   issuer: string;
-  // Checks an agent's OAuth access token.
   verifier: OAuthTokenVerifier;
-  // Checks the page's session token.
   verifySession: (token: string) => Promise<AccountId>;
   store: Store;
-  // Queues a stored ask's sort.
   sorts: SortRequests;
-  // Reads the rules when they are saved, counting each call against the
-  // account's daily cap.
   model: CountedModel;
 }
 
@@ -201,9 +187,7 @@ async function serve(
   return response;
 }
 
-// Any failure the service did not expect, outside the page's routes. It is
-// service_unavailable, which tells the caller to try again (ADR 11), and it
-// says nothing more.
+// Any unexpected failure outside the page's routes (ADR 11).
 function unavailable(): Response {
   return Response.json(
     {

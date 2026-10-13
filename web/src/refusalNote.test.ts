@@ -19,8 +19,7 @@ describe("the note a refused press gives", () => {
     );
   });
 
-  // The service refuses at 23:58 UTC by its own clock, two minutes before
-  // its day ends.
+  // The service refuses at 23:58 UTC by its own clock.
   it("goes when the service's day ends, on a clock a few minutes fast", () => {
     const sent = at("2026-10-13T00:01:00Z");
     const note = refusalNote(
@@ -49,9 +48,8 @@ describe("the note a refused press gives", () => {
     });
   });
 
-  // London's clocks go back at 1am UTC on 25 October. A clock three minutes
-  // slow still reads 24 October when the service's day of 25 October has
-  // begun, so the cap resets at midnight UTC on the 26th, 00:00 in London.
+  // A clock three minutes slow still reads 24 October when the service's 25
+  // October has begun, so the cap resets at midnight UTC on the 26th.
   it("gives the reset by the service's day, on a clock a few minutes slow, as the clocks change", () => {
     const note = refusalNote(
       new Refusal("cap_reached", "Out of sorts.", 3 * minute),

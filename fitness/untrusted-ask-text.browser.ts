@@ -1,13 +1,9 @@
-// ADR 12's check on how the page shows a sort result: the reason is the
-// sorting model's words, so it is shown as plain text and does nothing.
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { pagePaths, type AsksAnswer } from "../shared/page-api";
 import { openPage, type OpenPage } from "../test/browser";
 
 const phone = { width: 390, height: 844 };
 
-// A reason a model talked into it might write: markup that would load an
-// image and run script, a link, and markdown.
 const reason =
   '<img src="https://evil.example/r.png" onerror="document.title=\'run\'"><a href="https://evil.example/">Tap</a> **now** [here](https://evil.example/)';
 

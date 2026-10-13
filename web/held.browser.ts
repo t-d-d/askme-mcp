@@ -1,6 +1,3 @@
-// Holding asks back until their hours (PRD, "Web page"), with Clerk and the
-// page's API faked on loopback (ADR 9). The page's clock is set, so each
-// test knows which hours are open.
 import { afterEach, describe, expect, inject, it } from "vitest";
 import {
   askChangePaths,
@@ -61,8 +58,6 @@ const ask = (
   sort: { ...sort, reason: "Sorted for the test." },
 });
 
-// Two asks for work, one of them for the shop too, and one each for the
-// shop and the family.
 const asksAt = (time: Date) => [
   ask("a", "Merge the fix for checkout rounding?", time, {
     hashtags: ["shop", "work"],
@@ -91,9 +86,6 @@ const listOf = (asks: AsksAnswer["asks"]): AsksAnswer => ({
   asks,
 });
 
-// The list, polled as the service answers: whole the first time, and as
-// unchanged after that. The API takes a dismissal. The screen is a phone's
-// unless another is given.
 const open = (list: AsksAnswer, time: Date, screen = phone) =>
   openPage(inject("pageUrl"), screen, {
     session,
@@ -104,8 +96,6 @@ const open = (list: AsksAnswer, time: Date, screen = phone) =>
     },
   });
 
-// The list, polled as the service answers, with a way for the test to
-// change what the service answers from then on.
 const openChanging = async (list: AsksAnswer, time: Date) => {
   let answer = list;
   const opened = await openPage(inject("pageUrl"), phone, {
@@ -136,11 +126,9 @@ const tab = (page: Page, name: string) =>
     .getByRole("navigation", { name: "Hashtags" })
     .getByRole("button", { name, exact: true });
 
-// Whether a control has the keyboard's focus.
 const focused = (control: Locator) =>
   control.evaluate((element) => element === document.activeElement);
 
-// The text of whatever comes straight after the tabs.
 const underTheTabs = (page: Page) =>
   page.evaluate(
     () =>
@@ -235,7 +223,7 @@ describe("holding asks back until their hours", () => {
     ).toBe(0);
     const line = page.getByText("2 held until their hours");
     await line.waitFor();
-    // The last thing on the screen, below the All clear lines.
+    // The held line sits below All clear's last line.
     const below = await page.evaluate(() => {
       const lines = [...document.querySelectorAll("main p")];
       const last = lines.at(-1)?.getBoundingClientRect().bottom ?? 0;
@@ -348,7 +336,6 @@ describe("holding asks back until their hours", () => {
     expect(await focused(tab(page, "Everything"))).toBe(true);
     const rules = page.getByRole("link", { name: "Rules" });
     await rules.focus();
-    // askme drops both asks, so the list goes all clear.
     changing.answerWith({ ...list, version: list.version + 1, asks: [] });
     await page.clock.fastForward(pollMs);
     await page
@@ -364,7 +351,6 @@ describe("holding asks back until their hours", () => {
     const { page } = view;
     await page.getByRole("heading", { name: "All clear." }).waitFor();
     await page.getByRole("button", { name: "Show them" }).focus();
-    // askme drops both held asks, so the list stays all clear.
     changing.answerWith({ ...list, version: list.version + 1, asks: [] });
     await page.clock.fastForward(pollMs);
     await page.getByText(/held/u).waitFor({ state: "detached" });
@@ -381,7 +367,6 @@ describe("holding asks back until their hours", () => {
     await page.getByRole("button", { name: "Show them" }).click();
     await page.getByRole("navigation", { name: "Hashtags" }).waitFor();
     await page.getByRole("button", { name: "Hide them" }).focus();
-    // askme drops both held asks, so the list goes all clear.
     changing.answerWith({ ...list, version: list.version + 1, asks: [] });
     await page.clock.fastForward(pollMs);
     await page
@@ -546,8 +531,8 @@ describe("holding, with cards opened and dismissed", () => {
     expect(await focused(row.getByRole("link"))).toBe(true);
   });
 
-  // Dismisses the one ask showing, with the page's time standing still, so
-  // the note with Undo stays until the test moves the time on.
+  // The page's time stands still, so the note with Undo stays until the test
+  // moves it on.
   async function dismissTheLastShowing(page: Page) {
     const showing = "Swap Saturday's school run?";
     await page.getByRole("link", { name: showing }).waitFor();

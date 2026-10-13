@@ -20,16 +20,14 @@ const definition = () =>
     }),
   );
 
-// The events that give a function a route, on an HTTP API or a REST API. The
-// sort function's queue trigger is not one: only askme can send to it
-// (sort-queue.md).
+// A queue trigger is not a route: only askme can send to it (sort-queue.md).
 type Fn = ReturnType<typeof definition>["functions"][string];
 const routeEvents = (fn: Fn) =>
   (fn.events ?? []).filter((event) => "httpApi" in event || "http" in event);
 
 describe("fitness: every route checks a token (identity.md)", () => {
-  // The integration tier calls each route the service knows. A route
-  // declared here but unknown to the service would never be called there.
+  // The integration tier calls each route the service knows, so a deployed
+  // route the service does not know would go untested.
   it("deploys exactly the routes the service knows", () => {
     const deployed = Object.values(definition().functions).flatMap((fn) =>
       routeEvents(fn).map((event) => event.httpApi),
