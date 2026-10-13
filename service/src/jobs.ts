@@ -24,11 +24,9 @@ export const sortJobSchema = z.strictObject({
   askId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/u),
 });
 
-// How long an ask behind the rules counts as sorting, from the later of when
-// it was stored and the last save. That is longer than three deliveries six
-// minutes apart take, with room for a queue working through a save. After
-// it, the ask counts as stopped, and a save of the rules queues it again.
-export const sortingMs = 30 * 60_000;
+// How long an ask behind the rules counts as sorting. The poll works the
+// sorting state out from it, so it lives with the page's view.
+export { sortingMs } from "./view";
 
 // How many jobs one call to the queue sends, which is the most SQS takes.
 export const jobsPerCall = 10;
