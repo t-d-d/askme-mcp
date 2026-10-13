@@ -32,6 +32,7 @@ askme.mcp is one place where all of a person's AI agents ask for their input, so
 | Conformance | `*.conformance.ts` | Setup outside the repo, such as GitHub's settings, read only, signed in where needed (ADR 15) |
 
 - An assertion goes in the lowest tier that can see it.
+- A refactoring ticket measures the tests that guard the code it moves, before the move and after it. `npm run coverage` gives each file's line and branch coverage from the unit and integration tiers. `npm run mutate -- <suite>` gives the mutants those tests miss, for a suite in `test/mutation-suites.ts`. Add the suite if there is none. Both run by hand, outside the gate. Put both sets of numbers in the pull request.
 - A fitness function names its constraint file in its describe name: `fitness: <what it asserts> (<file>.md)`.
 - Never weaken or delete a test to get the gate green.
 
