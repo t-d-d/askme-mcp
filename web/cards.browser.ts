@@ -205,6 +205,39 @@ async function narrowCard(top: PageAsk) {
   return card;
 }
 
+// The one row of a list on a 320px phone, its main button leading to the
+// link. Under #shopping and waiting 50 minutes unless told otherwise, which
+// leave the site's name less room than a whole line.
+async function narrowRow(
+  actionLink: string,
+  {
+    hashtag = "shopping",
+    waited = 50 * minute,
+    opened = false,
+  }: { hashtag?: string; waited?: number; opened?: boolean } = {},
+) {
+  const row = ask("row", "Empty the old bucket?", waited, {
+    actionLink,
+    opened,
+    sort: {
+      hashtags: [hashtag],
+      level: "normal",
+      reason: "The reason for emptying the old bucket",
+    },
+  });
+  const { page } = await open(
+    {
+      ...listOf(ask("first", "Pay the deposit?", waited + 10 * minute), row),
+      hashtags: [
+        { name: "shop", colour: 1 },
+        { name: hashtag, colour: 2 },
+      ],
+    },
+    { screen: { width: 320, height: phone.height } },
+  );
+  return page.getByRole("listitem");
+}
+
 // How many lines an element's text takes, in the page's own font.
 const lineCount = (element: Locator) =>
   element.evaluate(async (each) => {
@@ -238,6 +271,29 @@ const lineEnds = (element: Locator) =>
     }
     return ends;
   });
+
+// Whether an element's content fits its width, with nothing past its edge.
+const fitsWidth = (element: Locator) =>
+  element.evaluate((each) => each.scrollWidth <= each.clientWidth);
+
+// A site's name breaks onto another line, and only just after a dot
+// (docs/design.md).
+async function expectBreaksOnlyAfterDots(name: Locator) {
+  const ends = await lineEnds(name);
+  expect(ends.length).toBeGreaterThan(0);
+  for (const end of ends) expect(end).toMatch(/\.$/u);
+}
+
+// The name of the longPart link stays inside its element, and is split
+// only inside the part too long for a line on its own (docs/design.md).
+async function expectOnlyLongPartSplit(name: Locator) {
+  expect(await fitsWidth(name)).toBe(true);
+  const split = (await lineEnds(name)).filter((end) => !end.endsWith("."));
+  expect(split.length).toBeGreaterThan(0);
+  for (const end of split) {
+    expect("averyveryverylongsubdomainname".startsWith(end)).toBe(true);
+  }
+}
 
 const cardIsOpen = (opened: OpenPage) =>
   opened.page.evaluate(() => window.location.hash.startsWith("#ask/"));
@@ -334,9 +390,7 @@ describe("the top card's buttons", () => {
     expect(await name.evaluate((each) => getComputedStyle(each).fontSize)).toBe(
       "11px",
     );
-    const ends = await lineEnds(name);
-    expect(ends.length).toBeGreaterThan(0);
-    for (const end of ends) expect(end).toMatch(/\.$/u);
+    await expectBreaksOnlyAfterDots(name);
   });
 
   // A part too long for a line on its own is split, so the name stays inside
@@ -344,15 +398,7 @@ describe("the top card's buttons", () => {
   it("split only a part too long for a line on its own, and keep the name inside the button", async () => {
     const card = await narrowCard(longPartAndSession);
     const name = card.locator(`a[href="${longPart}"] span`).nth(1);
-    expect(
-      await name.evaluate((each) => each.scrollWidth <= each.clientWidth),
-    ).toBe(true);
-    const ends = await lineEnds(name);
-    const split = ends.filter((end) => !end.endsWith("."));
-    expect(split.length).toBeGreaterThan(0);
-    for (const end of split) {
-      expect("averyveryverylongsubdomainname".startsWith(end)).toBe(true);
-    }
+    await expectOnlyLongPartSplit(name);
   });
 
   it("say in each link's name that it opens a new tab, and show nothing new", async () => {
@@ -450,6 +496,43 @@ describe("the rows", () => {
       await page.getByText(sessionOnly.sort?.reason ?? "").isVisible(),
     ).toBe(true);
     expect(sentTo(opened, askChangePaths.opened)).toEqual([]);
+  });
+
+  // A site's name too long for the row's line breaks just after a dot, not
+  // inside a word (docs/design.md).
+  it("break console.aws.amazon.com only after a dot on a 320px phone, beside #shopping and the age", async () => {
+    const row = await narrowRow(aws);
+    const text = await row.innerText();
+    expect(text).toContain("#shopping");
+    expect(text).toContain("50 min");
+    const name = row.getByText("console.aws.amazon.com", { exact: true });
+    await expectBreaksOnlyAfterDots(name);
+    expect(await fitsWidth(row)).toBe(true);
+  });
+
+  // The longest hashtag a rule may name, on an opened row, still leaves the
+  // site's name room to break after a dot inside the row (docs/design.md).
+  it("keep an opened row under a 24-character hashtag inside a 320px phone, and break its site only after a dot", async () => {
+    const row = await narrowRow(aws, {
+      hashtag: "customer-onboarding-flow",
+      waited: 23 * 60 * minute,
+      opened: true,
+    });
+    const text = await row.innerText();
+    expect(text).toContain("#customer-onboarding-flow");
+    expect(text).toContain("Opened");
+    const name = row.getByText("console.aws.amazon.com", { exact: true });
+    await expectBreaksOnlyAfterDots(name);
+    expect(await fitsWidth(row)).toBe(true);
+  });
+
+  // A part too long for the line on its own is split, so the name stays
+  // inside the row (docs/design.md).
+  it("split only a part too long for the line on its own, and keep the name inside the row", async () => {
+    const row = await narrowRow(longPart);
+    const name = row.getByText(new URL(longPart).hostname, { exact: true });
+    await expectOnlyLongPartSplit(name);
+    expect(await fitsWidth(row)).toBe(true);
   });
 
   it("open the card of a row with neither link", async () => {

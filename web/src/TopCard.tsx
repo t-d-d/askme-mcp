@@ -1,12 +1,13 @@
-import { Fragment, useCallback } from "react";
+import { useCallback } from "react";
 import type { PageAsk } from "../../shared/page-api";
 import type { AskActions } from "./actions";
 import { SessionIcon, SpeakerIcon } from "./Icon";
-import { destinations, longSite, siteParts } from "./links";
+import { destinations, longSite } from "./links";
 import { OutLink } from "./OutLink";
 import { askColour, tagColour, type HashtagColour } from "./palette";
 import { Pills } from "./Pills";
 import { cardHref } from "./screen";
+import { SiteName } from "./SiteName";
 import type { Tab } from "./tab";
 import styles from "./TopCard.module.css";
 import { useSwipe } from "./useSwipe";
@@ -77,12 +78,7 @@ export function TopCard({
                 className={styles.site}
                 data-long={longSite(main.site) ? "" : undefined}
               >
-                {siteParts(main.site).map((part, index) => (
-                  <Fragment key={index}>
-                    {index > 0 && <wbr />}
-                    {part}
-                  </Fragment>
-                ))}
+                <SiteName site={main.site} />
               </span>
             </OutLink>
           )}

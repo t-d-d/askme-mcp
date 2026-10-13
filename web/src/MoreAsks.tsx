@@ -5,6 +5,7 @@ import { destinations } from "./links";
 import styles from "./MoreAsks.module.css";
 import { askColour, tagColour, type HashtagColour } from "./palette";
 import { cardHref } from "./screen";
+import { SiteName } from "./SiteName";
 import { shownUnder, type Tab } from "./tab";
 import { useSwipe } from "./useSwipe";
 import { age } from "./waiting";
@@ -96,7 +97,9 @@ function Row({
           <span>{age(postedAt, now)}</span>
           {opened && <span>Opened</span>}
           {main !== undefined && (
-            <span className={styles.site}>{main.site}</span>
+            <span className={styles.site}>
+              <SiteName site={main.site} />
+            </span>
           )}
         </span>
       </a>
