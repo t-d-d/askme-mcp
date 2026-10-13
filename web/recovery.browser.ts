@@ -1,12 +1,18 @@
 import { afterEach, describe, expect, inject, it } from "vitest";
-import { pagePaths, type AsksAnswer } from "../shared/page-api";
+import {
+  pagePaths,
+  samplesPath,
+  type AsksAnswer,
+  type RulesAnswer,
+} from "../shared/page-api";
 import {
   Answering,
   answerPoll,
   openPage,
+  Status,
   type OpenPage,
 } from "../test/browser";
-import { pollMs } from "./src/poll";
+import { pollMs, retryMs } from "./src/poll";
 import { signInWaitMs } from "./src/auth";
 
 const phone = { width: 390, height: 844 };
@@ -88,6 +94,60 @@ describe("a browser that goes offline", () => {
       .waitFor();
     expect(await page.getByText(/held/u).count()).toBe(0);
     expect(await page.getByText(notConnected).count()).toBe(1);
+  });
+});
+
+const rules: RulesAnswer = {
+  text: "#shop is the weekly shop.",
+  hashtags: [{ name: "shop", colour: 1 }],
+  readFailed: false,
+};
+
+describe("a save made offline", () => {
+  it("says the rules save did not go through", async () => {
+    const list = listAt(new Date());
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      api: {
+        [pagePaths.asks]: new Answering((url) => answerPoll(url, list)),
+        [pagePaths.rules]: rules,
+      },
+    });
+    const { page } = view;
+    const box = page.getByRole("textbox");
+    await expect.poll(() => box.inputValue()).toBe(rules.text);
+    await box.fill(`${rules.text}\n\n#family is home.`);
+    await view.offline();
+    await page.getByRole("button", { name: "Save rules" }).click();
+    await page
+      .getByRole("status")
+      .filter({ hasText: "That didn't go through. Try again" })
+      .waitFor();
+  });
+
+  it("says the sample asks did not go through", async () => {
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      api: {
+        [pagePaths.asks]: new Answering((url) =>
+          answerPoll(url, {
+            ...listAt(new Date()),
+            everAsked: false,
+            asks: [],
+          }),
+        ),
+        [samplesPath]: new Status(204),
+      },
+    });
+    const { page } = view;
+    const send = page.getByRole("button", { name: "Send sample asks" });
+    await send.waitFor();
+    await view.offline();
+    await send.click();
+    await page
+      .getByRole("status")
+      .filter({ hasText: "That didn't go through. Try again." })
+      .waitFor();
   });
 });
 
@@ -188,5 +248,114 @@ describe("a poll answer the page cannot read", () => {
     readable(false);
     await page.clock.fastForward(pollMs);
     await expect.poll(() => view?.loads()).toBe(3);
+  });
+});
+
+// The rules opened while the service is down, so their load is tried again.
+// Then the service comes back after a deploy that changes the rules' answer,
+// and the poll's too when pollChanges.
+const rulesAfterDeploy = async (pollChanges: boolean) => {
+  const list = listAt(new Date());
+  let deployed = false;
+  const opened = await openPage(`${inject("pageUrl")}#rules`, phone, {
+    session,
+    clock: true,
+    api: {
+      [pagePaths.asks]: new Answering((url) =>
+        deployed && pollChanges
+          ? { version: 4, shape: "new" }
+          : answerPoll(url, list),
+      ),
+      [pagePaths.rules]: new Answering(() =>
+        deployed ? { shape: "new" } : new Status(503),
+      ),
+    },
+  });
+  await opened.page
+    .getByRole("status")
+    .filter({ hasText: notConnected })
+    .waitFor();
+  deployed = true;
+  return opened;
+};
+
+const rulesLoads = (opened: OpenPage) =>
+  opened.apiCalls.filter(({ path }) => path === pagePaths.rules).length;
+
+// Each load is tried again at retryMs while it fails.
+async function staysAfterRetries(opened: OpenPage): Promise<void> {
+  const after = rulesLoads(opened) + 3;
+  await expect
+    .poll(async () => {
+      await opened.page.clock.fastForward(retryMs);
+      return rulesLoads(opened);
+    })
+    .toBeGreaterThanOrEqual(after);
+  expect(opened.loads()).toBe(2);
+}
+
+describe("a rules answer the page cannot read", () => {
+  it("reloads the page once, then says the page is not connected", async () => {
+    view = await rulesAfterDeploy(false);
+    const opened = view;
+    await expect
+      .poll(async () => {
+        await opened.page.clock.fastForward(retryMs);
+        return opened.loads();
+      })
+      .toBe(2);
+    await opened.page
+      .getByRole("status")
+      .filter({ hasText: notConnected })
+      .waitFor();
+    await staysAfterRetries(opened);
+  });
+
+  it("reloads once in all when the poll cannot be read either", async () => {
+    view = await rulesAfterDeploy(true);
+    const opened = view;
+    await expect
+      .poll(async () => {
+        await opened.page.clock.fastForward(retryMs);
+        return opened.loads();
+      })
+      .toBe(2);
+    await staysAfterRetries(opened);
+  });
+});
+
+describe("a poll answer the page cannot read, beside rules it can", () => {
+  it("reloads once, as reading the rules does not clear the poll's mark", async () => {
+    const list = listAt(new Date());
+    let deployed = false;
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      clock: true,
+      api: {
+        [pagePaths.asks]: new Answering((url) =>
+          deployed ? { version: 4, shape: "new" } : answerPoll(url, list),
+        ),
+        [pagePaths.rules]: rules,
+      },
+    });
+    const opened = view;
+    const { page } = opened;
+    const box = page.getByRole("textbox");
+    await expect.poll(() => box.inputValue()).toBe(rules.text);
+    deployed = true;
+    await page.clock.fastForward(pollMs);
+    await expect.poll(() => opened.loads()).toBe(2);
+    // The page after the reload reads the rules.
+    await expect.poll(() => box.inputValue()).toBe(rules.text);
+    const polls = () =>
+      opened.apiCalls.filter(({ path }) => path === pagePaths.asks).length;
+    const after = polls() + 3;
+    await expect
+      .poll(async () => {
+        await page.clock.fastForward(pollMs);
+        return polls();
+      })
+      .toBeGreaterThanOrEqual(after);
+    expect(opened.loads()).toBe(2);
   });
 });

@@ -4,6 +4,7 @@ import {
   samplesPath,
   type AskChange,
 } from "../../shared/page-api";
+import { answerRead, reloadOnce, sessionMarks } from "./reload";
 
 export async function load<T>(
   path: string,
@@ -29,7 +30,23 @@ export async function loadDated<T>(
     throw new Error(`The API answered ${String(response.status)}.`);
   }
   const ahead = serviceAhead(response, Date.now());
-  return { answer: schema.parse(await response.json()), serviceAhead: ahead };
+  const answer = schema.safeParse(await response.json());
+  // The poll's path carries the version it asks from.
+  const [answerPath = path] = path.split("?");
+  if (!answer.success) {
+    // An answer in a shape the page does not know means a deploy has
+    // changed it, and a newer page can read it.
+    reloadOnce(
+      sessionMarks,
+      () => {
+        window.location.reload();
+      },
+      answerPath,
+    );
+    throw answer.error;
+  }
+  answerRead(sessionMarks, answerPath);
+  return { answer: answer.data, serviceAhead: ahead };
 }
 
 export class Refusal extends Error {
