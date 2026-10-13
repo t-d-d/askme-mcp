@@ -14,6 +14,8 @@ import {
   Answering,
   computedColour,
   datedPolls,
+  failingPolls,
+  moveDeviceClock,
   openPage,
   Status,
   stepUntil,
@@ -160,6 +162,59 @@ async function lineChangesAt({
   }
 }
 
+// Opens the list in London on a page whose clock stands still two minutes
+// before a moment by the service's clock, which is serviceAhead ahead of
+// the page's. Its one ask is behind the rules until sortingUntil, when one
+// is given. Once the line reads `before`, every poll fails from the next one
+// on, and before it the device puts its clock right, so it agrees with the
+// service's. Once the page says it is not connected, the line still reads
+// `before`. The first poll after the moment, by the service's clock, finds it
+// reading `after`, or gone when `after` is null, though it fails too.
+async function lineChangesAtWhilePollsFail({
+  moment,
+  serviceAhead,
+  list,
+  sortingUntil,
+  before,
+  after,
+}: {
+  moment: number;
+  serviceAhead: number;
+  list: (asks: AsksAnswer["asks"]) => AsksAnswer;
+  sortingUntil?: Date;
+  before: string;
+  after: string | null;
+}): Promise<void> {
+  const pageAt = moment - serviceAhead - 2 * minute;
+  const polls = failingPolls(
+    () => list([ask("a", "shop", sortingUntil)]),
+    () => pageAt + serviceAhead,
+  );
+  view = await openPage(inject("pageUrl"), phone, {
+    session,
+    clock: { stoppedAt: new Date(pageAt) },
+    timeZone: "Europe/London",
+    api: { [pagePaths.asks]: polls.answering },
+  });
+  const { page } = view;
+  await stepUntilShown(page, page.getByText(before, { exact: true }));
+  polls.fail();
+  await moveDeviceClock(page, serviceAhead);
+  await page.clock.pauseAt(new Date(moment - 2 * minute + pollMs + 1000));
+  await stepUntilShown(page, page.getByText("Not connected. Trying again."));
+  expect(await page.getByText(before, { exact: true }).count()).toBe(1);
+  await page.clock.pauseAt(new Date(moment + pollMs));
+  if (after === null) {
+    await stepUntil(
+      page,
+      async () => (await line(page).count()) === 0,
+      "the line to go",
+    );
+  } else {
+    await stepUntilShown(page, page.getByText(after, { exact: true }));
+  }
+}
+
 describe("the sorting line", () => {
   it("says how many asks are being sorted, under the tabs", async () => {
     view = await open(
@@ -284,6 +339,26 @@ describe("the sorting line", () => {
       });
     },
   );
+
+  // While polls fail, the page counts the service's time on from the last
+  // poll that reached askme, by the time that has passed on
+  // performance.now(), which a change to the device's clock does not move.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "turns an ask stopped when the service's time for it comes, though a clock a few minutes %s is put right while polls fail",
+    async (_, serviceAhead) => {
+      await lineChangesAtWhilePollsFail({
+        moment: later.getTime(),
+        serviceAhead,
+        list: listOf,
+        sortingUntil: later,
+        before: "Sorting 1 ask with your rules",
+        after: "1 ask couldn't be sorted. Saving your rules tries again.",
+      });
+    },
+  );
 });
 
 describe("the sorting line while today's sorting limit is reached", () => {
@@ -362,6 +437,25 @@ describe("the sorting line while today's sorting limit is reached", () => {
     "is gone when the service's day ends, on a clock a few minutes %s",
     async (_, serviceAhead) => {
       await lineChangesAt({
+        moment: Date.parse(resets),
+        serviceAhead,
+        list: capped,
+        before: "Today's sorting limit is reached. It resets at 01:00.",
+        after: null,
+      });
+    },
+  );
+
+  // While polls fail, the page counts the service's time on by
+  // performance.now(), as above, so the line goes when the service's day
+  // ends, though the device's clock is put right in the meantime.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "is gone when the service's day ends, though a clock a few minutes %s is put right while polls fail",
+    async (_, serviceAhead) => {
+      await lineChangesAtWhilePollsFail({
         moment: Date.parse(resets),
         serviceAhead,
         list: capped,
