@@ -260,7 +260,7 @@ const owner = accountId("user_owner");
 function memoryCounter(left: number, events: string[]) {
   let calls = left;
   const counter: CallCounter = {
-    countModelCall: (account) => {
+    countCall: (account) => {
       events.push(`count ${account}`);
       if (calls <= 0) {
         return Promise.resolve({ counted: false, secondsLeft: 3600 });

@@ -155,7 +155,7 @@ export function createModel(config: {
 // The parts of the store that keep the count of model calls.
 export type CallCounter = Pick<
   Store,
-  "countModelCall" | "modelCapSpent" | "recordModelCapReset"
+  "countCall" | "modelCapSpent" | "recordModelCapReset"
 >;
 
 // The model as the service reaches it: every call is made for one account,
@@ -192,7 +192,7 @@ export function createCountedModel(
     forAccount: (account) => ({
       async reply(request) {
         const at = now();
-        const counted = await store.countModelCall(account, at);
+        const counted = await store.countCall(account, "modelCall", at);
         if (!counted.counted) throw new CapReached(await refuse(account, at));
         return client.reply(request);
       },

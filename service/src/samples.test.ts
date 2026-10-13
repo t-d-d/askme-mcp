@@ -88,7 +88,7 @@ function storeAnswering({
     posted,
     counted: () => counted,
     store: {
-      countAsk: () => {
+      countCall: () => {
         counted += 1;
         return Promise.resolve(counts(counted));
       },

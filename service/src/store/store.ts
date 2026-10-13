@@ -277,11 +277,6 @@ export interface Store {
   // Counts a call against one of the account's rate limits (rate.ts), in
   // the window the call falls in. Each limit has its own counter.
   countCall(account: AccountId, limit: LimitName, now: Date): Promise<Counted>;
-  // Counts a poll against the account's limit for the minute.
-  countPoll(account: AccountId, now: Date): Promise<Counted>;
-  // Counts a call to the ask tool against the account's limit for the
-  // minute.
-  countAsk(account: AccountId, now: Date): Promise<Counted>;
   // The account's rules.
   rules(account: AccountId): Promise<AccountRules>;
   // Saves the rules text and the time zone, and the hashtags read from it
@@ -302,10 +297,6 @@ export interface Store {
     rules: Pick<NewRules, "text" | "timeZone">,
     now: Date,
   ): Promise<AccountRules | undefined>;
-  // Counts a save of the rules against the account's limit for the minute.
-  countRulesSave(account: AccountId, now: Date): Promise<Counted>;
-  // Counts a model call against the account's cap for the UTC day (ADR 21).
-  countModelCall(account: AccountId, now: Date): Promise<Counted>;
   // Whether the account has made every model call its cap allows in the UTC
   // day. It reads the count, and counts nothing.
   modelCapSpent(account: AccountId, now: Date): Promise<boolean>;
@@ -857,14 +848,6 @@ export function createStore(config: {
 
     countCall: countIn,
 
-    async countPoll(account, now) {
-      return countIn(account, "poll", now);
-    },
-
-    async countAsk(account, now) {
-      return countIn(account, "ask", now);
-    },
-
     rules: readRules,
 
     // Each save starts from the rules as they are, and is written only if
@@ -915,14 +898,6 @@ export function createStore(config: {
           if (!conditionFailed(error) || tries >= 4) throw error;
         }
       }
-    },
-
-    async countRulesSave(account, now) {
-      return countIn(account, "rulesSave", now);
-    },
-
-    async countModelCall(account, now) {
-      return countIn(account, "modelCall", now);
     },
 
     async modelCapSpent(account, now) {

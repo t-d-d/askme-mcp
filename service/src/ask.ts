@@ -119,7 +119,7 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
     const now = new Date();
     // Every call is counted before anything is stored, so an agent that
     // floods, even with one ask repeated, is slowed (ADR 18).
-    const counted = await store.countAsk(accountId, now);
+    const counted = await store.countCall(accountId, "ask", now);
     if (!counted.counted) {
       log.info("rate-limited", { accountId });
       return rateLimited(counted.secondsLeft);

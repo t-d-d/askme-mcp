@@ -651,20 +651,26 @@ describe("the ask tool's rate counter", () => {
     const start = new Date("2026-10-11T09:30:00.000Z");
     for (let n = 0; n < rateLimits.ask.limit; n += 1) {
       expect(
-        await store.countAsk(owner, new Date(start.getTime() + n * 1000)),
+        await store.countCall(
+          owner,
+          "ask",
+          new Date(start.getTime() + n * 1000),
+        ),
       ).toEqual({ counted: true });
     }
     expect(
-      await store.countAsk(owner, new Date(start.getTime() + 37_500)),
+      await store.countCall(owner, "ask", new Date(start.getTime() + 37_500)),
     ).toEqual({ counted: false, secondsLeft: 23 });
     const next = new Date(start.getTime() + minute);
-    expect(await store.countAsk(owner, next)).toEqual({ counted: true });
+    expect(await store.countCall(owner, "ask", next)).toEqual({
+      counted: true,
+    });
   });
 
   it("keeps one item a minute, which expires an hour after its minute ends", async () => {
     const owner = account();
-    await store.countAsk(owner, new Date("2026-10-11T09:30:20.000Z"));
-    await store.countAsk(owner, new Date("2026-10-11T09:30:40.000Z"));
+    await store.countCall(owner, "ask", new Date("2026-10-11T09:30:20.000Z"));
+    await store.countCall(owner, "ask", new Date("2026-10-11T09:30:40.000Z"));
     expect(await storedItems(endpoint, tableName, owner)).toEqual([
       {
         ...keys.askCount(owner, "2026-10-11T09:30"),
@@ -677,8 +683,8 @@ describe("the ask tool's rate counter", () => {
   it("leaves the version alone", async () => {
     const owner = account();
     await postNew(owner, ask, new Date());
-    await store.countAsk(owner, new Date());
-    await store.countAsk(owner, new Date());
+    await store.countCall(owner, "ask", new Date());
+    await store.countCall(owner, "ask", new Date());
     expect(await versionOf(owner)).toBe(1);
   });
 });
@@ -689,9 +695,11 @@ describe("the poll's rate counter", () => {
   it("counts each poll in a minute up to the limit, then refuses", async () => {
     const owner = account();
     for (let polls = 0; polls < rateLimits.poll.limit; polls += 1) {
-      expect(await store.countPoll(owner, minute)).toEqual({ counted: true });
+      expect(await store.countCall(owner, "poll", minute)).toEqual({
+        counted: true,
+      });
     }
-    expect(await store.countPoll(owner, minute)).toEqual({
+    expect(await store.countCall(owner, "poll", minute)).toEqual({
       counted: false,
       secondsLeft: 50,
     });
@@ -700,17 +708,19 @@ describe("the poll's rate counter", () => {
   it("counts afresh in the next minute", async () => {
     const owner = account();
     for (let polls = 0; polls < rateLimits.poll.limit; polls += 1) {
-      await store.countPoll(owner, minute);
+      await store.countCall(owner, "poll", minute);
     }
     const next = new Date("2026-10-11T09:31:00.000Z");
-    expect(await store.countPoll(owner, next)).toEqual({ counted: true });
+    expect(await store.countCall(owner, "poll", next)).toEqual({
+      counted: true,
+    });
   });
 
   it("keeps one item a minute, which expires an hour after its minute ends", async () => {
     const owner = account();
-    await store.countPoll(owner, minute);
-    await store.countPoll(owner, minute);
-    await store.countPoll(owner, new Date("2026-10-11T09:31:30.000Z"));
+    await store.countCall(owner, "poll", minute);
+    await store.countCall(owner, "poll", minute);
+    await store.countCall(owner, "poll", new Date("2026-10-11T09:31:30.000Z"));
     const items = await storedItems(endpoint, tableName, owner);
     expect(items).toEqual([
       {
@@ -729,8 +739,8 @@ describe("the poll's rate counter", () => {
   it("leaves the version alone", async () => {
     const owner = account();
     await store.postAsk(owner, ask, new Date());
-    await store.countPoll(owner, new Date());
-    await store.countPoll(owner, new Date());
+    await store.countCall(owner, "poll", new Date());
+    await store.countCall(owner, "poll", new Date());
     expect((await store.openAsks(owner, new Date())).version).toBe(1);
   });
 });
@@ -799,23 +809,27 @@ describe("the daily count of model calls", () => {
   it(`counts ${String(rateLimits.modelCall.limit)} calls in a UTC day, refuses the next, and counts afresh the next day`, async () => {
     const owner = account();
     await countAt(owner, rateLimits.modelCall.limit - 1);
-    expect(await store.countModelCall(owner, morning)).toEqual({
+    expect(await store.countCall(owner, "modelCall", morning)).toEqual({
       counted: true,
     });
-    expect(await store.countModelCall(owner, morning)).toEqual({
+    expect(await store.countCall(owner, "modelCall", morning)).toEqual({
       counted: false,
       secondsLeft: 52_190,
     });
     const tomorrow = new Date("2026-10-12T00:00:00.000Z");
-    expect(await store.countModelCall(owner, tomorrow)).toEqual({
+    expect(await store.countCall(owner, "modelCall", tomorrow)).toEqual({
       counted: true,
     });
   });
 
   it("keeps one item a day under its own prefix, which expires an hour after its day ends, and leaves the version alone", async () => {
     const owner = account();
-    await store.countModelCall(owner, morning);
-    await store.countModelCall(owner, new Date("2026-10-11T23:59:00.000Z"));
+    await store.countCall(owner, "modelCall", morning);
+    await store.countCall(
+      owner,
+      "modelCall",
+      new Date("2026-10-11T23:59:00.000Z"),
+    );
     expect(await storedItems(endpoint, tableName, owner)).toEqual([
       {
         ...keys.modelCount(owner, day),
@@ -1320,18 +1334,20 @@ describe.each([
   [
     "saving the rules",
     rateLimits.rulesSave.limit,
-    "countRulesSave",
+    "rulesSave",
     "rulesSaveCount",
   ],
-] as const)("the rate counter for %s", (_, limit, method, key) => {
+] as const)("the rate counter for %s", (_, limit, name, key) => {
   const minute = new Date("2026-10-11T09:30:10.000Z");
 
   it("counts up to the limit in a minute, then refuses with the seconds left", async () => {
     const owner = account();
     for (let n = 0; n < limit; n += 1) {
-      expect(await store[method](owner, minute)).toEqual({ counted: true });
+      expect(await store.countCall(owner, name, minute)).toEqual({
+        counted: true,
+      });
     }
-    expect(await store[method](owner, minute)).toEqual({
+    expect(await store.countCall(owner, name, minute)).toEqual({
       counted: false,
       secondsLeft: 50,
     });
@@ -1339,7 +1355,7 @@ describe.each([
 
   it("keeps one item a minute under its own prefix, and leaves the version alone", async () => {
     const owner = account();
-    await store[method](owner, minute);
+    await store.countCall(owner, name, minute);
     expect(await storedItems(endpoint, tableName, owner)).toEqual([
       {
         ...keys[key](owner, "2026-10-11T09:30"),

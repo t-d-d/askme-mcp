@@ -128,7 +128,7 @@ const cases: { code: Code; provoke: () => Promise<unknown> }[] = [
       // The minute's calls, all counted already.
       const sub = newAccount();
       for (let n = 1; n <= rateLimits.ask.limit; n += 1) {
-        await store.countAsk(accountId(sub), noon);
+        await store.countCall(accountId(sub), "ask", noon);
       }
       stopClockAt(noon);
       return call(sub, "ask", ask);

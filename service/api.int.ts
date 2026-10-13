@@ -1390,7 +1390,7 @@ describe("sample asks", () => {
   it(`are refused at the rate limit with rate_limited, which says how long to wait`, async () => {
     const account = newAccount();
     for (let n = 1; n <= rateLimits.ask.limit; n += 1) {
-      await store.countAsk(ownerOf(account), noon);
+      await store.countCall(ownerOf(account), "ask", noon);
     }
     stopClockAt(noon);
     const response = await sendSamples(account);

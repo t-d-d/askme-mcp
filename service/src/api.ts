@@ -170,7 +170,7 @@ async function poll(
     );
   }
   const now = new Date();
-  const counted = await store.countPoll(account, now);
+  const counted = await store.countCall(account, "poll", now);
   if (!counted.counted) {
     log.info("poll-limited", { accountId: account });
     return pollRefusal(counted.secondsLeft);
@@ -211,7 +211,7 @@ async function saveRules(
     );
   }
   const now = new Date();
-  const counted = await store.countRulesSave(account, now);
+  const counted = await store.countCall(account, "rulesSave", now);
   if (!counted.counted) {
     log.info("rules-limited", { accountId: account });
     return rulesSaveRefusal(counted.secondsLeft);
