@@ -912,19 +912,19 @@ describe("the rules screen", () => {
 
   // Chromium asks before a tab closes only on a page someone has used, and
   // only once the page has told the browser it has a beforeunload listener.
-  // The page tells it in the update that turns Save rules on, and that
-  // notice can reach the browser after fill returns. It always arrives
-  // before the page's answer to a later check, so the tab closes only once
-  // Save rules is seen to be on.
+  // The page adds the listener just after the update that turns Save rules
+  // on, before the typing's task ends, and tells the browser. That notice
+  // can reach the browser after fill returns, but always before the page's
+  // answer to a later check, so the tab closes only once Save rules is seen
+  // to be on.
   it("asks before the tab closes with unsaved text", async () => {
     view = await openRules(saved);
     const { page } = view;
     const box = page.getByRole("textbox");
+    const save = page.getByRole("button", { name: "Save rules" });
     await box.click();
     await box.fill("#work only.");
-    await expect
-      .poll(() => page.getByRole("button", { name: "Save rules" }).isEnabled())
-      .toBe(true);
+    await expect.poll(() => save.isEnabled()).toBe(true);
     const asked = page.waitForEvent("dialog");
     await page.close({ runBeforeUnload: true });
     const dialog = await asked;
