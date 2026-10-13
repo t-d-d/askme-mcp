@@ -17,6 +17,12 @@ export const suites: Record<string, Suite> = {
       "web/src/sorting.test.ts",
     ],
   },
+  refusalNote: {
+    about:
+      "The note a refused Save rules or Send sample asks gives, and when the cap's goes, against their unit tests.",
+    mutate: ["web/src/refusalNote.ts", "web/src/resets.ts"],
+    tests: ["web/src/refusalNote.test.ts", "web/src/resets.test.ts"],
+  },
   rate: {
     about:
       "The rate limits' windows and the time left in one, against their unit tests.",

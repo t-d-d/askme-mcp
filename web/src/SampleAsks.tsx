@@ -1,5 +1,4 @@
-import { capped, Refusal } from "./load";
-import { resetsHere, resetTime } from "./resets";
+import { refusalNote } from "./refusalNote";
 import styles from "./SampleAsks.module.css";
 import { useAfter } from "./useAfter";
 import { useSamples } from "./useSamples";
@@ -22,12 +21,9 @@ export function SampleAsks({
   onSent?: () => void;
 }) {
   const send = useSamples(onSent);
-  useAfter(
-    capped(send.error)
-      ? resetsHere(send.submittedAt, send.error.serviceAhead)
-      : undefined,
-    send.reset,
-  );
+  const note =
+    send.error === null ? null : refusalNote(send.error, send.submittedAt);
+  useAfter(note?.goesAt, send.reset);
   return (
     <div className={styles.samples}>
       <button
@@ -41,27 +37,9 @@ export function SampleAsks({
         Send sample asks
       </button>
       <p className={styles.note} role="status">
-        {send.error !== null && (
-          <Note error={send.error} pressedAt={send.submittedAt} />
-        )}
+        {note !== null &&
+          (note.kind === "failed" ? `${note.words} Try again.` : note.words)}
       </p>
     </div>
   );
-}
-
-// The daily cap resets at the next midnight UTC after the press, by the
-// service's clock, given in this browser's time zone.
-function Note({ error, pressedAt }: { error: Error; pressedAt: number }) {
-  if (capped(error)) {
-    return (
-      <>
-        You&apos;ve reached today&apos;s limit. It resets at{" "}
-        {resetTime(pressedAt + error.serviceAhead)}.
-      </>
-    );
-  }
-  if (error instanceof Refusal && error.code === "rate_limited") {
-    return <>Slow down a little. Try again in a few seconds.</>;
-  }
-  return <>That didn&apos;t go through. Try again.</>;
 }
