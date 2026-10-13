@@ -437,6 +437,10 @@ describe("a run whose asks were refused for rate (#294)", () => {
     expect(why.filter((line) => line.includes("got a 429"))).toHaveLength(2);
   });
 
+  it("does not say a model gave no fitting reply when every ask got a 429", () => {
+    expect(notSaved(limited)).not.toContain("No fitting reply came from");
+  });
+
   it("says a 429 is the provider's limit, not the model's answer", () => {
     expect(notSaved(limited)).toContain(
       "A 429 is the provider refusing the call for rate, not the model's answer.",

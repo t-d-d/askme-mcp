@@ -213,10 +213,16 @@ const rateLimited = (
   });
 
 // Why a run across the candidates is not saved in evals/scores.md, or
-// nothing when it is saved.
+// nothing when it is saved. A model refused for rate on every ask is named
+// for its 429s only, since it never had the chance to reply.
 export function notSaved(runs: readonly ModelRun[]): string | undefined {
-  const silent = unanswered(runs);
   const limited = rateLimited(runs);
+  const allRefused = new Set(
+    limited
+      .filter(({ refused, of }) => refused === of)
+      .map(({ model }) => model),
+  );
+  const silent = unanswered(runs).filter((model) => !allRefused.has(model));
   if (silent.length === 0 && limited.length === 0) return undefined;
   return [
     "Not saved in evals/scores.md:",
