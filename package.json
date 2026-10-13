@@ -13,6 +13,7 @@
     "test": "vitest run --project static --project unit --project int --project browser",
     "test:live": "vitest run --project live",
     "conformance": "vitest run --project conformance",
+    "checks": "ADR_CHECKS=1 vitest run --project static fitness/adr-checks.static.ts",
     "coverage": "vitest run --project unit --project int --coverage",
     "mutate": "node test/mutate.ts",
     "eval": "NODE_USE_ENV_PROXY=1 vitest run --config evals/vitest.config.ts",
