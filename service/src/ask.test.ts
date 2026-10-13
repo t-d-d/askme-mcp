@@ -111,7 +111,9 @@ const storeAnswering = (
     dismissAsk: unused,
     openAsks: unused,
     asksSince: unused,
-    countCall: () => Promise.resolve(counted),
+    // The ask tool counts against the ask limit, and no other.
+    countCall: (_, limit) =>
+      limit === "ask" ? Promise.resolve(counted) : unused(),
     rules: unused,
     saveRules: unused,
     resaveRules: unused,

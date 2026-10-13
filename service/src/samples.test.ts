@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { askTool } from "./ask";
 import { callerOf, type AccountId } from "./identity";
+import type { LimitName } from "./rate";
 import { sampleAreas, sendSamples, shuffled } from "./samples";
 import type { Counted, NewAsk, Posting } from "./store/store";
 
@@ -88,7 +89,11 @@ function storeAnswering({
     posted,
     counted: () => counted,
     store: {
-      countCall: () => {
+      // Sample asks count against the ask limit, and no other.
+      countCall: (_: AccountId, limit: LimitName): Promise<Counted> => {
+        if (limit !== "ask") {
+          return Promise.reject(new Error(`Counted against ${limit}.`));
+        }
         counted += 1;
         return Promise.resolve(counts(counted));
       },

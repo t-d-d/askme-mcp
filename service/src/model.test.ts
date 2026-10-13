@@ -281,7 +281,11 @@ const owner = accountId("user_owner");
 function memoryCounter(left: number, events: string[]) {
   let calls = left;
   const counter: CallCounter = {
-    countCall: (account) => {
+    countCall: (account, limit) => {
+      // A model call counts against the model-call cap, and no other limit.
+      if (limit !== "modelCall") {
+        return Promise.reject(new Error(`Counted against ${limit}.`));
+      }
       events.push(`count ${account}`);
       if (calls <= 0) {
         return Promise.resolve({ counted: false, secondsLeft: 3600 });
