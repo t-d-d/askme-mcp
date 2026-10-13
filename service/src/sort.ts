@@ -174,11 +174,12 @@ export function followUpForLongReason(
   reply: unknown,
   hashtags: readonly string[],
 ): FollowUp | undefined {
-  if (parseSortReply(reply, hashtags) !== undefined) return undefined;
   const unlimited = replySchema(hashtags, Infinity).safeParse(reply);
   if (!unlimited.success) return undefined;
+  const { length } = unlimited.data.reason;
+  if (length <= reasonLimit) return undefined;
   return {
     reply: JSON.stringify(reply),
-    user: `Your reason has ${String(unlimited.data.reason.length)} characters, which is too long. Reply again with the whole JSON the schema asks for, with a reason of at most ${String(reasonAsked)} characters.`,
+    user: `Your reason has ${String(length)} characters, which is too long. Reply again with the whole JSON the schema asks for, with a reason of at most ${String(reasonAsked)} characters.`,
   };
 }
