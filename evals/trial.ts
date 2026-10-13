@@ -8,7 +8,7 @@ import { defaultModel } from "../service/src/model";
 import { sortTimeoutMs } from "../service/src/sorter";
 import { levels, type Level } from "../shared/page-api";
 import type { EvalCase } from "./cases";
-import { modelsNamed } from "./model";
+import { modelsNamed, rateWaits } from "./model";
 import {
   accepted,
   bothRight,
@@ -70,11 +70,17 @@ export function trialSettings(
 export const recordPath = (folder: string, name: string): string =>
   join(folder, `${name}.json`);
 
+// The longest a call waits, in all, for the provider to stop refusing it
+// for rate.
+const rateWaitMs = rateWaits.reduce((sum, wait) => sum + wait, 0);
+
 // How long a trial may run: every sort of every ask at the most sorts, sent
 // the given number at once, each timing out and timing out again on its
-// follow-up. A trial that ran out of time would save nothing it paid for.
+// follow-up, and each call first waiting out every 429 (#303). A trial that
+// ran out of time would save nothing it paid for.
 export const trialTimeoutMs = (asks: number, parallel: number): number =>
-  Math.ceil((asks * mostSorts) / parallel) * 2 * sortTimeoutMs + 60_000;
+  Math.ceil((asks * mostSorts) / parallel) * 2 * (sortTimeoutMs + rateWaitMs) +
+  60_000;
 
 const levelOf = (line: string): Level | undefined =>
   levels.find((level) => line.startsWith(`${level}: `));

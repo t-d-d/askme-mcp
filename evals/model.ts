@@ -7,6 +7,7 @@
 // fetch goes through that proxy.
 import {
   createModel,
+  ModelFailed,
   openRouterEndpoint,
   type Model,
 } from "../service/src/model";
@@ -53,13 +54,44 @@ export function evalKey(): string | undefined {
   return key;
 }
 
-// One model, reached with the key evalKey gave.
+// One model, reached with the key evalKey gave. It sends each call once.
+// An eval sends it through retryingOnRate.
 export const clientFor = (model: string, key: string | undefined): Model =>
   createModel({
     endpoint: openRouterEndpoint,
     model,
     key: () => Promise.resolve(key),
   });
+
+// The wait before each new try of a call the provider refused for rate: a
+// minute in all. On #273 a call OpenRouter refused for rate got a reply a
+// minute later. A model refused on every call still finishes a run across
+// the candidates inside the eval's time limit.
+export const rateWaits = [10_000, 20_000, 30_000];
+
+const pause = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// A model that sends a call again when the provider refuses it for rate,
+// with a 429, once after each wait in rateWaits (#303). A 429 means the
+// model never saw the call, so a new try draws nothing new from it. The
+// service's plain second try is a second draw, and the eval leaves it out.
+// The last 429 is thrown as it came, so the call counts as refused.
+export const retryingOnRate = (model: Model): Model => ({
+  async reply(request) {
+    for (const wait of rateWaits) {
+      try {
+        return await model.reply(request);
+      } catch (error) {
+        if (!(error instanceof ModelFailed && error.reason === "status-429")) {
+          throw error;
+        }
+      }
+      await pause(wait);
+    }
+    return model.reply(request);
+  },
+});
 
 // The lines of a report that say how the model was reached.
 export const keyLine = `Key: ${cloud ? "none sent, as in a Claude cloud session, where the proxy adds it" : "OPENROUTER_API_KEY"}`;

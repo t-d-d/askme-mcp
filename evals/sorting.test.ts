@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   ModelFailed,
   type Model,
@@ -7,6 +7,7 @@ import {
 import { reasonLimit } from "../service/src/sort";
 import { sortMaxTokens, sortTimeoutMs } from "../service/src/sorter";
 import { cases } from "./cases";
+import { rateWaits } from "./model";
 import { evalPrompt, inPool, sortEvalAsk } from "./sorting";
 
 // A model that answers each request with the next reply in the list, a
@@ -81,6 +82,32 @@ describe("one sort of an eval ask", () => {
     const outcome = await sortEvalAsk(model, one);
     expect(outcome.sort).toBeUndefined();
     expect(outcome.failure).toBe("reply-rejected");
+  });
+
+  it("scores a reply that came after a 429 like any other, with no wait in its time (#303)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "performance"] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const { model, requests } = fakeModel([
+      new ModelFailed("status-429"),
+      fits,
+    ]);
+    const sorted = sortEvalAsk(model, one);
+    await vi.advanceTimersByTimeAsync(rateWaits[0] ?? 0);
+    const outcome = await sorted;
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(outcome).toEqual({
+      one,
+      sort: {
+        hashtags: ["work"],
+        level: "high",
+        reason: "It holds a release.",
+      },
+      ms: 0,
+      followedUp: false,
+    });
   });
 
   it("records a model that gave no reply by its reason", async () => {

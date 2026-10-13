@@ -3,6 +3,7 @@ import { defaultModel } from "../service/src/model";
 import { sortTimeoutMs } from "../service/src/sorter";
 import type { Level } from "../shared/page-api";
 import { cases, type EvalCase } from "./cases";
+import { rateWaits } from "./model";
 import type { Outcome } from "./score";
 import {
   draftPrompt,
@@ -309,6 +310,13 @@ describe("a trial's time limit", () => {
     // 48 asks, 20 sorts each, 8 at once: 120 turns, each up to two calls.
     expect(trialTimeoutMs(48, 8)).toBeGreaterThanOrEqual(
       Math.ceil((48 * mostSorts) / 8) * 2 * sortTimeoutMs,
+    );
+  });
+
+  it("covers every call waiting out each wait after a 429 before it times out (#303)", () => {
+    const waits = rateWaits.reduce((sum, wait) => sum + wait, 0);
+    expect(trialTimeoutMs(48, 8)).toBeGreaterThanOrEqual(
+      Math.ceil((48 * mostSorts) / 8) * 2 * (sortTimeoutMs + waits),
     );
   });
 });

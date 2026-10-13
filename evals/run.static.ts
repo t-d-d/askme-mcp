@@ -52,6 +52,14 @@ describe("the eval and the trial share one call", () => {
   );
 });
 
+describe("the reading eval", () => {
+  it("sends a call the provider refused for rate again, as the sorting eval does (#303)", () => {
+    expect(readRepoFile("evals/reading.eval.ts")).toMatch(
+      /^ *const client = retryingOnRate\(clientFor\(model, key\)\);$/mu,
+    );
+  });
+});
+
 describe("the eval across the candidates", () => {
   it("has a command of its own, which runs the eval with every candidate", () => {
     expect(scripts()["eval:candidates"]).toBe("EVAL_CANDIDATES=1 npm run eval");
