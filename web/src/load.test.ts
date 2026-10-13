@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aheadSince, serviceAhead, type Moment } from "./load";
+import { aheadSince, countOn, serviceAhead, type Moment } from "./load";
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -89,5 +89,54 @@ describe("how far the service's clock is ahead after polls that failed", () => {
       steady: then.steady + 10_000,
     };
     expect(serviceAt(now, false)).toBe(then.date + ahead + 10_000);
+  });
+});
+
+describe("how far the service's clock is ahead, counted on from poll to poll while polls fail", () => {
+  const minute = 60 * 1000;
+  // The last poll that reached askme, on both of this browser's clocks.
+  const reached = (ahead: number) => ({
+    serviceAhead: ahead,
+    at: { date: at("2026-10-12T23:55:00Z"), steady: 1_000 },
+    visibilityChanges: 0,
+  });
+  // A failed poll ten seconds later, by performance.now(), after the device
+  // moved its clock on by `moved` as well.
+  const failedAfter = (from: { at: Moment }, moved: number) => ({
+    date: from.at.date + 10_000 + moved,
+    steady: from.at.steady + 10_000,
+  });
+
+  // A device with a clock three minutes slow puts it forward, then sleeps an
+  // hour, and one with a clock three minutes fast puts it back, then sleeps
+  // 61 minutes. Counted across both steps at once, the correction and the
+  // sleep add up to 63 or 58 minutes, which reads as a sleep of 63 or as no
+  // sleep. Counted a step at a time, the correction counts as no time and
+  // the sleep as the time it was.
+  it.each([
+    ["slow", 3 * minute, 60 * minute],
+    ["fast", -3 * minute, 61 * minute],
+  ])(
+    "judges a clock a few minutes %s put right, and a sleep after it with the page showing, each by its own step",
+    (_, ahead, sleep) => {
+      const corrected = countOn(
+        reached(ahead),
+        failedAfter(reached(ahead), ahead),
+        0,
+      );
+      expect(corrected.serviceAhead).toBe(0);
+      const woken = countOn(corrected, failedAfter(corrected, sleep), 0);
+      expect(woken.serviceAhead).toBe(0);
+      expect(woken.at).toEqual(failedAfter(corrected, sleep));
+    },
+  );
+
+  it("reads the page as hidden in a step when it was hidden or shown in that step, and not before", () => {
+    const hidden = countOn(reached(0), failedAfter(reached(0), 0), 2);
+    expect(hidden.visibilityChanges).toBe(2);
+    const putRight = countOn(hidden, failedAfter(hidden, 10 * minute), 2);
+    expect(putRight.serviceAhead).toBe(-10 * minute);
+    const shownAgain = countOn(hidden, failedAfter(hidden, 10 * minute), 3);
+    expect(shownAgain.serviceAhead).toBe(0);
   });
 });

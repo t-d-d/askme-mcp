@@ -10,10 +10,11 @@
 // Each answer's Date header also gives the service's time. The page
 // compares a time the list gives by the service's clock, such as when the
 // daily cap on model calls resets, with that clock. While polls fail, the
-// page counts the service's clock on from the last poll that reached askme
-// (aheadSince in load.ts), so the device putting its own clock right in the
-// meantime moves none of those times, unless it moves it on an hour or more,
-// which the page reads as the device sleeping.
+// page counts the service's clock on from each poll to the next, whether
+// that one reached askme or failed (countOn in load.ts), so the device putting
+// its own clock right in the meantime moves none of those times, unless it
+// moves it on an hour or more in one step, which the page reads as the
+// device sleeping.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   pagePaths,
@@ -22,7 +23,7 @@ import {
   type AsksAnswer,
 } from "../../shared/page-api";
 import { useAuth } from "./auth";
-import { aheadSince, loadDated, momentNow, type Moment } from "./load";
+import { countOn, loadDated, momentNow, type Counted } from "./load";
 import { pollMs } from "./poll";
 import type { Answer } from "./useAnswer";
 
@@ -36,22 +37,20 @@ const queryKey = [pagePaths.asks];
 // The list as the cache holds it, with how far the service's clock was
 // ahead of this browser's at the last poll that reached askme (load.ts),
 // the moment its answer came, and visibilityChanges as it was sent.
-interface Polled {
+interface Polled extends Counted {
   list: AsksAnswer;
-  serviceAhead: number;
-  at: Moment;
-  visibilityChanges: number;
 }
 
 // A poll that failed, with how far the service's clock was ahead of this
-// browser's as it failed, counted on from the last poll that reached askme,
-// or 0 before one has.
+// browser's as it failed, counted on from the poll before it, the moment it
+// failed and visibilityChanges then. Before a poll has reached askme there is
+// nothing to count on from.
 class PollFailed extends Error {
-  readonly serviceAhead: number;
-  constructor(serviceAhead: number, cause: unknown) {
+  readonly counted: Counted | undefined;
+  constructor(counted: Counted | undefined, cause: unknown) {
     super("A poll for the list failed.", { cause });
     this.name = "PollFailed";
-    this.serviceAhead = serviceAhead;
+    this.counted = counted;
   }
 }
 
@@ -106,15 +105,14 @@ export function useAsks(): PolledAnswer {
         }
         return { list: answer, ...polled };
       } catch (error) {
+        // The poll before this one: its failure, if it failed, which the
+        // cache holds until a poll reaches askme, and else the list.
+        const before = queries.getQueryState(queryKey)?.error;
+        const from = before instanceof PollFailed ? before.counted : held;
         throw new PollFailed(
-          held === undefined
-            ? 0
-            : aheadSince(
-                held.serviceAhead,
-                held.at,
-                momentNow(),
-                held.visibilityChanges === visibilityChanges,
-              ),
+          from === undefined
+            ? undefined
+            : countOn(from, momentNow(), visibilityChanges),
           error,
         );
       }
@@ -132,7 +130,7 @@ export function useAsks(): PolledAnswer {
     polledAt: query.isError ? query.errorUpdatedAt : query.dataUpdatedAt,
     serviceAhead:
       query.error instanceof PollFailed
-        ? query.error.serviceAhead
+        ? (query.error.counted?.serviceAhead ?? 0)
         : (query.data?.serviceAhead ?? 0),
     receivedAhead: query.data?.serviceAhead ?? 0,
     failed: query.isError,
