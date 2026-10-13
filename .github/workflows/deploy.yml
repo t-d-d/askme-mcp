@@ -96,3 +96,140 @@ jobs:
           ASKME_URL: ${{ needs.deploy.outputs.url }}
           ASKME_MCP_URL: ${{ needs.deploy.outputs.mcp }}
           CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
+
+  # live-ok names the last commit that passed its live check (ADR 25).
+  mark-live-ok:
+    needs: live
+    runs-on: ubuntu-24.04
+    # A tag left behind only means a rollback goes one build further back. It
+    # is no reason to fail a deploy that passed its live check.
+    continue-on-error: true
+    permissions:
+      contents: write
+    steps:
+      - name: Move live-ok to the deployed commit
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/live-ok" --silent; then
+            gh api --method PATCH \
+              "repos/$GITHUB_REPOSITORY/git/refs/tags/live-ok" \
+              -f sha="$GITHUB_SHA" -F force=true --silent
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref=refs/tags/live-ok -f sha="$GITHUB_SHA" --silent
+          fi
+          echo "live-ok now names $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Say the tag did not move
+        if: failure()
+        run: >-
+          echo "live-ok did not move to $GITHUB_SHA. A rollback would put
+          back an older build." >> "$GITHUB_STEP_SUMMARY"
+
+  # The live check failed, so put back the last build that passed it. The run
+  # still ends failed, and the owner reverts the pull request.
+  find-live-ok:
+    needs: live
+    if: ${{ failure() && needs.live.result == 'failure' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.tag.outputs.sha }}
+    steps:
+      - name: Find the last build that passed its live check
+        id: tag
+        run: |
+          found=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/live-ok" \
+            --jq '.[] | select(.ref == "refs/tags/live-ok") | .ref')
+          if [ -z "$found" ]; then
+            echo "There is no live-ok tag yet, so nothing is rolled back." \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/tags/live-ok" --jq .sha)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "The live check failed. Redeploying live-ok, commit $sha." \
+            >> "$GITHUB_STEP_SUMMARY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # The deploy's steps, at live-ok, without the deploy role's own stack: an
+  # older template must not undo a change to the role.
+  rollback:
+    needs: find-live-ok
+    if: ${{ !cancelled() && needs.find-live-ok.outputs.sha != '' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      url: ${{ steps.page.outputs.url }}
+      mcp: ${{ steps.page.outputs.mcp }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.find-live-ok.outputs.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      # Build before the job holds any AWS credentials. Clerk's publishable
+      # key is public (ADR 6).
+      - name: Build the page
+        run: npm run build
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Deploy the stack
+        run: node_modules/.bin/serverless deploy
+        env:
+          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }}
+          CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
+      - name: Publish the page
+        id: page
+        run: |
+          output() {
+            aws cloudformation describe-stacks --stack-name askme-prod \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" \
+              --output text
+          }
+          bucket=$(output WebBucketName)
+          url=$(output WebUrl)
+          mcp="$(output HttpApiUrl)/mcp"
+          # The hashed files first, then the page that names them. The page is
+          # revalidated on every load, so a deploy shows at once.
+          aws s3 sync web/dist "s3://$bucket" --exclude index.html \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 cp web/dist/index.html "s3://$bucket/index.html" \
+            --cache-control "no-cache"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "mcp=$mcp" >> "$GITHUB_OUTPUT"
+          echo "The page is live at $url" >> "$GITHUB_STEP_SUMMARY"
+          echo "The MCP endpoint is $mcp" >> "$GITHUB_STEP_SUMMARY"
+
+  # live-ok's own live tier, against what the rollback put back.
+  rollback-live:
+    needs: [find-live-ok, rollback]
+    # The live job failed upstream, so without a condition this never runs.
+    if: ${{ !cancelled() && needs.rollback.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.find-live-ok.outputs.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:live
+        env:
+          ASKME_URL: ${{ needs.rollback.outputs.url }}
+          ASKME_MCP_URL: ${{ needs.rollback.outputs.mcp }}
+          CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
