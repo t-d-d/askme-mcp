@@ -67,33 +67,32 @@ const list: AsksAnswer = {
   asks: [],
 };
 
-// The open list with one ask behind the rules, whose sorting stops or
-// stopped a while from now.
-const behind = (offset: number): AsksAnswer => ({
-  ...list,
-  asks: [
-    {
-      id: "a",
-      summary: "Renew the shop's domain?",
-      spokenDetail: "The domain lapses on Friday.",
-      postedAt: new Date(Date.now() - 60 * 60_000).toISOString(),
-      opened: false,
-      sortingUntil: new Date(Date.now() + offset).toISOString(),
-      sort: null,
-    },
-  ],
-});
-
 // An ask not sorted yet, which turns stopped at the time given by the
-// service's clock.
-const behindUntil = (sortingUntil: string): AsksAnswer["asks"][number] => ({
+// service's clock. It was posted half an hour before then unless another
+// time is given.
+const behindUntil = (
+  sortingUntil: string,
+  postedAt = new Date(Date.parse(sortingUntil) - 30 * minute).toISOString(),
+): AsksAnswer["asks"][number] => ({
   id: "a",
   summary: "Renew the shop's domain?",
   spokenDetail: "The domain lapses on Friday.",
-  postedAt: new Date(Date.parse(sortingUntil) - 30 * minute).toISOString(),
+  postedAt,
   opened: false,
   sortingUntil,
   sort: null,
+});
+
+// The open list with one ask behind the rules, posted an hour ago, whose
+// sorting stops or stopped a while from now.
+const behind = (offset: number): AsksAnswer => ({
+  ...list,
+  asks: [
+    behindUntil(
+      new Date(Date.now() + offset).toISOString(),
+      new Date(Date.now() - 60 * minute).toISOString(),
+    ),
+  ],
 });
 
 // The rules screen, with the rules answered by the given answer and saved
