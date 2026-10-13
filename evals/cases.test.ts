@@ -94,6 +94,16 @@ describe("the core eval set", () => {
     );
   });
 
+  it("holds the levels the owner set by what the work was for, not by its price or how it is done (#191)", () => {
+    const level = (name: string) =>
+      cases.find((one) => one.name === name)?.expected.level;
+    expect(level("a plumber who can come today")).toBe("normal");
+    expect(level("a delivery slot held until tonight")).toBe("high");
+    expect(level("a sign-in code for the school's payment site")).toBe("high");
+    expect(level("a council tax direct debit")).toBe("high");
+    expect(level("a ticket for next sprint")).toBe("normal");
+  });
+
   it("has rules that say nothing about when an ask is due, since the level ignores time (#101)", () => {
     expect(evalRules.text).not.toMatch(/\bdue\b|next week|later|soon/iu);
   });
