@@ -1,8 +1,8 @@
-import { useCallback } from "react";
+import { Fragment, useCallback } from "react";
 import type { PageAsk } from "../../shared/page-api";
 import type { AskActions } from "./actions";
 import { SessionIcon, SpeakerIcon } from "./Icon";
-import { destinations, longSite } from "./links";
+import { destinations, longSite, siteParts } from "./links";
 import { OutLink } from "./OutLink";
 import { askColour, tagColour, type HashtagColour } from "./palette";
 import { Pills } from "./Pills";
@@ -77,7 +77,12 @@ export function TopCard({
                 className={styles.site}
                 data-long={longSite(main.site) ? "" : undefined}
               >
-                {main.site}
+                {siteParts(main.site).map((part, index) => (
+                  <Fragment key={index}>
+                    {index > 0 && <wbr />}
+                    {part}
+                  </Fragment>
+                ))}
               </span>
             </OutLink>
           )}

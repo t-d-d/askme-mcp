@@ -83,6 +83,10 @@
   font-weight: var(--weight-strong);
 }
 
+/*
+ * A name breaks after a dot, where the component marks it. It breaks inside
+ * a part only when that part alone is longer than the line.
+ */
 .site {
   font-size: var(--size-meta-small);
   line-height: var(--leading-meta);
