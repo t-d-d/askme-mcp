@@ -88,9 +88,10 @@ export function testCommand(tests: readonly string[]): string {
   return ["npx vitest run", ...projects, ...tests].join(" ");
 }
 
-// The most mutants run at once. Each run is a whole vitest run, and a
-// crowded machine slows a run past Stryker's time limit, and Stryker counts
-// a mutant that timed out as killed, which would hide a survivor.
+// The most mutants a suite of unit tests runs at once. Each is a whole
+// vitest run. A crowded machine slows a run past Stryker's time limit, and
+// Stryker counts a mutant that timed out as killed, which would hide a
+// survivor.
 const mostAtOnce = 3;
 
 // How many mutants run at once. A suite with an integration test runs one
