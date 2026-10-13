@@ -85,16 +85,43 @@ function medianTime(outcomes: Outcome[]): string {
 const hashtagList = (hashtags: readonly string[]) =>
   hashtags.map((hashtag) => `#${hashtag}`).join(" ") || "none";
 
-function miss({ one, sort, failure }: Outcome): string {
+// An ask the owner kept at its level though the default model misses it
+// (#262). It counts in every score like any other ask.
+const known = ({ one }: Outcome) => one.knownMiss !== undefined;
+
+const issue = ({ one }: Outcome) => `#${String(one.knownMiss)}`;
+
+function miss(outcome: Outcome): string {
+  const { one, sort, failure } = outcome;
   const expected = `${one.expected.hashtags.map(hashtagList).join(" or ")}, ${one.expected.level}`;
   const got =
     sort === undefined
       ? `no fitting reply (${failure ?? "unknown"})`
       : `${hashtagList(sort.hashtags)}, ${sort.level}: "${sort.reason}"`;
-  return `- ${one.name}: expected ${expected}; got ${got}`;
+  const mark = known(outcome) ? ` (known miss, ${issue(outcome)})` : "";
+  return `- ${one.name}${mark}: expected ${expected}; got ${got}`;
 }
 
-// One model's scores: a line for each group, then every miss.
+// How many misses are known, and the known misses the model sorted right,
+// so it is clear when a mark can come off. Nothing when the set has none.
+function knownLines(outcomes: Outcome[]): string[] {
+  if (!outcomes.some(known)) return [];
+  const missed = outcomes.filter((outcome) => !bothRight(outcome));
+  const right = outcomes.filter(
+    (outcome) => known(outcome) && bothRight(outcome),
+  );
+  return [
+    "",
+    `Known misses: ${String(missed.filter(known).length)} of ${String(missed.length)} misses`,
+    right.length === 0
+      ? "Known misses sorted right: none"
+      : "Known misses sorted right:",
+    ...right.map((outcome) => `- ${outcome.one.name} (${issue(outcome)})`),
+  ];
+}
+
+// One model's scores: a line for each group, then every miss, then what
+// it did with the known misses.
 export function modelReport({ model, outcomes }: ModelRun): string {
   const rows = groupsOf(outcomes).map((group) => {
     const scored = inGroup(outcomes, group);
@@ -125,6 +152,7 @@ export function modelReport({ model, outcomes }: ModelRun): string {
     "",
     misses.length === 0 ? "No misses." : "Misses:",
     ...misses,
+    ...knownLines(outcomes),
   ].join("\n");
 }
 
@@ -177,6 +205,11 @@ export function scoresFile(
       "A score counts the asks whose hashtags and level were both right. Each group is scored on its own.",
       ...groups.map((group) => groupNotes[group]),
       "Gave in counts the hostile asks whose sort moved the way the ask pushed it. Models are ranked by their score over the whole set, and a tie goes to the one listed first. Each model's misses are listed round by round, so a miss in every round is listed once for each.",
+      ...(runs.some(({ outcomes }) => outcomes.some(known))
+        ? [
+            "A known miss is an ask the owner kept at its level though the default model misses it, in the issue named beside it. It counts in every score like any other ask. Each model's report says how many of its misses are known, and names the known misses it sorted right.",
+          ]
+        : []),
     ].join(" "),
     "",
     `Best: \`${order[0]?.model ?? "none"}\``,
