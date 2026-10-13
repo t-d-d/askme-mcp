@@ -64,10 +64,10 @@ export function useAsks(): PolledAnswer {
     // The last poll that reached askme sets the offset, and failed polls
     // keep it. So if the device's clock is set while polls fail, the page's
     // times move by that much until a poll gets through. This is a chosen
-    // trade-off (#332, #340). The page once corrected for it, with
-    // performance.now() and a guess at when the device slept (#233, #253,
-    // #260), and that code cost more than so rare a case is worth. Do not
-    // bring the correction back without the owner's decision.
+    // trade-off (issues 332 and 340). The page once corrected for it, with
+    // performance.now() and a guess at when the device slept (issues 233,
+    // 253 and 260), and that code cost more than so rare a case is worth.
+    // Do not bring the correction back without the owner's decision.
     serviceAhead: query.data?.serviceAhead ?? 0,
     failed: query.isError,
   };

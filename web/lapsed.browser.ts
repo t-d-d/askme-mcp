@@ -438,10 +438,10 @@ describe("the lapsed line", () => {
     expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
   });
 
-  // The trade-off chosen in #340: while polls fail, the page keeps the last
-  // poll's offset and does not notice the device's clock being set. A slow
-  // clock put right makes an ask lapse early by that much, until a poll gets
-  // through.
+  // The trade-off chosen in issue 340: while polls fail, the page keeps the
+  // last poll's offset and does not notice the device's clock being set. A
+  // slow clock put right makes an ask lapse early by that much, until a poll
+  // gets through.
   it("lapses an ask early by as much as a slow clock is put right while polls fail, and brings it back once a poll gets through", async () => {
     const lapses = evening.getTime() + 20 * minute;
     const serviceAhead = 3 * minute;
