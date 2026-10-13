@@ -228,10 +228,13 @@ async function dismissAndGo(page: Page) {
       );
       if (!(button instanceof HTMLButtonElement)) return "no Dismiss";
       const first = new Promise<string>((resolve) => {
-        window.addEventListener("hashchange", () => resolve("the address"), {
+        const came = (what: string) => () => {
+          resolve(what);
+        };
+        window.addEventListener("hashchange", came("the address"), {
           once: true,
         });
-        requestAnimationFrame(() => resolve("the next frame"));
+        requestAnimationFrame(came("the next frame"));
       });
       button.click();
       window.location.hash = "#asks";
