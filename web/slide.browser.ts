@@ -255,6 +255,29 @@ describe("an ask's card", () => {
     ).toBe(true);
   });
 
+  // The card stays until the slide draws the list, so a second tap can
+  // reach Dismiss before then. The ask is dismissed once, so nothing is
+  // sent before its note goes, and Undo brings it back.
+  it("dismisses its ask once when Dismiss is tapped twice before the slide", async () => {
+    const page = await open("");
+    await theList(page);
+    await slides(page, () => row(page, 3).click(), slidesIn);
+    await theCard(page);
+    await page.getByRole("button", { name: "Dismiss" }).evaluate((button) => {
+      if (!(button instanceof HTMLButtonElement)) return;
+      button.click();
+      button.click();
+    });
+    expect(await moving(page)).toEqual(slidesOut);
+    await finish(page);
+    await theList(page);
+    await page.getByRole("button", { name: "Undo" }).click();
+    await row(page, 3).waitFor();
+    expect(
+      view?.apiCalls.filter(({ path }) => path === askChangePaths.dismissed),
+    ).toEqual([]);
+  });
+
   // The address names a card, but its ask has gone, so the list shows.
   it("slides by what is drawn, not by the address", async () => {
     const page = await open("#ask/gone");

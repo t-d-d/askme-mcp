@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { PageAsk } from "../../shared/page-api";
 import type { AskActions } from "./actions";
 import { BackIcon, SpeakerIcon } from "./Icon";
@@ -45,6 +46,9 @@ export function OpenCard({
   const followed = () => {
     markOpened(id);
   };
+  // The card stays until the slide draws the list, so Dismiss can be tapped
+  // again before then. The ask is dismissed once.
+  const dismissing = useRef(false);
   return (
     <div
       className={styles.screen}
@@ -60,6 +64,8 @@ export function OpenCard({
           className={styles.dismiss}
           type="button"
           onClick={() => {
+            if (dismissing.current) return;
+            dismissing.current = true;
             // The card goes as the ask does, so it slides out then.
             slide(() => {
               dismiss(id);
