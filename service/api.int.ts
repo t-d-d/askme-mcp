@@ -30,7 +30,7 @@ import { captureLogs, lineText } from "../test/logs";
 import { connect, origin } from "../test/mcp";
 import { handler } from "./src/handler";
 import { callerOf } from "./src/identity";
-import { sortingMs, sortRequestTimeoutMs } from "./src/jobs";
+import { sortRequestTimeoutMs } from "./src/jobs";
 import { askLimit, rulesSaveLimit } from "./src/rate";
 import { exampleRules } from "./src/rules";
 import { sampleAreas } from "./src/samples";
@@ -41,6 +41,7 @@ import {
   dedupeWindowMinutes,
   type NewAsk,
 } from "./src/store/store";
+import { sortingMs } from "./src/view";
 
 let issuer: FakeIssuer;
 beforeAll(async () => {
