@@ -6,9 +6,12 @@ import { askRefusalOf, pageRefusalOf } from "../../test/refusals";
 // window count in five minutes (#224).
 vi.mock("./rate", async (original) => ({
   ...(await original<typeof import("./rate")>()),
-  pollLimit: { polls: 60, windowMinutes: 5 },
-  askLimit: { asks: 30, windowMinutes: 5 },
-  rulesSaveLimit: { saves: 10, windowMinutes: 5 },
+  rateLimits: {
+    poll: { limit: 60, windowMinutes: 5 },
+    ask: { limit: 30, windowMinutes: 5 },
+    rulesSave: { limit: 10, windowMinutes: 5 },
+    modelCall: { limit: 2000, windowMinutes: 24 * 60 },
+  },
 }));
 
 describe("a refusal at a rate limit with a window longer than a minute", () => {

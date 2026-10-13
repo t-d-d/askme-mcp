@@ -4,12 +4,7 @@ import { afterAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 import { putItem, storedItems } from "../test/dynamodb";
 import { callerOf, type AccountId } from "./src/identity";
-import {
-  askLimit,
-  modelCallLimit,
-  pollLimit,
-  rulesSaveLimit,
-} from "./src/rate";
+import { rateLimits } from "./src/rate";
 import { exampleRules, type HashtagWindow } from "./src/rules";
 import { keys } from "./src/store/keys";
 import {
@@ -651,10 +646,10 @@ describe("the daily cap", () => {
 });
 
 describe("the ask tool's rate counter", () => {
-  it(`counts ${String(askLimit.asks)} calls in a minute, refuses the next with the seconds left, and counts afresh the next minute`, async () => {
+  it(`counts ${String(rateLimits.ask.limit)} calls in a minute, refuses the next with the seconds left, and counts afresh the next minute`, async () => {
     const owner = account();
     const start = new Date("2026-10-11T09:30:00.000Z");
-    for (let n = 0; n < askLimit.asks; n += 1) {
+    for (let n = 0; n < rateLimits.ask.limit; n += 1) {
       expect(
         await store.countAsk(owner, new Date(start.getTime() + n * 1000)),
       ).toEqual({ counted: true });
@@ -693,7 +688,7 @@ describe("the poll's rate counter", () => {
 
   it("counts each poll in a minute up to the limit, then refuses", async () => {
     const owner = account();
-    for (let polls = 0; polls < pollLimit.polls; polls += 1) {
+    for (let polls = 0; polls < rateLimits.poll.limit; polls += 1) {
       expect(await store.countPoll(owner, minute)).toEqual({ counted: true });
     }
     expect(await store.countPoll(owner, minute)).toEqual({
@@ -704,7 +699,7 @@ describe("the poll's rate counter", () => {
 
   it("counts afresh in the next minute", async () => {
     const owner = account();
-    for (let polls = 0; polls < pollLimit.polls; polls += 1) {
+    for (let polls = 0; polls < rateLimits.poll.limit; polls += 1) {
       await store.countPoll(owner, minute);
     }
     const next = new Date("2026-10-11T09:31:00.000Z");
@@ -752,9 +747,9 @@ describe("the daily count of model calls", () => {
       expiresAt: Date.parse("2026-10-12T01:00:00.000Z") / 1000,
     });
 
-  it(`counts ${String(modelCallLimit.calls)} calls in a UTC day, refuses the next, and counts afresh the next day`, async () => {
+  it(`counts ${String(rateLimits.modelCall.limit)} calls in a UTC day, refuses the next, and counts afresh the next day`, async () => {
     const owner = account();
-    await countAt(owner, modelCallLimit.calls - 1);
+    await countAt(owner, rateLimits.modelCall.limit - 1);
     expect(await store.countModelCall(owner, morning)).toEqual({
       counted: true,
     });
@@ -785,15 +780,15 @@ describe("the daily count of model calls", () => {
   it("says the cap is spent once every call is made, and counts nothing to say so", async () => {
     const owner = account();
     expect(await store.modelCapSpent(owner, morning)).toBe(false);
-    await countAt(owner, modelCallLimit.calls - 1);
+    await countAt(owner, rateLimits.modelCall.limit - 1);
     expect(await store.modelCapSpent(owner, morning)).toBe(false);
-    await countAt(owner, modelCallLimit.calls);
+    await countAt(owner, rateLimits.modelCall.limit);
     expect(await store.modelCapSpent(owner, morning)).toBe(true);
     expect(
       await store.modelCapSpent(owner, new Date("2026-10-12T00:00:00.000Z")),
     ).toBe(false);
     expect(await countsOf(owner)).toEqual([
-      expect.objectContaining({ count: modelCallLimit.calls }),
+      expect.objectContaining({ count: rateLimits.modelCall.limit }),
     ]);
   });
 });
@@ -1275,7 +1270,7 @@ describe("an ask to sort", () => {
 describe.each([
   [
     "saving the rules",
-    rulesSaveLimit.saves,
+    rateLimits.rulesSave.limit,
     "countRulesSave",
     "rulesSaveCount",
   ],

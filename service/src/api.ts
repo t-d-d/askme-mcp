@@ -19,7 +19,7 @@ import { AgentToken, TokenRejected, type AccountId } from "./identity";
 import { queueSorts, type SortRequests } from "./jobs";
 import { errorClass, type Logger } from "./log";
 import { CapReached, type CountedModel } from "./model";
-import { askLimit, modelCallLimit, pollLimit, rulesSaveLimit } from "./rate";
+import { rateLimits } from "./rate";
 import { mcpPath, type PageRoute } from "./routes";
 import { emptyRules, readRules } from "./rules";
 import { sendSamples } from "./samples";
@@ -30,6 +30,7 @@ import {
   type Store,
 } from "./store/store";
 import { asksView, rulesView, sortedWithRules } from "./view";
+import { countPer, timesIn, waitFor } from "./wording";
 
 export interface PageContext {
   // The address the caller used, from which the MCP endpoint's is built.
@@ -69,25 +70,19 @@ const sinceSchema = z
   .transform(Number)
   .optional();
 
-const plural = (count: number, word: string) =>
-  `${String(count)} ${word}${count === 1 ? "" : "s"}`;
-
-const inMinutes = (minutes: number) =>
-  minutes === 1 ? "a minute" : plural(minutes, "minute");
-
 // Says what the limit is and how long to wait, from the limit's own
 // constants (ADR 11).
 function pollRefusal(secondsLeft: number): Response {
   return pageRefusal(
     "rate_limited",
-    `The page polled more than ${String(pollLimit.polls)} times in ${inMinutes(pollLimit.windowMinutes)}, which is the limit for an account. Wait ${plural(secondsLeft, "second")}, then poll again.`,
+    `The page polled more than ${timesIn(rateLimits.poll)}, which is the limit for an account. ${waitFor(secondsLeft)}, then poll again.`,
   );
 }
 
 function rulesSaveRefusal(secondsLeft: number): Response {
   return pageRefusal(
     "rate_limited",
-    `The rules were saved more than ${String(rulesSaveLimit.saves)} times in ${inMinutes(rulesSaveLimit.windowMinutes)}, which is the limit for an account. Wait ${plural(secondsLeft, "second")}, then save again.`,
+    `The rules were saved more than ${timesIn(rateLimits.rulesSave)}, which is the limit for an account. ${waitFor(secondsLeft)}, then save again.`,
   );
 }
 
@@ -96,18 +91,14 @@ function rulesSaveRefusal(secondsLeft: number): Response {
 function modelCapRefusal(resetsAt: Date): Response {
   return pageRefusal(
     "cap_reached",
-    `Saving these rules needs model calls, to read them or to sort the asks again, and this account has made the ${String(modelCallLimit.calls)} model calls askme makes for an account in a day. Nothing was saved. The count starts again at ${resetsAt.toISOString()}, midnight UTC. Save the rules again after then.`,
+    `Saving these rules needs model calls, to read them or to sort the asks again, and this account has made the ${String(rateLimits.modelCall.limit)} model calls askme makes for an account in a day. Nothing was saved. The count starts again at ${resetsAt.toISOString()}, midnight UTC. Save the rules again after then.`,
   );
 }
 
 function samplesRateRefusal(secondsLeft: number): Response {
-  const perWindow =
-    askLimit.windowMinutes === 1
-      ? "a minute"
-      : `in ${inMinutes(askLimit.windowMinutes)}`;
   return pageRefusal(
     "rate_limited",
-    `This account is posting asks too fast. askme takes at most ${String(askLimit.asks)} asks ${perWindow}, sample asks included. Wait ${plural(secondsLeft, "second")}, then send sample asks again.`,
+    `This account is posting asks too fast. askme takes at most ${countPer(rateLimits.ask, "asks")}, sample asks included. ${waitFor(secondsLeft)}, then send sample asks again.`,
   );
 }
 

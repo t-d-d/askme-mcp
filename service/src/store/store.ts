@@ -25,14 +25,7 @@ import {
 import { z } from "zod";
 import { awsClientConfig } from "../aws";
 import type { AccountId } from "../identity";
-import {
-  askLimit,
-  modelCallLimit,
-  pollLimit,
-  rulesSaveLimit,
-  secondsLeft,
-  windowOf,
-} from "../rate";
+import { rateLimits, secondsLeft, windowOf } from "../rate";
 import { exampleRules, hashtagWindow, type HashtagWindow } from "../rules";
 import { levels, type Sort } from "../sort";
 import { fingerprint } from "./fingerprint";
@@ -852,8 +845,8 @@ export function createStore(config: {
     async countPoll(account, now) {
       return countIn(
         (window) => keys.pollCount(account, window),
-        pollLimit.polls,
-        pollLimit.windowMinutes,
+        rateLimits.poll.limit,
+        rateLimits.poll.windowMinutes,
         now,
       );
     },
@@ -861,8 +854,8 @@ export function createStore(config: {
     async countAsk(account, now) {
       return countIn(
         (window) => keys.askCount(account, window),
-        askLimit.asks,
-        askLimit.windowMinutes,
+        rateLimits.ask.limit,
+        rateLimits.ask.windowMinutes,
         now,
       );
     },
@@ -922,8 +915,8 @@ export function createStore(config: {
     async countRulesSave(account, now) {
       return countIn(
         (window) => keys.rulesSaveCount(account, window),
-        rulesSaveLimit.saves,
-        rulesSaveLimit.windowMinutes,
+        rateLimits.rulesSave.limit,
+        rateLimits.rulesSave.windowMinutes,
         now,
       );
     },
@@ -931,20 +924,20 @@ export function createStore(config: {
     async countModelCall(account, now) {
       return countIn(
         (window) => keys.modelCount(account, window),
-        modelCallLimit.calls,
-        modelCallLimit.windowMinutes,
+        rateLimits.modelCall.limit,
+        rateLimits.modelCall.windowMinutes,
         now,
       );
     },
 
     async modelCapSpent(account, now) {
-      const { name } = windowOf(now, modelCallLimit.windowMinutes);
+      const { name } = windowOf(now, rateLimits.modelCall.windowMinutes);
       const counter = await stored(
         keys.modelCount(account, name),
         counterSchema,
         now,
       );
-      return (counter?.count ?? 0) >= modelCallLimit.calls;
+      return (counter?.count ?? 0) >= rateLimits.modelCall.limit;
     },
 
     // META is read first, so the refusals after the first in a day each

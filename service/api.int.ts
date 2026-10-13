@@ -31,7 +31,7 @@ import { connect, origin } from "../test/mcp";
 import { handler } from "./src/handler";
 import { callerOf } from "./src/identity";
 import { sortingMs, sortRequestTimeoutMs } from "./src/jobs";
-import { askLimit, rulesSaveLimit } from "./src/rate";
+import { rateLimits } from "./src/rate";
 import { exampleRules } from "./src/rules";
 import { sampleAreas } from "./src/samples";
 import { handler as sorter } from "./src/sorter";
@@ -716,14 +716,14 @@ describe("the rules", () => {
     ).toEqual([]);
   });
 
-  it(`are saved at most ${String(rulesSaveLimit.saves)} times a minute for each account, then refused with rate_limited`, async () => {
+  it(`are saved at most ${String(rateLimits.rulesSave.limit)} times a minute for each account, then refused with rate_limited`, async () => {
     // Every save falls in one window, so the last one is over the limit.
     stopClockAt(noon);
     onTestFinished(() => {
       vi.useRealTimers();
     });
     const account = newAccount();
-    for (let n = 0; n < rulesSaveLimit.saves; n += 1) {
+    for (let n = 0; n < rateLimits.rulesSave.limit; n += 1) {
       expect((await saveRules(account, { text: "" })).status).toBe(200);
     }
     const response = await saveRules(account, { text: "" });
@@ -731,7 +731,7 @@ describe("the rules", () => {
     const refusal = refusalSchema.parse(await response.json());
     expect(refusal.code).toBe("rate_limited");
     expect(refusal.class).toBe("retry");
-    expect(refusal.message).toContain(String(rulesSaveLimit.saves));
+    expect(refusal.message).toContain(String(rateLimits.rulesSave.limit));
     expect(refusal.message).toContain("Wait 30 seconds, then save again.");
     // Another account is not held back by it.
     expect((await saveRules(newAccount(), { text: "" })).status).toBe(200);
@@ -1389,7 +1389,7 @@ describe("sample asks", () => {
 
   it(`are refused at the rate limit with rate_limited, which says how long to wait`, async () => {
     const account = newAccount();
-    for (let n = 1; n <= askLimit.asks; n += 1) {
+    for (let n = 1; n <= rateLimits.ask.limit; n += 1) {
       await store.countAsk(ownerOf(account), noon);
     }
     stopClockAt(noon);
@@ -1398,7 +1398,9 @@ describe("sample asks", () => {
     const refusal = refusalSchema.parse(await response.json());
     expect(refusal.code).toBe("rate_limited");
     expect(refusal.class).toBe("retry");
-    expect(refusal.message).toContain(`${String(askLimit.asks)} asks a minute`);
+    expect(refusal.message).toContain(
+      `${String(rateLimits.ask.limit)} asks a minute`,
+    );
     expect(refusal.message).toMatch(
       /Wait 30 seconds, then send sample asks again\./u,
     );

@@ -6,7 +6,7 @@ import { Refused, retryBudget } from "./errors";
 import { callerOf } from "./identity";
 import type { SortRequests } from "./jobs";
 import { createLogger } from "./log";
-import { askLimit } from "./rate";
+import { rateLimits } from "./rate";
 import {
   dailyAskCap,
   type Counted,
@@ -216,7 +216,7 @@ describe("the ask tool's answer", () => {
       .object({ code: z.string(), message: z.string() })
       .parse(answer);
     expect(code).toBe("rate_limited");
-    expect(message).toContain(`${String(askLimit.asks)} asks a minute`);
+    expect(message).toContain(`${String(rateLimits.ask.limit)} asks a minute`);
     expect(message).toContain("Wait 23 seconds");
     expect(message).toContain(`at most ${String(retryBudget)} times`);
     expect(logged()).toContain("rate-limited");

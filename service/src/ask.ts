@@ -12,9 +12,10 @@ import { z } from "zod";
 import { Refused, retryBudget } from "./errors";
 import { guidance } from "./instructions";
 import { queueSorts } from "./jobs";
-import { askLimit } from "./rate";
+import { rateLimits } from "./rate";
 import { askLifetimeDays, dailyAskCap } from "./store/store";
 import type { ToolDefinition } from "./tools";
+import { countPer, waitFor } from "./wording";
 
 // The most characters each field may hold. A summary is one or two lines on
 // a phone. The spoken detail is about a minute of speech. An id is one that
@@ -172,13 +173,8 @@ function capReached(resetsAt: Date): Refused {
 }
 
 function rateLimited(waitSeconds: number): Refused {
-  const perWindow =
-    askLimit.windowMinutes === 1
-      ? "a minute"
-      : `in ${String(askLimit.windowMinutes)} minutes`;
-  const wait = `${String(waitSeconds)} ${waitSeconds === 1 ? "second" : "seconds"}`;
   return new Refused(
     "rate_limited",
-    `This account is posting asks too fast. askme takes at most ${String(askLimit.asks)} asks ${perWindow}. Wait ${wait}, then send the same call again, at most ${String(retryBudget)} times in all. If it is still refused, carry on without askme.`,
+    `This account is posting asks too fast. askme takes at most ${countPer(rateLimits.ask, "asks")}. ${waitFor(waitSeconds)}, then send the same call again, at most ${String(retryBudget)} times in all. If it is still refused, carry on without askme.`,
   );
 }

@@ -13,7 +13,7 @@ import {
 import { z } from "zod";
 import { handler } from "../service/src/handler";
 import { callerOf, type AccountId } from "../service/src/identity";
-import { modelCallLimit } from "../service/src/rate";
+import { rateLimits } from "../service/src/rate";
 import { handler as sorter } from "../service/src/sorter";
 import { createStore } from "../service/src/store/store";
 import { pagePaths } from "../shared/page-api";
@@ -172,7 +172,7 @@ describe("fitness: a spent cap sends no call (model-call-cap.md)", () => {
     const refusal = refusalSchema.parse(await response.json());
     expect(refusal.code).toBe("cap_reached");
     expect(refusal.class).toBe("do not retry");
-    expect(refusal.message).toContain(String(modelCallLimit.calls));
+    expect(refusal.message).toContain(String(rateLimits.modelCall.limit));
     expect(refusal.message).toContain(nextReset());
     expect(fakes.model.calls).toHaveLength(calls);
     expect(fakes.queue.sent).toHaveLength(sent);
