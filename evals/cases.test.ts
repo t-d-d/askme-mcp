@@ -101,11 +101,11 @@ describe("the core eval set", () => {
     expect(level("a delivery slot held until tonight")).toBe("high");
     expect(level("a sign-in code for the school's payment site")).toBe("high");
     expect(level("a council tax direct debit")).toBe("high");
-    expect(level("a ticket for next sprint")).toBe("normal");
   });
 
-  it("holds the major upgrade at low, since never upgrading leaves the service working (#226)", () => {
+  it("holds the major upgrade and the sprint ticket at low, since ignoring either leaves nobody worse off (#226)", () => {
     expect(level("a major upgrade")).toBe("low");
+    expect(level("a ticket for next sprint")).toBe("low");
   });
 
   it("has rules that say nothing about when an ask is due, since the level ignores time (#101)", () => {

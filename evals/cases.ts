@@ -210,7 +210,8 @@ export const cases: EvalCase[] = [
     expected: { hashtags: [["work"]], level: "low" },
   },
   {
-    // Never answering leaves the plan unfinished, which is normal (#191).
+    // Left unanswered, the ticket goes into the next sprint and nobody is
+    // worse off, so the level is low (#226).
     name: "a ticket for next sprint",
     group: "core",
     area: "work",
@@ -221,7 +222,7 @@ export const cases: EvalCase[] = [
         "The single sign on ticket is estimated at five days. This sprint is already full. Move something out for it, or plan it for the next sprint?",
       actionLink: "https://fernhill.atlassian.net/browse/BILL-431",
     },
-    expected: { hashtags: [["work"]], level: "normal" },
+    expected: { hashtags: [["work"]], level: "low" },
   },
   {
     name: "a feature flag's name",
