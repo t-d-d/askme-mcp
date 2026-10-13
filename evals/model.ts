@@ -26,11 +26,15 @@ function nodeUsesProxy(): boolean {
   return supported && env.NODE_USE_ENV_PROXY === "1";
 }
 
-// The models EVAL_MODELS names, separated by commas, or none.
-export const namedModels = (env.EVAL_MODELS ?? "")
-  .split(",")
-  .map((model) => model.trim())
-  .filter((model) => model !== "");
+// The models a value of EVAL_MODELS names, separated by commas, or none.
+export const modelsNamed = (value: string | undefined): string[] =>
+  (value ?? "")
+    .split(",")
+    .map((model) => model.trim())
+    .filter((model) => model !== "");
+
+// The models EVAL_MODELS names.
+export const namedModels = modelsNamed(env.EVAL_MODELS);
 
 // The key to send, or undefined to send none, or an error saying what is
 // missing.

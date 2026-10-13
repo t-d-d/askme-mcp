@@ -2,11 +2,13 @@
 // sorted several times under the draft, and the levels each ask got.
 // `npm run eval:trial` runs it. This module holds what needs no model: the
 // settings, the draft, the report and the record.
-import { parse } from "node:path";
+import { join, parse } from "node:path";
 import { z } from "zod";
 import { defaultModel } from "../service/src/model";
+import { sortTimeoutMs } from "../service/src/sorter";
 import { levels, type Level } from "../shared/page-api";
 import type { EvalCase } from "./cases";
+import { modelsNamed } from "./model";
 import {
   bothRight,
   gaveIn,
@@ -45,10 +47,7 @@ export function trialSettings(
   env: Record<string, string | undefined>,
 ): TrialSettings {
   const parsed = envSchema.parse(env);
-  const models = (parsed.EVAL_MODELS ?? "")
-    .split(",")
-    .map((model) => model.trim())
-    .filter((model) => model !== "");
+  const models = modelsNamed(parsed.EVAL_MODELS);
   if (models.length > 1) {
     throw new Error("A trial runs one model. Name one in EVAL_MODELS.");
   }
@@ -63,14 +62,27 @@ export function trialSettings(
   };
 }
 
+// Where a trial's record is saved: a file named after the draft, in the
+// given folder. A path, not a URL, so a name with "#", "?" or "%" stays whole.
+export const recordPath = (folder: string, name: string): string =>
+  join(folder, `${name}.json`);
+
+// How long a trial may run: every sort of every ask at the most sorts, sent
+// the given number at once, each timing out and timing out again on its
+// follow-up. A trial that ran out of time would save nothing it paid for.
+export const trialTimeoutMs = (asks: number, parallel: number): number =>
+  Math.ceil((asks * mostSorts) / parallel) * 2 * sortTimeoutMs + 60_000;
+
 const levelOf = (line: string): Level | undefined =>
   levels.find((level) => line.startsWith(`${level}: `));
 
 // The prompt a draft gives. A draft whose every line starts with a level and
 // a colon replaces those lines of the current prompt. Any other draft is the
-// whole prompt.
+// whole prompt, and needs a line for each level, as the prompt has: without
+// one, it is more likely a level line written another way.
 export function draftPrompt(current: string, draft: string): string {
-  const lines = draft.split(/\r?\n/u).filter((line) => line.trim() !== "");
+  const text = draft.replaceAll("\r\n", "\n");
+  const lines = text.split("\n").filter((line) => line.trim() !== "");
   if (lines.length === 0) throw new Error("The draft is empty.");
   let prompt: string;
   if (lines.every((line) => levelOf(line) !== undefined)) {
@@ -91,7 +103,15 @@ export function draftPrompt(current: string, draft: string): string {
     }
     prompt = replaced.join("\n");
   } else {
-    prompt = draft.replace(/(?:\r?\n)+$/u, "");
+    const missing = levels.filter(
+      (level) => !lines.some((line) => levelOf(line) === level),
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `A draft that is not level lines alone is the whole prompt, and needs a line for each level. It has none for ${missing.join(", ")}.`,
+      );
+    }
+    prompt = text.replace(/\n+$/u, "");
   }
   if (prompt === current) {
     throw new Error("The draft changes nothing in the prompt.");

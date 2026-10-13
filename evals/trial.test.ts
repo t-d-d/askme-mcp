@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { defaultModel } from "../service/src/model";
+import { sortTimeoutMs } from "../service/src/sorter";
 import type { Level } from "../shared/page-api";
 import { cases, type EvalCase } from "./cases";
 import type { Outcome } from "./score";
-import { draftPrompt, trialRecord, trialReport, trialSettings } from "./trial";
+import {
+  draftPrompt,
+  mostSorts,
+  recordPath,
+  trialRecord,
+  trialReport,
+  trialSettings,
+  trialTimeoutMs,
+} from "./trial";
 
 describe("a trial's settings", () => {
   it("sort every ask 5 times under the current prompt on the default model", () => {
@@ -70,10 +79,30 @@ describe("a draft wording", () => {
   });
 
   it("with any other line is the whole prompt, less its last newline", () => {
-    const whole = "You sort one ask, carefully.\nhigh: a new high;\n";
+    const whole =
+      "You sort one ask, carefully.\nhigh: a;\nnormal: b;\nlow: c.\n";
     expect(draftPrompt(current, whole)).toBe(
-      "You sort one ask, carefully.\nhigh: a new high;",
+      "You sort one ask, carefully.\nhigh: a;\nnormal: b;\nlow: c.",
     );
+  });
+
+  it("keeps no Windows line endings", () => {
+    const whole =
+      "You sort one ask, carefully.\r\nhigh: a;\r\nnormal: b;\r\nlow: c.\r\n";
+    expect(draftPrompt(current, whole)).toBe(
+      "You sort one ask, carefully.\nhigh: a;\nnormal: b;\nlow: c.",
+    );
+  });
+
+  // A level line written another way, such as "- normal:" or "Normal:",
+  // would otherwise make the draft a whole prompt of a few lines.
+  it("is refused as a whole prompt when it has no line for each level", () => {
+    expect(() => draftPrompt(current, "- normal: a new normal;")).toThrow(
+      /line for each level/u,
+    );
+    expect(() =>
+      draftPrompt(current, "Sort with care.\nhigh: a;\nlow: c."),
+    ).toThrow(/line for each level/u);
   });
 
   it.each([
@@ -198,5 +227,28 @@ describe("a trial's record", () => {
 
   it("survives a trip through JSON unchanged", () => {
     expect(JSON.parse(JSON.stringify(record))).toEqual(record);
+  });
+});
+
+describe("where a trial's record is saved", () => {
+  it("is a file named after the draft, in the given folder", () => {
+    expect(recordPath("/repo/evals/trials", "money-high")).toBe(
+      "/repo/evals/trials/money-high.json",
+    );
+  });
+
+  it("keeps a name with characters a URL reads apart", () => {
+    expect(recordPath("/repo/evals/trials", "level#2?100%")).toBe(
+      "/repo/evals/trials/level#2?100%.json",
+    );
+  });
+});
+
+describe("a trial's time limit", () => {
+  it("covers every sort at the most sorts timing out, with its follow-up", () => {
+    // 48 asks, 20 sorts each, 8 at once: 120 turns, each up to two calls.
+    expect(trialTimeoutMs(48, 8)).toBeGreaterThanOrEqual(
+      Math.ceil((48 * mostSorts) / 8) * 2 * sortTimeoutMs,
+    );
   });
 });
