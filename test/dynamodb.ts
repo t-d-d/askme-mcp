@@ -13,6 +13,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { AddressInfo } from "node:net";
+import { hostname } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import {
@@ -117,14 +118,26 @@ async function ready(client: DynamoDBClient): Promise<void> {
   throw new Error("The local DynamoDB did not answer.", { cause: failure });
 }
 
-export default async function setup(
-  project: TestProject,
-): Promise<() => Promise<void>> {
-  await dockerRunning();
+// The run a container belongs to: the process that started it, and the
+// machine that process runs on.
+export interface Owner {
+  pid: number;
+  host: string;
+}
+
+const label = "askme-mcp.dynamodb";
+
+// Starts a local DynamoDB, labelled with the run it belongs to, and gives
+// the container's id.
+export async function startDatabase(owner: Owner): Promise<string> {
   const { stdout } = await run("docker", [
     "run",
     "--detach",
     "--rm",
+    "--label",
+    `${label}.pid=${String(owner.pid)}`,
+    "--label",
+    `${label}.host=${owner.host}`,
     "--publish",
     "127.0.0.1::8000",
     image,
@@ -133,7 +146,48 @@ export default async function setup(
     "-inMemory",
     "-sharedDb",
   ]);
-  const container = stdout.trim();
+  return stdout.trim();
+}
+
+// Whether a process on this machine is still running. A process that runs
+// as another user still exists, though it cannot be signalled.
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error instanceof Error && Reflect.get(error, "code") === "EPERM";
+  }
+}
+
+// Removes every local DynamoDB whose run has ended without stopping it, as a
+// run killed before its teardown does. Only this machine's containers are
+// judged, as only its process ids can be checked.
+export async function removeOrphans(): Promise<void> {
+  const { stdout } = await run("docker", [
+    "ps",
+    "--all",
+    "--no-trunc",
+    "--filter",
+    `label=${label}.host=${hostname()}`,
+    "--format",
+    `{{.ID}} {{.Label "${label}.pid"}}`,
+  ]);
+  const orphans = [...stdout.matchAll(/^(\w+) (\d+)$/gmu)]
+    .filter(([, , pid]) => !alive(Number(pid)))
+    .map(([, id]) => id ?? "");
+  if (orphans.length > 0) await run("docker", ["rm", "--force", ...orphans]);
+}
+
+export default async function setup(
+  project: TestProject,
+): Promise<() => Promise<void>> {
+  await dockerRunning();
+  await removeOrphans();
+  const container = await startDatabase({
+    pid: process.pid,
+    host: hostname(),
+  });
   const stop = async () => {
     await run("docker", ["rm", "--force", container]);
   };
