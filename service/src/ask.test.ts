@@ -112,6 +112,7 @@ const storeAnswering = (
     dismissAsk: unused,
     openAsks: unused,
     asksSince: unused,
+    countCall: unused,
     countPoll: unused,
     rules: unused,
     saveRules: unused,

@@ -25,7 +25,7 @@ import {
 import { z } from "zod";
 import { awsClientConfig } from "../aws";
 import type { AccountId } from "../identity";
-import { rateLimits, secondsLeft, windowOf } from "../rate";
+import { rateLimits, secondsLeft, windowOf, type LimitName } from "../rate";
 import { exampleRules, hashtagWindow, type HashtagWindow } from "../rules";
 import { levels, type Sort } from "../sort";
 import { fingerprint } from "./fingerprint";
@@ -274,6 +274,9 @@ export interface Store {
     since: number | undefined,
     now: Date,
   ): Promise<AccountAsks | Unchanged>;
+  // Counts a call against one of the account's rate limits (rate.ts), in
+  // the window the call falls in. Each limit has its own counter.
+  countCall(account: AccountId, limit: LimitName, now: Date): Promise<Counted>;
   // Counts a poll against the account's limit for the minute.
   countPoll(account: AccountId, now: Date): Promise<Counted>;
   // Counts a call to the ask tool against the account's limit for the
@@ -470,16 +473,26 @@ export function createStore(config: {
     }
   }
 
+  // The key of each limit's counter, which keys.ts builds.
+  const counterKeys: Readonly<
+    Record<LimitName, (account: AccountId, window: string) => Key>
+  > = {
+    poll: keys.pollCount,
+    ask: keys.askCount,
+    rulesSave: keys.rulesSaveCount,
+    modelCall: keys.modelCount,
+  };
+
   // Counts a call against a limit for the window it falls in.
   async function countIn(
-    key: (window: string) => Key,
-    limit: number,
-    windowMinutes: number,
+    account: AccountId,
+    name: LimitName,
     now: Date,
   ): Promise<Counted> {
+    const { limit, windowMinutes } = rateLimits[name];
     const window = windowOf(now, windowMinutes);
     const counted = await count(
-      key(window.name),
+      counterKeys[name](account, window.name),
       limit,
       seconds(window.endsAt + counterLifetimeMs),
     );
@@ -842,22 +855,14 @@ export function createStore(config: {
       return listed(account, now, marker);
     },
 
+    countCall: countIn,
+
     async countPoll(account, now) {
-      return countIn(
-        (window) => keys.pollCount(account, window),
-        rateLimits.poll.limit,
-        rateLimits.poll.windowMinutes,
-        now,
-      );
+      return countIn(account, "poll", now);
     },
 
     async countAsk(account, now) {
-      return countIn(
-        (window) => keys.askCount(account, window),
-        rateLimits.ask.limit,
-        rateLimits.ask.windowMinutes,
-        now,
-      );
+      return countIn(account, "ask", now);
     },
 
     rules: readRules,
@@ -913,21 +918,11 @@ export function createStore(config: {
     },
 
     async countRulesSave(account, now) {
-      return countIn(
-        (window) => keys.rulesSaveCount(account, window),
-        rateLimits.rulesSave.limit,
-        rateLimits.rulesSave.windowMinutes,
-        now,
-      );
+      return countIn(account, "rulesSave", now);
     },
 
     async countModelCall(account, now) {
-      return countIn(
-        (window) => keys.modelCount(account, window),
-        rateLimits.modelCall.limit,
-        rateLimits.modelCall.windowMinutes,
-        now,
-      );
+      return countIn(account, "modelCall", now);
     },
 
     async modelCapSpent(account, now) {

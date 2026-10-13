@@ -23,6 +23,7 @@ const refusingStore = (secondsLeft: number): Store => {
     dismissAsk: unused,
     openAsks: unused,
     asksSince: unused,
+    countCall: unused,
     countPoll: refused,
     countAsk: refused,
     rules: unused,

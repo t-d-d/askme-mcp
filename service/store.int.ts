@@ -735,6 +735,55 @@ describe("the poll's rate counter", () => {
   });
 });
 
+describe("a rate counter, by the name of its limit", () => {
+  const minute = new Date("2026-10-11T09:30:10.000Z");
+
+  it("counts each limit under its own counter, and leaves the version alone", async () => {
+    const owner = account();
+    await store.postAsk(owner, ask, minute);
+    for (const limit of ["poll", "ask", "rulesSave", "modelCall"] as const) {
+      expect(await store.countCall(owner, limit, minute)).toEqual({
+        counted: true,
+      });
+    }
+    // Every item but the ask, META and the day's count of asks.
+    const counters = (await storedItems(endpoint, tableName, owner)).filter(
+      ({ sk, count }) => count === 1 && sk !== keys.usage(owner, minute).sk,
+    );
+    expect(counters).toEqual([
+      {
+        ...keys.modelCount(owner, "2026-10-11T00:00"),
+        count: 1,
+        expiresAt: Date.parse("2026-10-12T01:00:00.000Z") / 1000,
+      },
+      ...[
+        keys.pollCount(owner, "2026-10-11T09:30"),
+        keys.askCount(owner, "2026-10-11T09:30"),
+        keys.rulesSaveCount(owner, "2026-10-11T09:30"),
+      ].map((key) => ({
+        ...key,
+        count: 1,
+        expiresAt: Date.parse("2026-10-11T10:31:00.000Z") / 1000,
+      })),
+    ]);
+    expect((await store.openAsks(owner, minute)).version).toBe(1);
+  });
+
+  it("refuses at each limit's own count, with the seconds left in its own window", async () => {
+    const owner = account();
+    for (let n = 0; n < rateLimits.rulesSave.limit; n += 1) {
+      await store.countCall(owner, "rulesSave", minute);
+    }
+    expect(await store.countCall(owner, "rulesSave", minute)).toEqual({
+      counted: false,
+      secondsLeft: 50,
+    });
+    expect(await store.countCall(owner, "ask", minute)).toEqual({
+      counted: true,
+    });
+  });
+});
+
 describe("the daily count of model calls", () => {
   const morning = new Date("2026-10-11T09:30:10.000Z");
   const day = "2026-10-11T00:00";

@@ -21,6 +21,7 @@ const store: Store = {
   dismissAsk: unused,
   openAsks: unused,
   asksSince: unused,
+  countCall: unused,
   countPoll: unused,
   countAsk: unused,
   rules: unused,
