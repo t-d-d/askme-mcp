@@ -1,5 +1,5 @@
-# Prose and the design mockup are written by hand. Prettier checks the code.
+# Prose and the design mockup are formatted by hand.
 *.md
 docs/
-# A trial's record is written by npm run eval:trial.
+# Written by npm run eval:trial.
 evals/trials/

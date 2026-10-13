@@ -1,10 +1,5 @@
-// The routes API Gateway sends to the service, and who may call each.
 // serverless.yml declares the same routes, and a static test keeps the two
-// the same.
-//
-// agent: the MCP endpoint, for an agent's OAuth access token.
-// page: the page's API, for the session token of a person signed in.
-// public: the metadata that tells an agent where to sign in.
+// in step.
 export const routes = {
   "POST /mcp": "agent",
   "GET /mcp": "agent",

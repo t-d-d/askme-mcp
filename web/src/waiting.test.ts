@@ -35,10 +35,8 @@ describe("how long an ask has waited", () => {
     expect(waiting(ago(0), now, 0)).toBe("Just now");
   });
 
-  // The service gives the time an ask was posted by its own clock, so the
-  // age counts by that clock, even on a browser whose clock is a few minutes
-  // out. Three minutes fast, the browser reads 12:03 when the service reads
-  // 12:00, and three minutes slow, 11:57.
+  // A fast browser clock has the service behind it, so serviceAhead is
+  // negative.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
@@ -319,11 +317,6 @@ describe("the order of the list as asks near the time they lapse", () => {
     ]);
   });
 
-  // The service gives each ask's time by its own clock, which the poll's
-  // Date header gives (load.ts). For an ask whose last hour starts at 12:10
-  // by the service's clock, and which lapses at 13:10, a clock three minutes
-  // fast reads 12:13 and 13:13 then, and one three minutes slow reads 12:07
-  // and 13:07.
   it("moves an ask up, and then behind every other, when the service's clock reaches its times, on a clock a few minutes out", () => {
     const asks = [
       ask("high", 50 * minute, sorted("high")),
@@ -396,10 +389,8 @@ describe("the asks that have lapsed", () => {
     expect([...lapsedAsks(asks, now + 60 * minute, 0)]).toEqual(["in-an-hour"]);
   });
 
-  // The service gives each ask's time by its own clock, which the poll's
-  // Date header gives (load.ts). For an ask that lapses at 13:00 by the
-  // service's clock, a clock three minutes fast reads 13:03 then, and one
-  // three minutes slow reads 12:57.
+  // Three minutes fast, this clock reads 63 minutes on as the service's
+  // reaches 60.
   it("lapses an ask when the service's clock reaches its time, on a clock a few minutes out", () => {
     const asks = [ask("in-an-hour", 60 * minute)];
     const fast = -3 * minute;

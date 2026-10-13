@@ -1,24 +1,12 @@
-// Sample asks (PRD, "Web page"): the page's "Send sample asks" posts one ask
-// from each of three areas, as an agent would, so a person with no agent
-// connected can watch their rules sort them. The areas are the ones the
-// example rules name (rules.ts).
-//
-// Each press tries each area's samples in a new order. A sample posted in
-// the last ten minutes would be matched to the first one and show nothing
-// new (ADR 3), so the press tries the area's next one instead. Each sample
-// counts against the account's rate and its daily cap, as an agent's ask
-// does.
 import type { AccountId } from "./identity";
 import type { NewAsk, Store } from "./store/store";
 
 export interface SampleArea {
-  // The area, as an agent would name it. It is not shown.
   area: string;
-  // What an agent working there might ask, each a summary and the text
-  // read aloud.
   asks: readonly { summary: string; spokenDetail: string }[];
 }
 
+// The areas the example rules name (rules.ts).
 export const sampleAreas: readonly SampleArea[] = [
   {
     area: "The day job",
@@ -157,8 +145,6 @@ export const sampleAreas: readonly SampleArea[] = [
   },
 ];
 
-// The items in a random order, each once, so each press starts somewhere
-// new in an area's samples.
 export function shuffled<T>(items: readonly T[]): T[] {
   const order = [...items];
   for (let last = order.length - 1; last > 0; last -= 1) {
@@ -172,8 +158,6 @@ export function shuffled<T>(items: readonly T[]): T[] {
   return order;
 }
 
-// What one press came to: the ids of the asks it posted, and, when it
-// stopped before one from each area, the limit that stopped it.
 export interface SamplesSent {
   posted: string[];
   refused?:
@@ -181,10 +165,6 @@ export interface SamplesSent {
     | { kind: "over-cap"; resetsAt: Date };
 }
 
-// Posts one sample from each area, unless a limit stops it first. Each area
-// counts once against the account's rate, and its samples are tried in the
-// order given until one is not matched to a sample posted in the last ten
-// minutes. An area whose samples were all posted in that time posts none.
 export async function sendSamples(
   account: AccountId,
   store: Pick<Store, "countCall" | "postAsk">,
@@ -203,6 +183,8 @@ export async function sendSamples(
     for (const sample of order(asks)) {
       const ask: NewAsk = { area, ...sample };
       const posting = await store.postAsk(account, ask, now);
+      // A match to a sample from the last ten minutes shows nothing new
+      // (ADR 3), so try the area's next one.
       if (posting.kind === "matched") continue;
       if (posting.kind === "over-cap") {
         return {

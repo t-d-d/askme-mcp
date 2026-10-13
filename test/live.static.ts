@@ -1,12 +1,10 @@
-// The live tier reads the deployed site's addresses in test/live.ts, so a
-// change to a variable or its message is made once.
+// One place, so a change to a variable or its message is made once.
 import { describe, expect, it } from "vitest";
 import { liveTierFiles } from "./live-tier";
 import { deployPath, readRepoFile, readWorkflow } from "./repo";
 
 const helper = "test/live.ts";
 
-// The variables the deploy workflow gives the live tier.
 const given = (): string[] =>
   Object.keys(
     readWorkflow(deployPath).jobs.live?.steps?.find(

@@ -1,7 +1,5 @@
-// Calls a Lambda handler the way API Gateway's HTTP API does, in process.
-// A web Request becomes a version 2.0 event and the handler's result becomes
-// a Response, so a test, and the official MCP client, can speak HTTP to the
-// handler with no socket and no deployed API.
+// Calls a Lambda handler in process as API Gateway's HTTP API would, so a
+// test or the MCP client can speak HTTP to it with no socket.
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
@@ -64,7 +62,6 @@ export async function invoke(
   });
 }
 
-// A fetch that sends every request to the handler instead of the network.
 export function handlerFetch(
   handler: LambdaHandler,
   seen: Response[] = [],

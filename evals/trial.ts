@@ -1,7 +1,4 @@
-// A trial of a draft wording for the sorting prompt (#270): every eval ask
-// sorted several times under the draft, and the levels each ask got.
-// `npm run eval:trial` runs it. This module holds what needs no model: the
-// settings, the draft, the report and the record.
+// The parts of `npm run eval:trial` that need no model.
 import { join, parse } from "node:path";
 import { z } from "zod";
 import { defaultModel } from "../service/src/model";
@@ -21,17 +18,14 @@ import {
 import { sortingTimeoutMs } from "./sorting";
 
 export interface TrialSettings {
-  // The draft's file, or undefined to sort under the prompt in the service.
+  // Undefined sorts under the service's own prompt.
   draft: string | undefined;
-  // How many times each ask is sorted.
   sorts: number;
   model: string;
-  // The name the record is saved under: the draft's file name, or "current".
   name: string;
 }
 
-// The most sorts a trial sends each ask. It keeps one trial well inside the
-// eval key's small spending limit.
+// Keeps one trial well inside the eval key's small spending limit.
 export const mostSorts = 20;
 
 const envSchema = z.object({
@@ -45,7 +39,6 @@ const envSchema = z.object({
   EVAL_MODELS: z.string().optional(),
 });
 
-// The settings a trial reads from the environment.
 export function trialSettings(
   env: Record<string, string | undefined>,
 ): TrialSettings {
@@ -65,23 +58,18 @@ export function trialSettings(
   };
 }
 
-// Where a trial's record is saved: a file named after the draft, in the
-// given folder. A path, not a URL, so a name with "#", "?" or "%" stays whole.
+// A path, not a URL, so a name with "#", "?" or "%" stays whole.
 export const recordPath = (folder: string, name: string): string =>
   join(folder, `${name}.json`);
 
-// How long a trial may run: every sort of every ask at the most sorts, sent
-// the given number at once.
 export const trialTimeoutMs = (asks: number, parallel: number): number =>
   sortingTimeoutMs(asks * mostSorts, parallel);
 
 const levelOf = (line: string): Level | undefined =>
   levels.find((level) => line.startsWith(`${level}: `));
 
-// The prompt a draft gives. A draft whose every line starts with a level and
-// a colon replaces those lines of the current prompt. Any other draft is the
-// whole prompt, and needs a line for each level, as the prompt has: without
-// one, it is more likely a level line written another way.
+// A whole-prompt draft needs a line for each level: without one, it is more
+// likely level lines written another way.
 export function draftPrompt(current: string, draft: string): string {
   const text = draft.replaceAll("\r\n", "\n");
   const lines = text.split("\n").filter((line) => line.trim() !== "");
@@ -121,14 +109,10 @@ export function draftPrompt(current: string, draft: string): string {
   return prompt;
 }
 
-// The asks in the order their first sort appears.
 const asksOf = (outcomes: readonly Outcome[]): EvalCase[] => [
   ...new Set(outcomes.map(({ one }) => one)),
 ];
 
-// The levels an ask's sorts gave, most first, each with how many of its
-// sorts had other hashtags than expected, then the sorts with no fitting
-// reply.
 function levelsGiven(sorts: readonly Outcome[]): string {
   const given = levels
     .map((level) => {
@@ -149,9 +133,6 @@ function levelsGiven(sorts: readonly Outcome[]): string {
   ].join(", ");
 }
 
-// What a trial prints: a line for each ask, with the known misses (#262)
-// marked whatever levels they got, then each group's score, both as a share
-// of its sorts and as the score one run of the set would expect.
 export function trialReport(
   outcomes: readonly Outcome[],
   about: { model: string; sorts: number; draft: string | undefined },
@@ -193,30 +174,24 @@ export function trialReport(
   ].join("\n");
 }
 
-// One sort, as a trial's record keeps it.
 export interface TrialSort {
   ask: string;
   group: EvalCase["group"];
   expected: EvalCase["expected"];
-  // The issue in which the owner kept the ask's level though the default
-  // model misses it, when there is one.
   knownMiss?: number;
   hashtags?: string[];
   level?: Level;
   reason?: string;
-  // Why there was no fitting reply, when there was none.
   failure?: string;
   right: boolean;
   followedUp: boolean;
 }
 
-// What a trial saves, so a later session can read why an ask moved.
 export interface TrialRecord {
   date: string;
   model: string;
   sortsPerAsk: number;
   draft: string | null;
-  // The prompt the asks were sorted under.
   system: string;
   sorts: TrialSort[];
 }

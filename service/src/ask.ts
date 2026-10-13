@@ -1,13 +1,3 @@
-// The ask tool: an agent posts something it needs the person for. The ask
-// is checked against its limits, stored, and answered with its id. An ask
-// that names an earlier one in replaces takes its place. A repeat of an ask
-// posted in the last ten minutes is answered with the first one's id. An
-// account over its rate or its daily cap is refused.
-//
-// Each field's limit is a constant here, and the schema, the field's
-// description and the refusal's message all take it from here, so the three
-// cannot disagree (ADR 11). The daily cap is the store's constant and the
-// rate is rate.ts's, and the refusals' messages take them from there.
 import { z } from "zod";
 import { Refused, retryBudget } from "./errors";
 import { guidance } from "./instructions";
@@ -17,12 +7,8 @@ import { askLifetimeDays, dailyAskCap } from "./store/store";
 import type { ToolDefinition } from "./tools";
 import { countPer, waitFor } from "./wording";
 
-// The most characters each field may hold. A summary is one or two lines on
-// a phone. The spoken detail is about a minute of speech. An id is one that
-// ask gave back, in replaces or for resolve.
-//
-// The most minutes an ask may say it has until it stops mattering is the
-// time until it is deleted, a month after it is posted.
+// The schema, the descriptions and the refusals all take their limits from
+// here, so they cannot disagree (ADR 11).
 export const limits = {
   summary: 80,
   area: 60,
@@ -32,8 +18,7 @@ export const limits = {
   staleAfterMinutes: askLifetimeDays * 24 * 60,
 } as const;
 
-// A field's problem in words a model can act on. It names the limit, never
-// the value sent.
+// A message names the limit, never the value sent.
 const required = {
   error: (issue: { input?: unknown }) =>
     issue.input === undefined ? "is missing" : "must be text",
@@ -52,8 +37,6 @@ const httpsLink = z
     error: `is longer than ${String(limits.link)} characters`,
   });
 
-// A whole number of minutes, from one up to the limit. Every way it can be
-// wrong gets the one message, which names the limit.
 const staleMinutes = `must be a whole number of minutes from 1 to ${String(limits.staleAfterMinutes)}`;
 const minutes = z
   .int({ error: staleMinutes, abort: true })
@@ -92,8 +75,7 @@ const askInput = z.strictObject({
     ),
 });
 
-// What an agent gets back: the id and a status, and nothing about the
-// account (ADR 2).
+// Nothing about the account (ADR 2).
 const askOutput = z.strictObject({
   id: z.string(),
   status: z.literal("posted"),
@@ -117,8 +99,8 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
   async run(input, { caller, log, store, sorts }) {
     const { accountId } = caller;
     const now = new Date();
-    // Every call is counted before anything is stored, so an agent that
-    // floods, even with one ask repeated, is slowed (ADR 18).
+    // Counted before anything is stored, so a flood of one repeated ask is
+    // slowed too (ADR 18).
     const counted = await store.countCall(accountId, "ask", now);
     if (!counted.counted) {
       log.info("rate-limited", { accountId });
@@ -149,8 +131,6 @@ export const askTool: ToolDefinition<typeof askInput, typeof askOutput> = {
           log.info("ask-replaced", { accountId, askId: input.replaces });
         }
         log.info("ask-posted", { accountId, askId: posting.id });
-        // Sorted after this call has answered, so posting never waits on
-        // the model. If the queue cannot take it, the ask is still posted.
         await queueSorts({ sorts, log }, accountId, [posting.id], now);
         return { id: posting.id, status: "posted" };
       case "matched":

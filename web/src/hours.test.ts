@@ -37,8 +37,7 @@ describe("the wall clock in a time zone", () => {
   });
 
   it("follows the clocks when they change", () => {
-    // Summer time ends at 2am on Sunday 25 October, so 8am on the Monday
-    // after is 8am UTC.
+    // Summer time ends on 25 October, so London is on UTC again.
     expect(wallClock(at("2026-10-26T08:00:00Z"), "Europe/London")).toEqual({
       day: "mon",
       minute: 8 * 60,
@@ -51,8 +50,6 @@ describe("the wall clock in a time zone", () => {
     );
   });
 
-  // Some browsers give the first hour after midnight as 24, whatever the
-  // hour cycle asked for.
   const partsSaying = (parts: Intl.DateTimeFormatPart[]) =>
     vi
       .spyOn(Intl.DateTimeFormat.prototype, "formatToParts")

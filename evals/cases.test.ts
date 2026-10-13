@@ -1,5 +1,3 @@
-// The eval set's own shape, checked in the gate. Running it against the
-// model is not in the gate (repo-and-delivery.md).
 import { describe, expect, it } from "vitest";
 import { askTool } from "../service/src/ask";
 import { parseReading } from "../service/src/rules";
@@ -81,11 +79,10 @@ describe("the core eval set", () => {
     expect(expected).toEqual({ hashtags: [["shop"]], level: "normal" });
   });
 
-  it("holds waits that run out within minutes at the level of what not acting costs, and a passkey ask that can wait (#101)", () => {
+  it("holds waits that run out within minutes at the level of what not acting costs, and a passkey ask that can wait", () => {
     const named = (name: string) => cases.find((one) => one.name === name);
-    // The page puts an ask that lapses within the hour first (PRD, "Web
-    // page"). Its level says only what it costs if the person never acts:
-    // the shop keeps its old shipping rates, but the trip goes unpaid.
+    // The page puts an ask that lapses soon first. Never acting, the shop
+    // keeps its old shipping rates, but the trip goes unpaid.
     const signInCode = "a sign-in code for the school's payment site";
     expect(named("the passkey ask")?.expected.level, "the passkey ask").toBe(
       "normal",
@@ -96,24 +93,24 @@ describe("the core eval set", () => {
     );
   });
 
-  it("holds the levels the owner set by what never acting would cost, not by the price of the step or how it is done (#191)", () => {
+  it("holds the levels the owner set by what never acting would cost, not by the price of the step or how it is done", () => {
     expect(level("a plumber who can come today")).toBe("normal");
     expect(level("a delivery slot held until tonight")).toBe("high");
     expect(level("a sign-in code for the school's payment site")).toBe("high");
     expect(level("a council tax direct debit")).toBe("high");
   });
 
-  it("holds the major upgrade and the sprint ticket at low, since ignoring either leaves nobody worse off (#226)", () => {
+  it("holds the major upgrade and the sprint ticket at low, since ignoring either leaves nobody worse off", () => {
     expect(level("a major upgrade")).toBe("low");
     expect(level("a ticket for next sprint")).toBe("low");
   });
 
-  it("holds a saving passed up and a price rise left unanswered at high, since a saving not had costs as much as money lost (#226)", () => {
+  it("holds a saving passed up and a price rise left unanswered at high, since a saving not had costs as much as money lost", () => {
     expect(level("a courier change from Monday")).toBe("high");
     expect(level("a supplier's price rise next month")).toBe("high");
   });
 
-  it("marks the five asks the owner accepts as misses, and keeps them in the set (#262, #295)", () => {
+  it("marks the five asks the owner accepts as misses, and keeps them in the set", () => {
     const marked = cases
       .filter(({ knownMiss }) => knownMiss !== undefined)
       .map(({ name, knownMiss }) => `${name}, #${String(knownMiss)}`);
@@ -128,12 +125,12 @@ describe("the core eval set", () => {
     );
   });
 
-  it("has rules that say nothing about when an ask is due, since the level ignores time (#101)", () => {
+  it("has rules that say nothing about when an ask is due, since the level ignores time", () => {
     expect(evalRules.text).not.toMatch(/\bdue\b|next week|later|soon/iu);
   });
 });
 
-describe("the timing group (#101)", () => {
+describe("the timing group", () => {
   it("holds a twin below high, so a model that lifts an ask for being soon misses it", () => {
     expect(timing.some((one) => one.expected.level !== "high")).toBe(true);
   });

@@ -1,9 +1,6 @@
 import { SampleTopCard } from "./SampleTopCard";
 import styles from "./SignedOut.module.css";
 
-// The page a visitor sees before signing in: what askme is, a way in, a
-// picture of an ask, and the demo notice. Sign-up and sign-in happen on
-// Clerk's own screens.
 export function SignedOut({
   onSignIn,
   onSignUp,

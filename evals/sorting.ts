@@ -1,7 +1,3 @@
-// One sort of one eval ask, as the service sends it, for `npm run eval` and
-// `npm run eval:trial` alike: the sorter's token cap and timeout, and a reply
-// whose only fault is a long reason sent back for a shorter one (#243). A
-// call the provider refuses for rate is sent again after a wait (#303).
 import { callerOf } from "../service/src/identity";
 import {
   ModelFailed,
@@ -26,13 +22,10 @@ const account = callerOf({
   extra: { accountId: "user_eval", requestId: "eval" },
 }).accountId;
 
-// The prompt the service builds for an eval ask, under the eval's rules.
 export const evalPrompt = (one: EvalCase): Prompt =>
   sortingPrompt({ account, ...evalRules }, { account, ...one.ask });
 
-// One sort of an ask. A draft's instructions, when given, take the place of
-// the prompt's, for a trial of a new wording. The ask and the schema stay
-// the service's own.
+// `system` is a trial's draft, in place of the service's instructions.
 export async function sortEvalAsk(
   client: Model,
   one: EvalCase,
@@ -46,8 +39,8 @@ export async function sortEvalAsk(
     maxTokens: sortMaxTokens,
     timeoutMs: sortTimeoutMs,
   };
-  // The time the model took on the tries that got a reply. A try the
-  // provider refused for rate, and the wait after it, are left out.
+  // Only tries that got a reply count, so a 429 and the wait after it add
+  // no time.
   let ms = 0;
   const model = retryingOnRate({
     async reply(sent) {
@@ -60,9 +53,8 @@ export async function sortEvalAsk(
   let followedUp = false;
   try {
     let reply = await model.reply(request);
-    // A reply whose only fault is a long reason goes back to the model, as
-    // the service sends it. This finishes the same draw, unlike the
-    // service's plain second try, so the eval sends it too.
+    // Sending a long reason back finishes the same draw, unlike the
+    // service's plain second try, so the eval does it as the service does.
     const followUp = followUpForLongReason(reply, evalRules.hashtags);
     if (followUp !== undefined) {
       followedUp = true;
@@ -80,16 +72,14 @@ export async function sortEvalAsk(
   }
 }
 
-// How long sorting the given number of asks may take, the given number at
-// once: each sort timing out, and timing out again on its follow-up, with
-// each call first waiting out every 429 (#303). A run that ran out of time
-// would save nothing it paid for.
+// Each sort may time out, and again on its follow-up, with each call first
+// waiting out every 429. A run that ran out of time would save nothing it
+// paid for.
 export const sortingTimeoutMs = (sorts: number, parallel: number): number =>
   Math.ceil(sorts / parallel) * 2 * (sortTimeoutMs + rateWaitMs) + 60_000;
 
-// Runs a task for every item, at most `parallel` at once, and gives back
-// their results in the items' order. Each worker takes the next item as soon
-// as its last one is done, so one slow reply does not hold up the others.
+// Each worker takes the next item as soon as its last is done, so one slow
+// reply does not hold up the others.
 export async function inPool<T, R>(
   items: readonly T[],
   parallel: number,

@@ -1,10 +1,5 @@
-// Every check a decision record names has a test of that name (ADR 9,
-// "Every ADR check exists"). It runs by hand, with `npm run checks`, and
-// not in the gate. A record may name checks that land with a later issue
-// (the write-an-adr skill, step 6), and the record's pull request would
-// fail the gate until they did. Run it when an issue lands the last check a
-// record names. ADR 9 says this check blocks a merge. By the owner's
-// decision on #19 it runs by hand instead.
+// Runs by hand, with `npm run checks`, not in the gate: a record may name
+// checks that land later, and its pull request would fail until they did.
 import { describe, expect, it } from "vitest";
 import {
   asNamed,
@@ -15,9 +10,8 @@ import {
 } from "../test/records";
 import { readRepoFile } from "../test/repo";
 
-// Checks that no test answers, each with the reason. A record is not edited
-// once merged (docs/adr/README.md), so a check that a later record replaces
-// stays in its own table, and is listed here.
+// A merged record is not edited, so a check that a later record replaces
+// stays in its table and is listed here.
 const unanswered = [
   {
     record: 6,

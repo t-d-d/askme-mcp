@@ -1,6 +1,3 @@
-// ADR 14's check that a thumb can hit everything: on the list and on the
-// open card, every button and link is at least 44px by 44px, at phone and
-// desktop width, with every control an ask can show.
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import {
   askChangePaths,
@@ -40,7 +37,6 @@ const list: AsksAnswer = {
   ],
 };
 
-// Every button and link the page shows, by its words.
 async function tooSmall(view: OpenPage): Promise<string[]> {
   const controls = [
     ...(await view.page.getByRole("button").all()),

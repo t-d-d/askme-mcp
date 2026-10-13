@@ -1,15 +1,12 @@
-/* It fills the space down to the foot of the screen and sits a third of
-   the way down it, so the space above is half the space below. The two
-   spacers split the free space one to two. The padding keeps a gap on a
-   screen too short for that. Below it, the screen's space at the foot, or
-   the margin above the lines at its foot, adds the same again, so the fixed
-   space below is double the fixed space above too. */
+/* The spacers set the text a third of the way down. Below the padding, the
+   screen's foot space or the lines' margin (Asks.module.css) adds the same
+   again, so the fixed space is one to two as well. */
 .allClear {
   display: flex;
   flex: 1;
   flex-direction: column;
   padding: var(--space-foot) var(--space-inside-card);
-  /* The headline's size follows the width inside the padding (tokens.css). */
+  /* --size-all-clear (tokens.css) measures this container. */
   container-type: inline-size;
 }
 
@@ -26,13 +23,9 @@
   flex: 2;
 }
 
-/* While a note shows, the screen keeps room for it at its foot
-   (Asks.module.css). All clear reaches down into that room, so it keeps its
-   height and the headline stays where it is. The lines at its foot still
-   move up out of the note's way, over the space below the last line. On a
-   screen too short to hold the headline, that space shrinks only until the
-   space at the foot is left between the last line and the lines at the foot
-   or the note, so the note covers neither. */
+/* While a note shows, All clear reaches into the room the screen keeps for
+   it (Asks.module.css), so the headline stays put. On a short screen the
+   space below shrinks only to the foot space, so the note covers nothing. */
 .allClear[data-noted] {
   margin-bottom: calc(-1 * var(--space-note));
 }

@@ -10,11 +10,8 @@ import { shownUnder, type Tab } from "./tab";
 import { useSwipe } from "./useSwipe";
 import { age } from "./waiting";
 
-// Every ask after the first, as compact rows under a count. With none, the
-// count says nothing else is waiting, and keeps the list's place beside the
-// top card at desktop width. Each row shows the hashtag it is shown under,
-// in that hashtag's colour: its first on Everything, and the tab's on a
-// hashtag's tab.
+// With no rows the count still shows, to keep the list's place beside the
+// top card at desktop width.
 export function MoreAsks({
   asks,
   tab,
@@ -57,10 +54,6 @@ export function MoreAsks({
   );
 }
 
-// A row opens the ask's card, where it can be heard, read in full and
-// dismissed, and where its links are. It names the site its main button
-// leads to. Swiping it dismisses the ask, and an opened ask is dimmed and
-// says so.
 function Row({
   ask,
   tab,

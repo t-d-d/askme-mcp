@@ -1,7 +1,5 @@
-// The words of a refusal that names a rate limit, as the page and an agent
-// receive them, from a store that counts every call as over its limit. The
-// tests that use it read the whole message, so a change to any word of it,
-// such as "1 seconds" or a window's words, fails them (#224).
+// A rate limit refusal as the page and an agent receive it, from a store
+// that refuses every count.
 import { z } from "zod";
 import { askTool } from "../service/src/ask";
 import { servePage } from "../service/src/api";
@@ -12,7 +10,6 @@ import { fakeStore } from "./fake-store";
 
 const unused = () => Promise.reject(new Error("Not used here."));
 
-// Every count is refused with this many seconds left in its window.
 const refusingStore = (secondsLeft: number) =>
   fakeStore({
     countCall: () => Promise.resolve({ counted: false as const, secondsLeft }),
@@ -33,7 +30,6 @@ const quiet: Logger = {
 
 const refusalSchema = z.object({ code: z.string(), message: z.string() });
 
-// The page's refusal of a call to a route, every count being over its limit.
 export async function pageRefusalOf(
   route: PageRoute,
   secondsLeft: number,
@@ -55,7 +51,6 @@ export async function pageRefusalOf(
   return refusalSchema.parse(await response.json());
 }
 
-// The ask tool's refusal of a call, the count being over its limit.
 export async function askRefusalOf(
   secondsLeft: number,
 ): Promise<z.infer<typeof refusalSchema>> {

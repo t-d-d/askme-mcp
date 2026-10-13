@@ -13,16 +13,6 @@ import styles from "./TopCard.module.css";
 import { useSwipe } from "./useSwipe";
 import { waiting } from "./waiting";
 
-// The first ask in the list, given most of the screen: its hashtags, how
-// long it has waited and its summary in large type, which opens its card.
-// At desktop width its spoken text sits beside it. The card takes its first
-// hashtag's colour on Everything, and the tab's on a hashtag's tab. Each
-// pill keeps its own.
-//
-// Its main button leads to the action link, or the session link when there
-// is none, and a second control leads to the session when the ask has both
-// links. Listen reads the spoken text aloud where the browser can. Swiping
-// the card dismisses it, and an opened ask is dimmed.
 export function TopCard({
   ask,
   tab,

@@ -26,7 +26,6 @@
   cursor: pointer;
 }
 
-/* A screen with no hashtag in play uses ink. */
 .signUp {
   align-self: flex-start;
   min-height: var(--button-height);

@@ -8,10 +8,6 @@ import { layers, useLayer } from "./slide";
 import { backToList, followToList } from "./toList";
 import { useAnswer } from "./useAnswer";
 
-// How to connect an agent: the server address, the steps for Claude, and
-// one click for Cursor. There are no keys to copy. Someone with no agent
-// yet can send sample asks instead, and is taken to the list to watch
-// their rules sort them.
 export function Connect() {
   useLayer(layers.connect);
   const { data, failed } = useAnswer(pagePaths.connection, connectionAnswer);

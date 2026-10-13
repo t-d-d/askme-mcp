@@ -1,15 +1,3 @@
-// Sorts every eval ask several times under a draft wording of the sorting
-// prompt, on the real model, and prints the levels each ask got (#270). It
-// runs only with `npm run eval:trial`, which sets EVAL_TRIAL, so
-// `npm run eval` skips it.
-//
-// EVAL_DRAFT names the draft's file. A draft of level lines alone, such as
-// "normal: never acting would ...", replaces those lines of the prompt in
-// service/src/sort.ts. Any other draft is the whole prompt, with a line for
-// each level. With no draft the asks are sorted under the prompt as it is.
-// EVAL_SORTS sets how many times each ask is sorted, 5 unless set, and
-// EVAL_MODELS names one model in place of the default. Each sort and its
-// reason is saved in evals/trials/, under the draft's file name.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -25,7 +13,6 @@ import {
   trialTimeoutMs,
 } from "./trial";
 
-// How many asks are sent at once.
 const parallel = 8;
 
 describe.runIf(process.env.EVAL_TRIAL === "1")(
@@ -66,7 +53,6 @@ describe.runIf(process.env.EVAL_TRIAL === "1")(
         console.log(
           `\n${trialReport(outcomes, about)}\n\n${keyLine}\n${proxyLine}\nSaved in evals/trials/${settings.name}.json.\n`,
         );
-        // The trial counts only if the model answered at all.
         expect(
           outcomes.some(({ failure }) => failure === undefined),
           "No ask got a reply from the model. See the reasons above.",

@@ -93,8 +93,6 @@ describe("Stryker's options for a suite", () => {
     expect(options.reporters).toEqual(["clear-text"]);
   });
 
-  // A crowded machine slows each run past Stryker's time limit, and Stryker
-  // counts a mutant that timed out as killed, which would hide a survivor.
   it("runs at most three mutants at once, and leaves a core free", () => {
     const at = (cores: number) =>
       strykerOptions(suite, "/tmp/sandboxes", cores).concurrency;
@@ -105,10 +103,6 @@ describe("Stryker's options for a suite", () => {
     expect(at(1)).toBe(1);
   });
 
-  // Each integration run polls a local DynamoDB of its own, and a test that
-  // polls it sixty times passes vitest's time limit with two other runs
-  // beside it. The run then fails with no help from the mutant, and Stryker
-  // counts the mutant killed (#286).
   it("runs one mutant at a time when the suite has an integration test, however many cores there are", () => {
     const integration = {
       ...suite,
@@ -182,8 +176,6 @@ describe("the verdict on a run", () => {
     ).toBeUndefined();
   });
 
-  // A slow machine times a run out whatever its mutant does, and a timeout
-  // counts as killed, so such a run hides its survivors.
   it("fails a run in which most of the mutants that ran timed out", () => {
     expect(
       verdict([
@@ -208,7 +200,6 @@ describe("the verdict on a run", () => {
     ).toBeUndefined();
   });
 
-  // No test reached a mutant with no coverage, so it did not run.
   it("leaves a mutant no test reached out of the mutants that ran", () => {
     expect(
       verdict([

@@ -1,6 +1,5 @@
-// A store for a unit test, in memory. Every method rejects, naming itself,
-// unless the test gives it. A test names only the methods it reaches, and a
-// change to the Store interface is made here, once (#292).
+// The only place a test writes out every Store method, so a change to the
+// interface is made here once.
 import type { Store } from "../service/src/store/store";
 
 const notUsed = (name: string) => () =>

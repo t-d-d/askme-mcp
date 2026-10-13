@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { askRefusalOf, pageRefusalOf } from "../../test/refusals";
 
-// Every window is one minute today, so the words for a longer one never run
-// against the real limits. Here the three limits a refusal names for its
-// window count in five minutes (#224).
+// Every real window is one minute, so the words for a longer one never run
+// against the real limits.
 vi.mock("./rate", async (original) => ({
   ...(await original<typeof import("./rate")>()),
   rateLimits: {

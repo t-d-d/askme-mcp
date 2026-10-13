@@ -1,13 +1,10 @@
-// What the live tier's files share: the deployed site's addresses, from the
-// variables the deploy workflow sets, and the phone the page is opened on.
-// An address is read when a test asks for it, so a missing one fails that
-// test with its message.
 import { z } from "zod";
 
 export const phone = { width: 390, height: 844 };
 
 const https = z.url({ protocol: /^https$/u });
 
+// Read when a test asks, so a missing one fails that test with its message.
 const address = (name: string, what: string) => (): string =>
   https.parse(process.env[name], { error: () => `Set ${name} to ${what}.` });
 

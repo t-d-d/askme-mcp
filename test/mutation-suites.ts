@@ -1,7 +1,3 @@
-// The suites `npm run mutate -- <suite>` runs (test/mutation.ts). Adding
-// one is a data edit: the code to mutate, and the unit and integration
-// tests that guard it. A refactoring ticket adds the suite for the code it
-// moves, and runs it before and after the move.
 import type { Suite } from "./mutation.ts";
 
 export const suites: Record<string, Suite> = {
@@ -55,7 +51,7 @@ export const suites: Record<string, Suite> = {
   },
   rateLimits: {
     about:
-      "The four rate limits and the words of a refusal that names one, against the tests of the counters and the refusals that use them (#224).",
+      "The four rate limits and the words of a refusal that names one, against the tests of the counters and the refusals that use them.",
     mutate: ["service/src/rate.ts", "service/src/wording.ts"],
     tests: [
       "service/src/rate.test.ts",

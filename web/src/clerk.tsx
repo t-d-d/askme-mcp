@@ -1,7 +1,5 @@
-// Sign-in through Clerk (ADR 6). Sign-up and sign-in happen on Clerk's own
-// screens, so at the 100-account limit of a development instance it is
-// Clerk's screen that refuses a sign-up. The page only asks Clerk who is
-// signed in, and for a session token to send to its API.
+// Sign-up happens on Clerk's own screens, so at a development instance's
+// 100-account limit it is Clerk, not this page, that refuses it.
 import {
   ClerkProvider,
   useAuth as useClerkAuth,
@@ -12,7 +10,7 @@ import { useMemo, type ReactNode } from "react";
 import { z } from "zod";
 import { AuthContext, type Auth } from "./auth";
 
-// Clerk's publishable key, set when the page is built. It is public.
+// The publishable key is public, so it is safe in the built page.
 const publishableKey = z
   .string({ error: "Build the page with VITE_CLERK_PUBLISHABLE_KEY set." })
   .regex(/^pk_(?:test|live)_/u, {

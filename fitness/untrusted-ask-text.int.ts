@@ -1,6 +1,3 @@
-// ADR 12's checks on the whole sorting path, in process: the page's API and
-// the MCP endpoint on the local DynamoDB, the sort function run as Lambda
-// would run it, and the model faked at the HTTP edge.
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
@@ -53,7 +50,6 @@ async function saveRules(sub: string) {
   expect(response.status).toBe(200);
 }
 
-// Exactly what the ask tool and the resolve tool may answer (ADR 2).
 const idAndStatus = z.strictObject({
   id: z.string(),
   status: z.enum(["posted", "resolved"]),
@@ -73,15 +69,13 @@ async function callTool(sub: string, name: string, args: object) {
   }
 }
 
-// The sorting calls the model received for one ask, found by its summary.
 const sortingCallsFor = (summary: string): ModelCall[] =>
   fakes.model.calls.filter((call) =>
     JSON.stringify(call.body).includes(summary),
   );
 
-// The account's items, read straight from the table, apart from the count
-// of model calls, which every try raises whatever the model replies
-// (ADR 21), and that count.
+// Every try raises the model-call count whatever the model replies
+// (ADR 21), so the count is kept apart from the items.
 async function itemsAndCalls(sub: string) {
   const items = await storedItems(
     inject("databaseEndpoint"),
@@ -109,7 +103,7 @@ describe("fitness: a bad reply changes nothing (untrusted-ask-text.md)", () => {
       "an extra field",
       { hashtags: ["work"], level: "high", reason: "r", rules: "#work" },
     ],
-    // Sent back once for a shorter reason (#243), and still too long.
+    // Sent back once for a shorter reason, and still too long.
     [
       "a reason over the limit",
       {

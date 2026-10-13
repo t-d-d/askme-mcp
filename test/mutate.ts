@@ -1,10 +1,3 @@
-// `npm run mutate -- <suite>` runs mutation testing over one suite from
-// test/mutation-suites.ts, and with no suite lists them (#215). It runs by
-// hand, outside the gate. Stryker's sandboxes and the list of survivors go
-// in the system's temp folder, so the run writes nothing into the repo. The
-// last run's survivors are kept beside the new ones, so a run before a
-// refactor and one after it can be compared with diff.
-//
 // Node runs this file with its types stripped, so it imports with each
 // file's extension.
 import {
@@ -47,6 +40,7 @@ async function run(name: string, suite: Suite): Promise<boolean> {
     strykerOptions(suite, sandboxes),
   ).runMutationTest();
   const survivors = join(folder, "survivors.tsv");
+  // Kept, so runs before and after a refactor can be compared with diff.
   const previous = join(folder, "survivors.previous.tsv");
   if (existsSync(survivors)) renameSync(survivors, previous);
   writeFileSync(survivors, survivorsTsv(mutants, root));

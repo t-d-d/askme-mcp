@@ -1,41 +1,32 @@
-// Where an ask's buttons lead, and what they say. askme knows only a link's
-// address, so a button's words come from its shape and never from anything
-// the agent wrote (docs/design.md, "What the main button says").
+// A button's words come from its link's shape and never from anything the
+// agent wrote (docs/design.md, "What the main button says").
 
-// What the main button says when it leads back to the agent's session.
 export const sessionLabel = "Reply in the session";
 
-// The site a link leads to, as the browser reads its host, without "www.".
-// A host in another script stays in the form the browser spells it, so it
-// cannot pass for a familiar one.
+// The browser gives a host in another script in its xn-- form, so it cannot
+// pass for a familiar one.
 export function siteOf(link: string): string {
   return new URL(link).hostname.replace(/^www\./u, "");
 }
 
-// Whether a site's name is long enough to take smaller type on the top
-// card's main button, so it stays whole on one line beside the Listen and
-// session buttons. Fifteen characters fit at the usual size on a narrow
-// phone.
+// Past 15 characters the top card's main button takes smaller type, so the
+// name stays on one line beside Listen and the session button on a phone.
 export function longSite(site: string): boolean {
   return site.length > 15;
 }
 
-// A site's name in the parts it may break between, each ending in its dot.
-// A name too long for one line breaks after a dot, so its end stays whole.
-// A part is split only when it alone is longer than the line.
+// Each part ends in its dot, so a long name breaks after a dot and its end
+// stays whole.
 export function siteParts(site: string): string[] {
   return site.split(/(?<=\.)/u);
 }
 
-// The shapes askme recognises: a GitHub pull request or issue, by number.
 const shapes = [
   { kind: "pull", label: "Pull request" },
   { kind: "issues", label: "Issue" },
 ] as const;
 
-// What the main button says for an action link: what it is, when askme
-// recognises its shape, and otherwise only "Open", since the button's
-// second line already names the site.
+// "Open" alone otherwise, since the button's second line names the site.
 export function actionLabel(link: string): string {
   if (siteOf(link) === "github.com") {
     const [owner, repo, kind, number] = new URL(link).pathname
@@ -63,10 +54,6 @@ export interface Destination {
   site: string;
 }
 
-// Where an ask's buttons lead. The main button opens the action link, or
-// the session link when there is none. An ask with both has a second
-// control for the session. An ask with neither has nowhere to lead, and
-// opens its card.
 export function destinations({
   actionLink,
   sessionLink,

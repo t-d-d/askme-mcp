@@ -31,7 +31,6 @@ afterAll(async () => {
 
 const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
 
-// An account id as the token check gives it.
 const accountId = (sub: string): AccountId =>
   callerOf({
     token: "test",
@@ -54,7 +53,6 @@ async function postWith(
   return z.object({ id: z.string() }).parse(result.structuredContent).id;
 }
 
-// The version the page reads, and the ids of the open asks.
 async function listed(sub: string) {
   const response = await invoke(
     handler,
@@ -87,14 +85,12 @@ const putRules = async (sub: string, text: string) =>
     }),
   );
 
-// Saves the rules, with the model reading the hashtags given.
 async function saveRules(sub: string, text: string, hashtags: string[]) {
   fakes.model.reply({ json: { hashtags, hours: [] } });
   const response = await putRules(sub, text);
   expect(response.status).toBe(200);
 }
 
-// A change from the page to one ask, as the signed-in person.
 const changeAsk = async (sub: string, path: string, id: string) =>
   invoke(
     handler,

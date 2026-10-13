@@ -1,6 +1,3 @@
-// A note of the rules screen that no other browser test holds, with Clerk
-// and the page's API faked on loopback (ADR 9). The failed save's note,
-// with its Try again, is held in rules.browser.ts.
 import { afterEach, describe, expect, inject, it } from "vitest";
 import { pagePaths, type AsksAnswer } from "../shared/page-api";
 import { openPage, Status, type OpenPage } from "../test/browser";

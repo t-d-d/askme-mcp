@@ -1,5 +1,4 @@
-# The gate: one command, the same here as on a laptop (ADR 4). It runs on every
-# pull request, and the deploy workflow calls it before deploying main.
+# One command, the same here as on a laptop (ADR 4).
 name: gate
 
 on:

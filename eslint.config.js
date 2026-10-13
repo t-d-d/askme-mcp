@@ -1,5 +1,3 @@
-// Lint for the whole repo, at the strictness ADR 10 sets. Every rule is an
-// error or off, and `npm run lint` allows no warnings.
 import js from "@eslint/js";
 import comments from "@eslint-community/eslint-plugin-eslint-comments/configs";
 import jsxA11y from "eslint-plugin-jsx-a11y-x";
@@ -9,15 +7,11 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 import askme from "./lint-rules/index.js";
 
-// The page and the service never import each other (ADR 10).
 const layerPattern = (other) => ({
   regex: `^(\\.\\./)+${other}(/|$)`,
   message: `The page and the service never import each other. Shared types go in their own module.`,
 });
 
-// One store module is the only code that reads or writes the table
-// (ADR 13), so the database client is imported there and nowhere else. The
-// test setup that starts the local database is the one other place.
 const databaseClients = [
   "@aws-sdk/client-dynamodb",
   "@aws-sdk/lib-dynamodb",
@@ -55,7 +49,6 @@ const layer = (other) => ({
   ],
 });
 
-// The shared logger in service/src/log.ts is the only way to log (ADR 7).
 const otherLoggers = [
   "pino",
   "winston",
@@ -87,9 +80,8 @@ const processImports = ["process", "node:process"].map((name) => ({
     "Read the environment in service/src/env.ts, and log through service/src/log.ts (ADR 7, ADR 10).",
 }));
 
-// Outside data enters the service at one place for each kind, and is parsed
-// there by a schema (ADR 10). Each boundary module disables the rule on the
-// line where it reads, with its reason.
+// Each boundary module disables these on the line where it reads outside
+// data, with its reason (ADR 10).
 const boundaries = {
   // This block replaces the service-wide import rule, so it carries it too.
   "no-restricted-imports": [
@@ -149,7 +141,6 @@ export default defineConfig(
   tseslint.configs.strictTypeChecked,
   comments.recommended,
   {
-    // The project's own rules, from the decision records (ADR 10).
     files: ["**/*.{js,ts,tsx}"],
     plugins: { askme },
     rules: {
@@ -224,14 +215,12 @@ export default defineConfig(
     rules: boundaries,
   },
   {
-    // A write to the table is built in write() or count() and nowhere else
-    // (ADR 13, ADR 18). The test setup that makes the local table is outside
-    // the service, and is not held to it.
+    // test/dynamodb.ts makes the local table outside the service, so it is
+    // not held to this.
     files: ["service/**/*.ts"],
     rules: { "askme/write-functions": "error" },
   },
   {
-    // The key module is where every key is written (ADR 13).
     files: ["service/src/store/keys.ts"],
     rules: { "askme/no-hand-built-key": "off" },
   },
@@ -249,13 +238,11 @@ export default defineConfig(
     },
   },
   {
-    // The local database for the integration tier is started and its table
-    // made here, outside the service (ADR 9).
+    // Starts the local database for the integration tier (ADR 9).
     files: ["test/dynamodb.ts"],
     rules: { "no-restricted-imports": "off" },
   },
   {
-    // Every refusal comes from the one table of codes in errors.ts (ADR 11).
     files: ["service/**/*.ts"],
     ignores: [
       "service/src/errors.ts",
@@ -266,8 +253,6 @@ export default defineConfig(
     rules: { "askme/refusal-from-table": "error" },
   },
   {
-    // The gate is offline (ADR 9). test/browser.ts refuses every request
-    // that is not to loopback, so browser tests open pages only through it.
     files: ["**/*.browser.ts"],
     rules: {
       "no-restricted-imports": [

@@ -1,12 +1,3 @@
-// Stand-ins on loopback for the services the sorting path reaches (ADR 9):
-// the model, faked at the HTTP edge with recorded replies, Parameter
-// Store, which holds the model's key, and the queue, which takes the sort
-// jobs for the sort function.
-//
-// The integration tier starts one set for each test file, in
-// test/service-env.ts, and points the service at them. A test imports
-// `fakes` from here to give the model its replies and to deliver the jobs
-// that were queued.
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import {
@@ -17,15 +8,12 @@ import {
 import type { AddressInfo } from "node:net";
 import { z } from "zod";
 
-// The key Parameter Store gives the service, and the parameter it is under.
 export const testModelKey = "test-model-key";
 export const modelKeyParameter = "/askme/openrouter/api-key";
 
-// The queue the service sends sort jobs to.
 export const sortQueueName = "askme-sort.fifo";
 
-// What the model is to answer next: a reply, given as the JSON it holds or
-// as raw text, or a failure with only a status.
+// The reply's content as JSON or raw text, or a failure with a status.
 export type ModelReply =
   { json: unknown } | { text: string } | { status: number };
 
@@ -38,56 +26,43 @@ export interface FakeModel {
   // OpenRouter's API address, in place of https://openrouter.ai/api/v1.
   endpoint: string;
   calls: ModelCall[];
-  // Queues replies, answered in order. With none queued, the model fails
-  // with a 503.
+  // With none queued, the model fails with a 503.
   reply(...replies: ModelReply[]): void;
 }
 
-// A message sent to the queue: its group, its deduplication id, its body,
-// and whether the queue took it or dropped it as a repeat of one it took in
-// the last five minutes.
 export interface SentMessage {
   groupId: string;
   deduplicationId: string;
   body: unknown;
+  // False when SQS dropped it as a repeat.
   taken: boolean;
 }
 
 export interface FakeQueue {
   endpoint: string;
-  // The queue's address, which the service sends to.
   url: string;
-  // Every message sent, in order, whether or not the queue took it.
   sent: SentMessage[];
-  // How many messages each call the queue answered held, in order.
+  // The number of messages in each call.
   calls: number[];
-  // When set, the queue refuses every call with a server error.
+  // Refuses every call with a server error.
   failing: boolean;
-  // When set, the queue takes each call and never answers it.
   hanging: boolean;
-  // When set, the queue answers each call, and takes none of its messages.
+  // Answers each call, and takes none of its messages.
   refusing: boolean;
-  // Takes the next calls' messages, then answers each with a server error,
-  // as when an answer is lost on its way back, so the SDK sends it again.
+  // Takes the next calls' messages, then answers with a server error, as
+  // when an answer is lost on its way back, so the SDK sends them again.
   loseAnswers(count: number): void;
-  // How many messages wait to be delivered.
   waiting(): number;
-  // Deletes every waiting message, as SQS's purge does.
   purge(): void;
-  // Delivers each waiting message through a handler, one per run, as
-  // Lambda's trigger would after the call that sent it has answered. A
-  // message the run reports as failed, or whose run throws, waits for the
+  // One message per run. A message whose run fails or throws waits for the
   // next call, as SQS hides it for its visibility timeout, and holds back
-  // the later messages of its group until then. Any other is deleted. Gives
-  // how many runs it made.
+  // the rest of its group until then. Gives the number of runs.
   deliver(run: (event: unknown) => Promise<unknown>): Promise<number>;
 }
 
 export interface FakeParameterStore {
   endpoint: string;
-  // The name of each parameter asked for.
   asked: string[];
-  // When set, Parameter Store takes each call and never answers it.
   hanging: boolean;
 }
 
@@ -98,8 +73,7 @@ export interface Fakes {
   close(): Promise<void>;
 }
 
-// OpenRouter's answer to a chat completion, recorded from its API, with the
-// model's reply as the message's content.
+// Recorded from OpenRouter's API.
 const completion = (content: string) => ({
   id: "gen-1760000000-abcdefghijklmnopqrst",
   provider: "Google",
@@ -204,13 +178,10 @@ async function startModel() {
   return { model, close: server.close };
 }
 
-// SQS's JSON protocol: one POST to the endpoint, which names its action in
-// a header.
 const sqsTarget = "AmazonSQS.SendMessageBatch";
 const sqsJson = "application/x-amz-json-1.0";
 
-// What SQS takes in a group or deduplication id: up to 128 letters, digits
-// and punctuation.
+// SQS's rule for a group or deduplication id.
 const sqsId = /^[\w!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~-]{1,128}$/u;
 
 // SQS drops a message whose deduplication id it took in the last five
@@ -235,8 +206,6 @@ const batchSchema = z.object({
     ),
 });
 
-// What the sort function answers for a run: the messages it reports as
-// failed. An answer of nothing reports none.
 const runAnswer = z
   .object({
     batchItemFailures: z.array(z.object({ itemIdentifier: z.string() })),
@@ -285,7 +254,6 @@ async function startQueue() {
     },
     async deliver(run) {
       let runs = 0;
-      // A group whose message failed in this call waits for the next one.
       const held = new Set<string>();
       for (;;) {
         const next = waiting.find(({ groupId }) => !held.has(groupId));
@@ -323,7 +291,6 @@ async function startQueue() {
             ({ itemIdentifier }) => itemIdentifier === next.messageId,
           );
         } catch {
-          // A run that throws fails, and Lambda leaves its message.
           failed = true;
         }
         if (failed) {
@@ -482,6 +449,5 @@ export async function startFakes(): Promise<Fakes> {
   };
 }
 
-// The set for the test file that imports this module. test/service-env.ts
-// starts it before the file's tests, and the file's tests share it.
+// One set per test file, started by test/service-env.ts.
 export const fakes: Fakes = await startFakes();

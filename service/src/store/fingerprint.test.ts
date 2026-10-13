@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { fingerprint } from "./fingerprint";
 import type { NewAsk } from "./store";
 
-// Every field an agent can send, so each can be changed in turn.
 const ask: Required<NewAsk> = {
   summary: "Approve the plan for the kitchen rewiring",
   area: "Home renovation",

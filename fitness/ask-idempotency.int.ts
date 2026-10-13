@@ -30,7 +30,6 @@ afterAll(async () => {
 
 const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
 
-// An account id as the token check gives it.
 const accountId = (sub: string): AccountId =>
   callerOf({
     token: "test",
@@ -51,7 +50,6 @@ const ask = {
   stale_after_minutes: 45,
 };
 
-// The same ask, changed in one field and nothing else.
 const changed: Record<keyof typeof ask, string | number> = {
   summary: `${ask.summary}, again`,
   area: "Home renovation, downstairs",
@@ -74,14 +72,11 @@ const post = async (
   args: Record<string, string | number> = ask,
 ) => idOf(await agent.callTool({ name: "ask", arguments: args }));
 
-// The asks stored under an account, open or closed, read straight from the
-// table.
 const asksOf = async (sub: string) =>
   (await storedItems(endpoint, tableName, sub)).filter(
     (item) => typeof item.summary === "string",
   );
 
-// The id a post gave, whether it stored a new ask or matched one.
 const idFrom = (posting: Posting): string => {
   if (posting.kind === "posted" || posting.kind === "matched") {
     return posting.id;

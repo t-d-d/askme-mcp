@@ -1,48 +1,31 @@
-// Reading the rules (PRD, "How it works"): on save, one model call lists the
-// hashtags the rules name, and the hours the rules limit any of them to.
-// Nothing else in the rules is compiled. The hours are applied in code, by
-// the page, and never by a model (ADR 12).
-//
-// The rules are the person's own, but the reply is still checked in code.
-// A hashtag must be written in the rules with # in front of it, so code can
-// check every name the model gives, a window must name one of those
-// hashtags, its days and its times, and a reply that does not fit is
-// discarded whole, leaving the hashtags and their hours as they were.
+// The model only lists the hashtags and their hours. The page applies the
+// hours in code, never a model (ADR 12).
 import { z } from "zod";
 import { timeWindow, weekdays } from "../../shared/page-api";
 import { ModelFailed, type Model } from "./model";
 import { escaped, type Prompt } from "./sort";
 
-// The most hashtags askme keeps. The palette starts again after eight.
+// The palette starts again after eight.
 export const hashtagLimit = 12;
 
-// The most windows of hours askme keeps, across all the hashtags: two a
-// day for one hashtag, or two each for a dozen. The reply's token budget
-// below holds this many.
+// readingMaxTokens below holds this many.
 export const windowLimit = 24;
 
-// A hashtag's name: letters and digits, with hyphens and underscores after
-// the first, at most 24 characters, in lower case and without its #.
 const nameShape = /^[\p{L}\p{N}][\p{L}\p{N}_-]{0,23}$/u;
 
-// One window of hours, with the hashtag it belongs to.
 export const hashtagWindow = timeWindow.extend({ hashtag: z.string() });
 
 export type HashtagWindow = z.infer<typeof hashtagWindow>;
 
-// What askme reads from the rules: the hashtags, in the order the rules
-// first write them, and every window of hours the rules give any of them.
-// A hashtag with no window shows at any time.
+// hashtags are in the order the rules first write them. A hashtag with no
+// window shows at any time.
 export interface Reading {
   hashtags: string[];
   hours: HashtagWindow[];
 }
 
-// The rules a new account starts with, until the person saves their own
-// (PRD, "Rules"), as docs/design/mockup/rules.html shows them. They name the
-// three areas the sample asks come from, so sorting can be watched with no
-// agent connected. They are read here, with no model call, and a test
-// checks that the reading is one a model's reply could give.
+// As docs/design/mockup/rules.html shows them, naming the areas the sample
+// asks come from. A test checks the reading is one a model could give.
 export const exampleRules: { text: string; reading: Reading } = {
   text: [
     "#work is my day job. Only show it on weekdays between 8am and 6pm.",
@@ -105,7 +88,6 @@ export function readingPrompt(text: string): Prompt {
   };
 }
 
-// The reply, as the schema above asks for it.
 const replySchema = z.strictObject({
   hashtags: z.array(z.string()),
   hours: z.array(z.strictObject(hashtagWindow.shape)),
@@ -114,15 +96,14 @@ const replySchema = z.strictObject({
 // A hashtag as the model may write it: with its #, or in capitals.
 const plainName = (name: string) => name.replace(/^#/u, "").toLowerCase();
 
-// Where the rules first write a hashtag with its #, or -1 when they never do.
+// -1 when the rules never write the hashtag with its #, so the model made
+// it up.
 function firstWritten(name: string, text: string): number {
   const written = new RegExp(`#${name}(?![\\p{L}\\p{N}_-])`, "iu").exec(text);
   return written?.index ?? -1;
 }
 
-// What a reply read, with the hashtags in the order the rules first write
-// them and each window's days once each, in the week's order, or undefined
-// when anything in it is out of place.
+// Undefined when anything is out of place: a reply is discarded whole.
 export function parseReading(
   reply: unknown,
   text: string,
@@ -152,21 +133,16 @@ export function parseReading(
   };
 }
 
-// How long reading the rules may take, reading the model's key included.
-// The page waits for it, and the function behind the page's API stops at
-// ten seconds.
+// The page waits for the reading, and the page API's function stops at ten
+// seconds.
 const readingTimeoutMs = 7000;
 
 // Room for a dozen hashtags and every window askme keeps, at about 40
 // tokens a window.
 const readingMaxTokens = 1200;
 
-// Whether rules are empty: blank text names no hashtag, so reading it and
-// sorting with it make no model call, and the cap never refuses its save.
 export const emptyRules = (text: string): boolean => text.trim() === "";
 
-// The hashtags the rules name and their hours, read by the model, or why
-// they could not be read. Empty rules name none, with no model call.
 export async function readRules(
   text: string,
   model: Model,

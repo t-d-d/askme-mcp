@@ -16,40 +16,23 @@ import { browserTimeZone, useRules } from "./useRules";
 
 const leaving = "Leave without saving your rules?";
 
-// The rules: one box in plain English, and below it the hashtags askme read
-// from them, each with its hours. Saving waits while askme reads them. If
-// it cannot, the text is saved all the same, the old hashtags and hours
-// stay, and the page offers to try again. Either way, saving changed rules
-// re-sorts every open ask, and a last note says so, after the time zone the
-// hours use. At the foot, the address of the account signed in, and Sign
-// out.
-//
-// While some asks couldn't be sorted, "Save rules" works on unchanged text
-// too, unless today's sorting limit is reached. When the last reading
-// succeeded, that save reads nothing, and sorts again only the asks still
-// behind the rules (ADR 22). The screen polls the list, as the list does,
-// to know when asks stopped and when the limit is reached. A save refused
-// at the limit keeps the text in the box, and says when the limit resets.
-// That note goes once the limit resets, with no reload. The service's clock
-// decides when asks stop and when the limit resets, for the note and the
-// button alike.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   useLayer(layers.rules);
   const auth = useAuth();
   const { loaded, save } = useRules();
   const { data } = loaded;
+  // The list's poll says which asks couldn't be sorted, and when today's
+  // sorting limit is reached.
   const listed = useAsks();
   const boxId = useId();
   const readId = useId();
-  // What the person has typed since the rules last loaded or saved.
   const [draft, setDraft] = useState<string | null>(null);
-  // Whether the last save sent the text unchanged, after a reading that
-  // succeeded, so askme sorts the asks again and reads nothing.
+  // The last save sent unchanged text after a reading that succeeded, so
+  // askme reads nothing and only sorts again (ADR 22).
   const [resorting, setResorting] = useState(false);
   const refused =
     save.error === null ? null : refusalNote(save.error, save.submittedAt);
-  // Once the limit resets, the refusal's note goes. The refused save sorted
-  // nothing, so no note says the asks are being sorted again either.
+  // The refused save sorted nothing, so clear resorting along with its note.
   useAfter(refused?.goesAt, () => {
     setResorting(false);
     save.reset();
@@ -68,8 +51,8 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
   });
   const { away, mayLeave } = useLeaveGuard(changed, askFirst, leaving);
 
-  // Signing out leaves the rules too, so unsaved text asks first. The screen
-  // goes from the address, so whoever signs in next starts at the list.
+  // The screen goes from the address, so whoever signs in next starts at the
+  // list.
   const signOut = () => {
     if (!mayLeave()) return;
     const { pathname, search } = window.location;
@@ -139,7 +122,6 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
             onChange={(event) => {
               setDraft(event.target.value);
               setResorting(false);
-              // A failed save's note goes once the text changes.
               if (save.isError) save.reset();
             }}
           />
@@ -197,10 +179,6 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
   );
 }
 
-// The last note: the time zone the hours use, once the rules have loaded,
-// and what saving sorts again. A save takes this browser's time zone, so
-// when another browser saved the rules, the note says which one saving
-// here uses.
 function Footnote({
   loaded,
   saved,
@@ -221,7 +199,6 @@ function Footnote({
   );
 }
 
-// One short note under the button, giving the state.
 function Note({ note, onRetry }: { note: NoteKind; onRetry: () => void }) {
   if (note.kind === "none") return null;
   const retry = (
@@ -236,7 +213,6 @@ function Note({ note, onRetry }: { note: NoteKind; onRetry: () => void }) {
   );
 }
 
-// What a note says, ending with Try again where it offers one.
 function noteWords(
   note: Exclude<NoteKind, { kind: "none" }>,
   retry: ReactNode,

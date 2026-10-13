@@ -1,6 +1,3 @@
-// Captures what service code writes to the console, which is where Lambda
-// reads its log lines. Every console method is captured, so a line written
-// around the shared logger is caught as well.
 import { inspect } from "node:util";
 import { vi } from "vitest";
 
@@ -9,6 +6,7 @@ export interface Captured {
   args: unknown[];
 }
 
+// Every method, so a line written around the shared logger is caught too.
 const methods = ["log", "info", "warn", "error", "debug", "trace"] as const;
 
 export function captureLogs(): { lines: Captured[]; restore(): void } {
@@ -26,8 +24,7 @@ export function captureLogs(): { lines: Captured[]; restore(): void } {
   };
 }
 
-// A captured line as text, for searching. Objects are shown in full, an
-// error with its message and stack, so nothing hides inside one.
+// Objects in full, so nothing hides inside one.
 export function lineText(line: Captured): string {
   return line.args
     .map((arg) =>

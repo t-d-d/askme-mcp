@@ -1,92 +1,36 @@
-// The shared logger (ADR 7), and the only way service code logs.
-//
-// A line is one object: an event from the list below, the request id, and
-// fields from a fixed allowlist. Lambda's JSON log format stores the object
-// as the line's message and stamps the level from the console method used.
-// Nothing a user or an agent wrote can be passed in, because no field takes
-// it: there are ids, a tool's name, an error's class and a status.
 import { z } from "zod";
 
-// Every event the service logs. Count by event, never by level.
 export const events = [
-  // A call that needs a token carried none. Expected: on the MCP endpoint it
-  // starts sign-in.
   "token-missing",
-  // A token failed verification: expired, malformed, or not Clerk's.
   "token-rejected",
-  // A verified token lacked asks:create, so a tool refused it.
   "scope-missing",
-  // A route of the page's API got an agent's token, which reads nothing
-  // (ADR 2), so it refused it.
   "agent-token-refused",
-  // A tool's arguments, or a page API call's query, failed its schema.
   "input-invalid",
-  // An ask was accepted and answered with its id.
   "ask-posted",
-  // The page's "Send sample asks" posted a sample ask, as an agent would.
-  // Counted apart from ask-posted, so agents' asks are counted alone.
+  // Kept apart from ask-posted so agents' asks are counted alone.
   "sample-posted",
-  // An ask matched one the account posted in the last ten minutes, and was
-  // answered with that one's id. Counted to tune the window (ADR 3).
+  // Counted to tune the dedupe window (ADR 3).
   "ask-deduplicated",
-  // An ask, or a press of "Send sample asks", was refused because the
-  // account had posted its asks for the day.
   "cap-reached",
-  // An ask, or a press of "Send sample asks", was refused because the
-  // account had posted too many this minute, or every sample in the last ten
-  // minutes.
   "rate-limited",
-  // A new ask took the place of an open one, which closed as replaced. The
-  // id is the old ask's.
+  // The id is the old ask's.
   "ask-replaced",
-  // An agent resolved an open ask, which closed.
   "ask-resolved",
-  // An agent resolved an ask that was already closed. It succeeds.
   "ask-already-closed",
-  // An agent resolved, or the page changed, an id its account has no ask
-  // for, so it was refused.
   "ask-not-found",
-  // The person followed one of an ask's links for the first time, and it
-  // was marked as opened. It stays open.
   "ask-opened",
-  // The person dismissed an open ask, which closed.
   "ask-dismissed",
-  // A poll came over the account's limit for the minute, and was refused
-  // with rate_limited. Expected, so logged at info.
   "poll-limited",
-  // The sort queue did not take an ask's job, when the ask was posted or
-  // the rules were saved. The ask keeps what it had, unsorted or its old
-  // sort, and shows as stopped once its time is up. Logged at warn.
   "sort-request-failed",
-  // A sort failed, by the model or by askme, and its job went back to the
-  // queue to be delivered again a few minutes later.
   "sort-retried",
-  // An ask was sorted, and its sort stored.
   "ask-sorted",
-  // A sort reached the account's daily cap on model calls, so it sent
-  // nothing and its job was let go. The ask keeps what it had, until the
-  // rules are saved after the cap resets. Expected, so logged at info.
   "sort-capped",
-  // A sort failed on its job's last delivery, or a delivery past the last
-  // came, so the job was let go. The ask keeps what it had, unsorted or its
-  // old sort, until the rules are saved again. Logged at warn.
   "sort-failed",
-  // The rules were saved, and the hashtags read from them.
   "rules-saved",
-  // The rules were saved unchanged, after a reading that succeeded, so
-  // askme read nothing and queued only the asks behind them.
   "rules-resaved",
-  // The rules were saved, but the model could not read them, so the old
-  // hashtags stay. Logged at warn.
   "rules-read-failed",
-  // A save of the rules came over the account's limit for the minute, and
-  // was refused with rate_limited. Expected, so logged at info.
   "rules-limited",
-  // A save of the rules that needed the model was refused with cap_reached,
-  // as the account's daily cap on model calls was spent. Expected, so
-  // logged at info.
   "rules-capped",
-  // Something failed that the service did not expect. Logged at error.
   "request-failed",
 ] as const;
 
@@ -112,7 +56,7 @@ export type Fields = z.input<typeof fieldsSchema>;
 export const fieldNames = Object.keys(fieldsSchema.shape);
 
 // error: someone is alerted now. warn: handled, but suspect. info: as
-// designed, expected refusals included. There is no debug level.
+// designed, expected refusals included.
 export interface Logger {
   info: (event: Event, fields?: Fields) => void;
   warn: (event: Event, fields?: Fields) => void;
@@ -123,14 +67,15 @@ type Level = keyof Logger;
 
 export function createLogger(requestId: string): Logger {
   const write = (level: Level, event: Event, fields: Fields = {}) => {
-    // A field that fails the allowlist is dropped with the rest, rather than
-    // trimmed, so nothing it held can reach the line.
+    // One bad field drops them all, so nothing it held can reach the line.
     const parsed = fieldsSchema.safeParse(fields);
     const line = {
       event,
       requestId,
       ...(parsed.success ? parsed.data : { fieldsRejected: true }),
     };
+    // Lambda's JSON log format stores the object as the message and takes
+    // the level from the console method.
     console[level](line); // eslint-disable-line no-console -- the shared logger is the one place that writes a line
   };
   return {
@@ -146,7 +91,6 @@ export function createLogger(requestId: string): Logger {
   };
 }
 
-// The class of something thrown, to log in place of its message.
 export function errorClass(error: unknown): string {
   if (!(error instanceof Error)) return typeof error;
   const code = "code" in error ? error.code : undefined;

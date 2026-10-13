@@ -1,5 +1,3 @@
-// The page once a person has signed in, with Clerk and the page's API
-// faked on loopback (ADR 9).
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import {
   pagePaths,
@@ -39,7 +37,7 @@ const ask = (id: string, summary: string, waited: number) => ({
   sort: null,
 });
 
-// Five asks, in no order: the oldest goes on the top card.
+// In no order: the oldest goes on the top card.
 const five: AsksAnswer = {
   version: 5,
   everAsked: true,
@@ -86,7 +84,6 @@ const scrollsSideways = (page: OpenPage["page"], width: number) =>
     .evaluate(() => document.documentElement.scrollWidth)
     .then((scrollWidth) => scrollWidth > width);
 
-// The width of each line a paragraph takes, and of the paragraph.
 const lineWidths = (page: OpenPage["page"], text: string) =>
   page.evaluate(async (text) => {
     await document.fonts.ready;
@@ -105,7 +102,6 @@ const lineWidths = (page: OpenPage["page"], text: string) =>
 // Side padding inside a card, which All clear keeps on a phone.
 const sidePadding = 22;
 
-// Where the All clear headline's words start and end, across its lines.
 // A headline with no lines gets edges that fail any check.
 const headlineEdges = (page: OpenPage["page"]) =>
   page
@@ -174,9 +170,6 @@ describe.each([
     expect(await tab.getAttribute("aria-pressed")).toBe("true");
   });
 
-  // On a phone the header has one control, which opens the rules, and
-  // the rules screen links on to Connect your agents. At desktop width the
-  // header has both as text links (docs/design.md, "Header").
   it("links to the rules from the header, and to Connect your agents from the header or the rules", async () => {
     const { page } = view;
     const rules = page.getByRole("link", { name: "Rules" });
@@ -197,9 +190,8 @@ describe.each([
     }
   });
 
-  // The demo notice is on the signed-out page and on Connect your agents.
-  // A tag beside the wordmark looked like a hashtag or a tab
-  // (docs/design.md, "Header").
+  // A tag beside the wordmark looks like a hashtag or a tab. The demo notice
+  // is on the signed-out page and on Connect your agents instead.
   it("puts no Demo tag beside the wordmark", async () => {
     const header = view.page.getByRole("banner");
     expect(await header.getByText("askme", { exact: true }).isVisible()).toBe(
@@ -225,10 +217,7 @@ describe.each([
   });
 });
 
-// "All asks" goes back (docs/design.md), so a visit to another screen leaves
-// one entry for the list in the history, not one more each time.
 describe("All asks on another screen", () => {
-  // Where the page's entry sits in the history.
   const entry = (view: OpenPage) =>
     view.page.evaluate(() => window.navigation.currentEntry?.index);
 

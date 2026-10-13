@@ -1,20 +1,4 @@
-// The sort function (PRD, "Back end"): it sorts one ask after the service
-// has stored it and answered, so posting never waits on the model. It runs
-// the jobs on the sort queue (ADR 22), which posting an ask and saving the
-// rules put there, one message per run.
-//
-// A sort that fails leaves the ask as it was, kept and shown as not sorted
-// yet or with its old hashtags. The function never fails a run for it,
-// which would alert. It reports the message as failed, and the queue
-// delivers it again about six minutes later. On the third delivery it logs
-// the failure at warn and lets the message go, and the ask waits for the
-// rules to be saved again.
-//
-// Each try is counted against the account's daily cap on model calls just
-// before it is sent (ADR 21). Over the cap, the sort sends nothing and
-// leaves the ask as it was. The function logs it at info, as the cap is
-// working as designed, and lets the message go: a job held on the queue
-// would come round again before the cap resets (ADR 22).
+// The sort function, which runs the jobs on the sort queue (ADR 22).
 import { z } from "zod";
 import { readEnv } from "./env";
 import { jobAccount, type AccountId } from "./identity";
@@ -40,22 +24,19 @@ import {
 import { createStore, type Store } from "./store/store";
 import { sortedWithRules } from "./view";
 
-// How many times one run asks the model before it leaves the ask unsorted.
+// Model tries in one run.
 export const sortAttempts = 2;
 
-// How many times the queue delivers one job before the function lets it go.
+// Queue deliveries of one job.
 export const sortDeliveries = 3;
 
-// How long one try may take. The function's timeout leaves room for both.
-// The eval sends this too.
+// The sort function's timeout in the deployment definition leaves room for
+// sortAttempts tries. The eval sends this too.
 export const sortTimeoutMs = 20_000;
 
-// Room for the reply: a few hashtags, a level and one line. The eval sends
-// this too.
+// Room for a few hashtags, a level and one line. The eval sends this too.
 export const sortMaxTokens = 300;
 
-// The sort an ask gets while the rules are empty: no hashtags, so it is
-// simply listed (PRD, "Rules"), and no model call to make one.
 export const emptyRulesSort: Sort = {
   hashtags: [],
   level: "normal",
@@ -69,16 +50,10 @@ export interface SortContext {
   now: Date;
 }
 
-// What became of a sort: done, as the ask is sorted with the rules in force,
-// already was, or has closed; capped, as the account's daily cap on model
-// calls refused a try, with why the try before it failed, if one did; or
-// failed, and why.
+// With capped, failed is why the try before the cap failed, if one did.
 export type SortOutcome =
   "done" | { capped: true; failed?: string } | { failed: string };
 
-// Sorts one open ask with the rules in force, unless it is already sorted
-// with them, and stores the sort. A job for an ask already up to date ends
-// here, before any model call.
 export async function sortAsk(
   account: AccountId,
   askId: string,
@@ -111,9 +86,6 @@ export async function sortAsk(
       maxTokens: sortMaxTokens,
       timeoutMs: sortTimeoutMs,
     };
-    // A reply whose only fault is a long reason goes back to the model on
-    // the next try, which asks for a shorter one (#243). Anything else gets
-    // the first prompt again.
     let followUp: FollowUp | undefined;
     for (let tries = 0; tries < sortAttempts && sort === undefined; tries++) {
       try {
@@ -125,7 +97,6 @@ export async function sortAsk(
         failure = "reply-rejected";
       } catch (error) {
         if (error instanceof CapReached) {
-          // A try before this one failed, and will not be tried again.
           return tries > 0
             ? { capped: true, failed: failure }
             : { capped: true };
@@ -147,15 +118,13 @@ export async function sortAsk(
   return "done";
 }
 
-// One message from the queue: its id, the text of its body, and how many
-// times the queue has delivered it, this time included.
+// receives counts this delivery too.
 export interface QueueMessage {
   messageId: string;
   text: string;
   receives: number;
 }
 
-// The job a message holds, parsed by its schema, or undefined.
 const jobOf = (text: string) => {
   try {
     return sortJobSchema.safeParse(JSON.parse(text)).data;
@@ -164,12 +133,9 @@ const jobOf = (text: string) => {
   }
 };
 
-// Runs one delivery of a job, and says whether the queue should deliver it
-// again. A failed sort, or a failure of askme's own, goes back to the queue
-// until the delivery numbered sortDeliveries, which logs it at warn and lets
-// it go. A later delivery, which comes only when a run crashed, is let go
-// before any work. The services are set up inside, so a failure to set
-// them up is reported as askme's own.
+// Answers whether the queue should deliver the job again. A failed sort
+// never fails the run, which would alert. The services are set up inside
+// the try, so a failure there is caught as askme's own.
 export async function runJob(
   message: QueueMessage,
   log: Logger,
@@ -177,12 +143,13 @@ export async function runJob(
 ): Promise<boolean> {
   const job = jobOf(message.text);
   if (job === undefined) {
-    // Only askme queues a job, so one it cannot read is its own fault, and
-    // reading it again would not help.
+    // Only askme queues a job, so this is its own fault, and a retry would
+    // not help.
     log.error("request-failed", { errorClass: "UnreadableJob" });
     return false;
   }
   const at = { accountId: job.accountId, askId: job.askId };
+  // Only a crashed run leads to a delivery past the last.
   if (message.receives > sortDeliveries) {
     log.warn("sort-failed", { ...at, errorClass: "deliveries-spent" });
     return false;
@@ -191,14 +158,14 @@ export async function runJob(
   try {
     outcome = await sortAsk(jobAccount(job.accountId), job.askId, context());
   } catch (error) {
-    // Anything else is askme's own fault, such as the table or the key
-    // failing, so it alerts.
+    // askme's own fault, such as the table or the key failing, so it alerts.
     log.error("request-failed", { errorClass: errorClass(error) });
     outcome = { failed: errorClass(error) };
   }
   if (outcome === "done") return false;
   if ("capped" in outcome) {
-    // A try before the cap failed, and will not be tried again.
+    // Let go: a retry would come round again before the cap resets
+    // (ADR 22).
     if (outcome.failed !== undefined) {
       log.warn("sort-failed", { ...at, errorClass: outcome.failed });
     }
@@ -244,12 +211,10 @@ function ready(): Services {
   return services;
 }
 
-// Lambda's context for a run, of which only its id is read.
 const contextSchema = z.object({
   awsRequestId: z.string().regex(/^[\w-]{1,128}$/u),
 });
 
-// What the queue's trigger hands a run, of which only these parts are read.
 const queueEventSchema = z.object({
   Records: z.array(
     z.object({
@@ -265,8 +230,7 @@ const queueEventSchema = z.object({
   ),
 });
 
-// What a run answers the trigger: the messages it reports as failed, which
-// the queue delivers again. Every other message is deleted.
+// The queue delivers the listed messages again and deletes the rest.
 export interface QueueAnswer {
   batchItemFailures: { itemIdentifier: string }[];
 }
@@ -281,7 +245,7 @@ export async function handler(
   const parsed = queueEventSchema.safeParse(event);
   if (!parsed.success) {
     // The trigger always sends a well-formed event, so this is askme's
-    // fault. With no message ids to report, the run lets them go.
+    // fault. With no message ids to report, the messages are let go.
     log.error("request-failed", { errorClass: "UnreadableEvent" });
     return { batchItemFailures: [] };
   }

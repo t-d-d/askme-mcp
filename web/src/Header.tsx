@@ -1,7 +1,7 @@
 import styles from "./Header.module.css";
 
-// The wordmark, and at the right the way to the rules. At desktop width the
-// rules and Connect agents are two text links.
+// The icon link shows at phone width, and the two text links at desktop
+// width.
 export function Header() {
   return (
     <header className={styles.header}>

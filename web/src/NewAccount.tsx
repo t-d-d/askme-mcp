@@ -2,9 +2,6 @@ import { useId } from "react";
 import styles from "./NewAccount.module.css";
 import { SampleAsks } from "./SampleAsks";
 
-// Shown when the account has never had an ask. It starts with example
-// rules, so sample asks sent from here are sorted with no agent connected,
-// and show in the list in place of this card.
 export function NewAccount() {
   const heading = useId();
   return (

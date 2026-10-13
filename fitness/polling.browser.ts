@@ -1,6 +1,3 @@
-// The page polls for changes while it is visible, and only then (ADR 1).
-// The page's API is faked on loopback, and the page runs on Playwright's
-// clock, so a test moves time on by a poll interval instead of waiting.
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import {
   pagePaths,
@@ -30,8 +27,8 @@ const ask = (id: string, summary: string): PageAsk => ({
 const first = ask("a", "Merge the fix for checkout rounding? Tests pass.");
 const second = ask("b", "Which date format should the export use?");
 
-// A list the test can change. A poll carrying its version is answered with
-// nothing new, as the service answers it.
+// A poll carrying the current version is answered with nothing new, as the
+// service answers it.
 function fakeList(list: AsksAnswer) {
   let current = list;
   return {

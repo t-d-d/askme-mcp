@@ -1,6 +1,5 @@
 import { isIP } from "node:net";
 
-// True when a host name or address can only mean this machine.
 export function isLoopbackHost(host: string): boolean {
   const bare = host.replace(/^\[(.*)\]$/u, "$1").toLowerCase();
   if (bare === "localhost" || bare.endsWith(".localhost")) return true;

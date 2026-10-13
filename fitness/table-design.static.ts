@@ -52,7 +52,6 @@ const tables = () =>
     .filter((resource) => resource.Type === "AWS::DynamoDB::Table")
     .map((resource) => tableSchema.parse(resource));
 
-// The key module, the one place a key is written.
 const keysPath = "service/src/store/keys.ts";
 
 // A file of service code that is neither the key module nor the store.
@@ -88,9 +87,7 @@ describe("fitness: no index, no scan (table-design.md)", () => {
     expect(await reported(code, servicePath)).toContain("askme/no-scan");
   });
 
-  // Every action is named in full, so none can stand for a scan, and no
-  // DynamoDB action is one. Actions on other services, such as reading the
-  // model's key, cannot touch the table.
+  // Every action is named in full, so no wildcard can stand for a scan.
   it("gives the service no right to scan", () => {
     const actions = (definition().provider.iam?.role.statements ?? [])
       .filter((statement) => statement.Effect === "Allow")
@@ -161,10 +158,8 @@ describe("fitness: one key builder (table-design.md)", () => {
   });
 });
 
-// The sort keys and prefixes a key module builds: every string in it, whole
-// or as the start of a template, apart from the paths it imports. The module
-// builds keys and nothing else, so each of its strings is part of one. It
-// is read as TypeScript, so its comments are left out.
+// The key module builds keys and nothing else, so every string in it is part
+// of one. It is parsed as TypeScript so that its comments are left out.
 const builtKeys = (text: string): string[] => {
   const found = new Set<string>();
   const visit = (node: ts.Node): void => {
@@ -177,7 +172,6 @@ const builtKeys = (text: string): string[] => {
   return [...found].filter((value) => value !== "");
 };
 
-// The "Sort keys" rule in table-design.md, its lines joined.
 const sortKeysRule = (): string => {
   const text = readRepoFile("docs/constraints/table-design.md").replaceAll(
     "\n  ",
@@ -188,15 +182,14 @@ const sortKeysRule = (): string => {
   return rule ?? "";
 };
 
-// Whether a rule names a key: a prefix with what follows it in angle
-// brackets, as OPEN#<id>, and a whole key as a word of its own, as META.
+// A rule names a prefix with what follows it in angle brackets, as
+// OPEN#<id>, and a whole key as a word of its own, as META.
 const names = (rule: string, key: string): boolean => {
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
   const end = key.endsWith("#") ? "<" : "(?![\\w#<])";
   return new RegExp(`(?<![\\w#])${escaped}${end}`, "u").test(rule);
 };
 
-// The keys a key module builds that the "Sort keys" rule does not name.
 const unnamed = (text: string): string[] => {
   const rule = sortKeysRule();
   return builtKeys(text).filter((key) => !names(rule, key));
@@ -219,8 +212,6 @@ describe("fitness: the sort keys rule names every key the key module builds (tab
   });
 });
 
-// The keys a key module builds that are not in the list it exports, which is
-// the list askme/no-hand-built-key reads.
 const unlisted = (text: string): string[] => {
   const listed = new Set<string>(Object.values(sortKeys));
   return builtKeys(text).filter((key) => !listed.has(key));
@@ -243,9 +234,8 @@ describe("fitness: the key module builds every key from the list lint reads (tab
 describe("fitness: two functions write (table-design.md)", () => {
   const storePath = "service/src/store/store.ts";
 
-  // What lint reports for the store module as it stands. Linting the whole
-  // module takes longer than one test may when the gate keeps the machine
-  // busy, so it runs once here, and loads the project for the tests below.
+  // Linting the whole store module can take longer than one test may, so it
+  // runs once here, and loads the project for the tests below.
   let storeReported: string[];
 
   beforeAll(async () => {

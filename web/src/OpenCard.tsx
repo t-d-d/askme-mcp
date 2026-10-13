@@ -14,16 +14,6 @@ import type { Tab } from "./tab";
 import { backToList, followToList } from "./toList";
 import { waiting } from "./waiting";
 
-// One ask, open on a white screen (docs/design.md, "The open card"): its
-// hashtags and how long it has waited, the summary, Listen where the
-// browser can speak, the spoken text, and the reason it was sorted as it
-// was. At the foot, the main button, and under it an outlined one for the
-// session when the ask has both links. "All asks" goes back, and "Dismiss"
-// dismisses the ask and goes back.
-//
-// While a note shows at the foot of the screen, the card leaves room for it,
-// so it covers none of the buttons.
-//
 // The reason is the sorting model's words, so it is plain text only
 // (untrusted-ask-text.md).
 export function OpenCard({
@@ -50,7 +40,7 @@ export function OpenCard({
     markOpened(id);
   };
   // The card stays until the slide draws the list, so Dismiss can be tapped
-  // again before then. The ask is dismissed once.
+  // again before then.
   const dismissing = useRef(false);
   return (
     <div
@@ -69,7 +59,6 @@ export function OpenCard({
           onClick={() => {
             if (dismissing.current) return;
             dismissing.current = true;
-            // The card goes as the ask does, so it slides out then.
             slide(() => {
               dismiss(id);
               // The card is gone, so Back does not come back to it.

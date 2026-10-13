@@ -1,7 +1,5 @@
-/*
- * The card can be swiped sideways, so the browser keeps only scrolling up
- * and down, and the card goes back to its place after a short drag.
- */
+/* The swipe takes sideways drags, so the browser keeps only vertical
+   scrolling. */
 .card {
   display: flex;
   flex-direction: column;
@@ -39,7 +37,6 @@
   line-height: var(--leading-meta);
 }
 
-/* The summary opens the card. It is big enough to tap on one line. */
 .summary {
   display: block;
   min-height: var(--tap);
@@ -52,7 +49,6 @@
   overflow-wrap: anywhere;
 }
 
-/* On a phone the spoken text waits for the open card. */
 .spoken {
   display: none;
 }
@@ -62,7 +58,6 @@
   gap: var(--gap-buttons);
 }
 
-/* A strong fill carries white text, which is the surface colour. */
 .main {
   display: flex;
   flex-direction: column;
@@ -83,10 +78,6 @@
   font-weight: var(--weight-strong);
 }
 
-/*
- * A name breaks after a dot, where the component marks it. It breaks inside
- * a part only when that part alone is longer than the line.
- */
 .site {
   font-size: var(--size-meta-small);
   line-height: var(--leading-meta);
@@ -98,7 +89,6 @@
   font-size: var(--size-site-long);
 }
 
-/* Listen and the session: a tint fill with an icon in the ink. */
 .icon {
   display: flex;
   flex: none;

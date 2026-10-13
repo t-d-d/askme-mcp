@@ -50,7 +50,6 @@ const sqsEventSchema = z.strictObject({
   functionResponseType: z.string(),
 });
 
-// The resources of one type, by logical id.
 const ofType = (type: string) =>
   Object.entries(definition().resources.Resources).filter(
     ([, resource]) => resource.Type === type,
@@ -61,7 +60,7 @@ const sortFunction = () => definition().functions.sort;
 const actionsOf = (statement: z.infer<typeof statementSchema>) =>
   typeof statement.Action === "string" ? [statement.Action] : statement.Action;
 
-// The service's own code, tests left out, as a test may build any client.
+// A test may build any client, so tests are left out.
 const serviceCode = () =>
   repoFiles().filter(
     (path) =>

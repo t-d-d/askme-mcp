@@ -1,4 +1,3 @@
-/* A white screen. Its buttons sit at the foot, however short the text. */
 .screen {
   display: flex;
   flex-direction: column;
@@ -6,7 +5,7 @@
   background: var(--surface);
 }
 
-/* Room at the foot for the note after a dismissal, so it covers nothing. */
+/* Room for the dismissal note, so it covers nothing. */
 .screen[data-noted] {
   padding-bottom: var(--space-note);
 }
@@ -69,7 +68,6 @@
   overflow-wrap: anywhere;
 }
 
-/* Listen: a wide tint button, with the speaker, the word and the length. */
 .listen {
   display: flex;
   align-items: center;
@@ -97,7 +95,6 @@
   overflow-wrap: anywhere;
 }
 
-/* The reason, under a hairline, in the third text colour. */
 .reason {
   margin: 0;
   padding-top: var(--space-14);
@@ -116,7 +113,6 @@
   padding: var(--space-20) var(--space-outside-card);
 }
 
-/* The main button: a strong fill carries white text, the surface colour. */
 .main,
 .second {
   display: flex;
@@ -133,7 +129,6 @@
   color: var(--surface);
 }
 
-/* The session, under it: outlined, in ink. */
 .second {
   border: var(--border-width) solid var(--border);
   color: var(--ink);
@@ -145,10 +140,6 @@
   font-weight: var(--weight-strong);
 }
 
-/*
- * A name breaks after a dot, where the component marks it. It breaks inside
- * a part only when that part alone is longer than the line.
- */
 .site {
   font-size: var(--size-meta-small);
   line-height: var(--leading-meta);
@@ -159,7 +150,6 @@
   color: var(--text-3);
 }
 
-/* At desktop width the card keeps to the spoken text's measure, centred. */
 @media (min-width: 768px) {
   .header,
   .body,
