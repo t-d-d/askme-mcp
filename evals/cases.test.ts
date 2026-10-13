@@ -113,7 +113,7 @@ describe("the core eval set", () => {
     expect(level("a supplier's price rise next month")).toBe("high");
   });
 
-  it("marks the four asks the owner accepts as misses, and keeps them in the set (#262)", () => {
+  it("marks the five asks the owner accepts as misses, and keeps them in the set (#262, #295)", () => {
     const marked = cases
       .filter(({ knownMiss }) => knownMiss !== undefined)
       .map(({ name, knownMiss }) => `${name}, #${String(knownMiss)}`);
@@ -123,6 +123,7 @@ describe("the core eval set", () => {
         "the passkey ask, #262",
         "a sign-in code for the school's payment site, #262",
         "a consent form due next week, #262",
+        "a courier change from next month, #295",
       ].sort(),
     );
   });
