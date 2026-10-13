@@ -288,6 +288,61 @@ const lineEnds = (element: Locator) =>
 const fitsWidth = (element: Locator) =>
   element.evaluate((each) => each.scrollWidth <= each.clientWidth);
 
+// The right edge of each line of an element's text, in the page's own font.
+const lineRights = (element: Locator) =>
+  element.evaluate(async (each) => {
+    await document.fonts.ready;
+    const range = document.createRange();
+    range.selectNodeContents(each);
+    const rights = new Map<number, number>();
+    for (const { top, right, width } of range.getClientRects()) {
+      if (width === 0) continue;
+      const line = Math.round(top);
+      rights.set(line, Math.max(rights.get(line) ?? right, right));
+    }
+    return [...rights.values()];
+  });
+
+// Where an element's box starts and ends down the page.
+const verticalEdges = (element: Locator) =>
+  element.evaluate((each) => {
+    const { top, bottom } = each.getBoundingClientRect();
+    return { top, bottom };
+  });
+
+// Where a row's content ends at the right, inside its padding.
+const contentRight = (row: Locator) =>
+  row.getByRole("link").evaluate((link) => {
+    const { right } = link.getBoundingClientRect();
+    return right - parseFloat(getComputedStyle(link).paddingRight);
+  });
+
+// A row's meta line when its parts do not all fit on one line: the pill,
+// the age and any "Opened" each stay whole, and the site's name moves down
+// to a line of its own, with each of its lines ending at the row's right
+// edge, inside the row (docs/design.md).
+async function expectSiteMovedDown(
+  row: Locator,
+  { pill, kept, site }: { pill: string; kept: string[]; site: string },
+) {
+  const pillText = row.getByText(pill, { exact: true });
+  for (const part of [
+    pillText,
+    ...kept.map((each) => row.getByText(each, { exact: true })),
+  ]) {
+    expect(await lineCount(part)).toBe(1);
+  }
+  const name = row.getByText(site, { exact: true });
+  expect((await verticalEdges(name)).top).toBeGreaterThanOrEqual(
+    (await verticalEdges(pillText)).bottom,
+  );
+  const edge = await contentRight(row);
+  for (const right of await lineRights(name)) {
+    expect(right).toBeCloseTo(edge, 0);
+  }
+  expect(await fitsWidth(row)).toBe(true);
+}
+
 // A site's name breaks onto another line, and only just after a dot
 // (docs/design.md).
 async function expectBreaksOnlyAfterDots(name: Locator) {
@@ -510,40 +565,78 @@ describe("the rows", () => {
     expect(sentTo(opened, askChangePaths.opened)).toEqual([]);
   });
 
-  // A site's name too long for the row's line breaks just after a dot, not
-  // inside a word (docs/design.md).
-  it("break console.aws.amazon.com only after a dot on a 320px phone, beside #shopping and the age", async () => {
+  // A site's name that fits beside the pill and the age stays on their line
+  // (docs/design.md).
+  it("keep github.com on the line of #shopping and the age on a 320px phone", async () => {
+    const row = await narrowRow(issue);
+    const name = row.getByText("github.com", { exact: true });
+    expect(await lineCount(name)).toBe(1);
+    expect((await verticalEdges(name)).top).toBeLessThan(
+      (await verticalEdges(row.getByText("#shopping", { exact: true }))).bottom,
+    );
+    expect(await fitsWidth(row)).toBe(true);
+  });
+
+  // When the site's name does not fit beside them, it gives way, and the
+  // pill and the age stay whole (docs/design.md).
+  it("move console.aws.amazon.com to a line of its own at the right on a 320px phone, and keep #shopping and the age whole", async () => {
     const row = await narrowRow(aws);
-    const text = await row.innerText();
-    expect(text).toContain("#shopping");
-    expect(text).toContain("50 min");
-    const name = row.getByText("console.aws.amazon.com", { exact: true });
-    await expectBreaksOnlyAfterDots(name);
-    expect(await fitsWidth(row)).toBe(true);
-  });
-
-  // The longest hashtag a rule may name, on an opened row, still leaves the
-  // site's name room to break after a dot inside the row (docs/design.md).
-  it("keep an opened row under a 24-character hashtag inside a 320px phone, and break its site only after a dot", async () => {
-    const row = await narrowRow(aws, {
-      hashtag: "customer-onboarding-flow",
-      waited: 23 * 60 * minute,
-      opened: true,
+    await expectSiteMovedDown(row, {
+      pill: "#shopping",
+      kept: ["50 min"],
+      site: "console.aws.amazon.com",
     });
-    const text = await row.innerText();
-    expect(text).toContain("#customer-onboarding-flow");
-    expect(text).toContain("Opened");
-    const name = row.getByText("console.aws.amazon.com", { exact: true });
-    await expectBreaksOnlyAfterDots(name);
-    expect(await fitsWidth(row)).toBe(true);
   });
 
-  // A part too long for the line on its own is split, so the name stays
-  // inside the row (docs/design.md).
-  it("split only a part too long for the line on its own, and keep the name inside the row", async () => {
+  // The longest hashtag a rule may name, with hyphens to break at and with
+  // none, on an opened row that has waited 23 hours (docs/design.md).
+  it.each([
+    {
+      hashtag: "customer-onboarding-flow",
+      link: aws,
+      site: "console.aws.amazon.com",
+    },
+    {
+      hashtag: "internationalshippingops",
+      link: aws,
+      site: "console.aws.amazon.com",
+    },
+    { hashtag: "internationalshippingops", link: issue, site: "github.com" },
+  ])(
+    "keep #$hashtag, 23 h and Opened whole on a 320px phone, and move $site to a line of its own at the right",
+    async ({ hashtag, link, site }) => {
+      const row = await narrowRow(link, {
+        hashtag,
+        waited: 23 * 60 * minute,
+        opened: true,
+      });
+      await expectSiteMovedDown(row, {
+        pill: `#${hashtag}`,
+        kept: ["23 h", "Opened"],
+        site,
+      });
+    },
+  );
+
+  // A site's name too long for a whole line breaks just after a dot, and
+  // each of its lines ends at the right (docs/design.md).
+  it("break a name too long for a whole line only after a dot, on a line of its own at the right", async () => {
     const row = await narrowRow(longPart);
-    const name = row.getByText(new URL(longPart).hostname, { exact: true });
-    await expectOnlyLongPartSplit(name);
+    const site = new URL(longPart).hostname;
+    await expectSiteMovedDown(row, {
+      pill: "#shopping",
+      kept: ["50 min"],
+      site,
+    });
+    await expectBreaksOnlyAfterDots(row.getByText(site, { exact: true }));
+  });
+
+  // A part too long for a whole line on its own is split, so the name stays
+  // inside the row (docs/design.md).
+  it("split only a part too long for a whole line on its own, and keep the name inside the row", async () => {
+    const row = await narrowRow(longerPart);
+    const name = row.getByText(new URL(longerPart).hostname, { exact: true });
+    await expectOnlyLongPartSplit(name, longerPart);
     expect(await fitsWidth(row)).toBe(true);
   });
 
