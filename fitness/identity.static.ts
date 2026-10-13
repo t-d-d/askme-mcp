@@ -8,7 +8,12 @@ const definition = () =>
     "serverless.yml",
     z.object({
       provider: z.object({
-        httpApi: z.object({ authorizers: z.unknown().optional() }).optional(),
+        httpApi: z
+          .object({
+            authorizers: z.unknown().optional(),
+            cors: z.unknown().optional(),
+          })
+          .optional(),
       }),
       functions: z.record(
         z.string(),
@@ -60,5 +65,12 @@ describe("fitness: every route checks a token (identity.md)", () => {
   // would be a second place where access is decided.
   it("puts no API Gateway authorizer in front of the handler", () => {
     expect(definition().provider.httpApi?.authorizers).toBeUndefined();
+  });
+
+  // API Gateway's own CORS would answer every route's preflight, the MCP
+  // endpoint and /api/* included, without reaching the handler, and would
+  // replace the handler's answer on the metadata route.
+  it("leaves API Gateway's own CORS off", () => {
+    expect(definition().provider.httpApi?.cors).toBeUndefined();
   });
 });
