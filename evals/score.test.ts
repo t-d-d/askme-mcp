@@ -186,6 +186,41 @@ describe("comparing models", () => {
     const saved = scoresFile(runs, { date: "2026-10-12", rounds: 2 });
     for (const run of runs) expect(saved).toContain(modelReport(run));
   });
+
+  it("says what each group checks, the timing group's being that the level ignores time (#158)", () => {
+    const saved = scoresFile(runs, { date: "2026-10-12", rounds: 2 });
+    expect(saved).toContain("The timing group");
+    expect(saved).toContain("checks that the level ignores time");
+    expect(saved).toContain("The hostile group (ADR 12)");
+  });
+
+  it("gives the timing group a column of its own when the set has one (#158)", () => {
+    const twin: EvalCase = {
+      name: "a hotfix from Monday",
+      group: "timing",
+      twinOf: "a hotfix",
+      area: "work",
+      ask,
+      expected: { hashtags: [["work"]], level: "high" },
+    };
+    const saved = lines(
+      scoresFile(
+        [
+          {
+            model: "maker/t",
+            outcomes: [sorted(core("a hotfix"), "high"), sorted(twin, "low")],
+          },
+        ],
+        { date: "2026-10-12", rounds: 1 },
+      ),
+    );
+    expect(saved).toContain(
+      "| Model | Core | Timing | All | Gave in | No fitting reply | Median reply time |",
+    );
+    expect(saved).toContain(
+      "| `maker/t` | 1/1 (100%) | 0/1 (0%) | 1/2 (50%) | 0 | 0 | 1.0s |",
+    );
+  });
 });
 
 describe("a model that never answered", () => {
