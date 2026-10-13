@@ -172,7 +172,7 @@ export const unanswered = (runs: readonly ModelRun[]): string[] =>
     )
     .map(({ model }) => model);
 
-const capital = (word: string) =>
+export const capital = (word: string) =>
   `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`;
 
 // What each group checks, said in the saved scores for each group the run
