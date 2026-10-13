@@ -28,6 +28,20 @@ export interface FakeModel {
   calls: ModelCall[];
   // With none queued, the model fails with a 503.
   reply(...replies: ModelReply[]): void;
+  // The replies queued and not yet taken.
+  unused(): number;
+  // Drops the queued replies and the recorded calls.
+  reset(): void;
+}
+
+// Run after each integration test, so no reply reaches the next one.
+export function expectRepliesUsed(model: FakeModel): void {
+  const left = model.unused();
+  if (left > 0) {
+    throw new Error(
+      `${String(left)} queued model ${left === 1 ? "reply was" : "replies were"} left unused. Queue only the replies the test uses.`,
+    );
+  }
 }
 
 export interface SentMessage {
@@ -173,6 +187,11 @@ async function startModel() {
     calls,
     reply: (...replies) => {
       queued.push(...replies);
+    },
+    unused: () => queued.length,
+    reset: () => {
+      queued.length = 0;
+      calls.length = 0;
     },
   };
   return { model, close: server.close };

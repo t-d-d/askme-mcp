@@ -42,10 +42,6 @@ afterAll(async () => {
   await issuer.close();
 });
 
-beforeEach(() => {
-  fakes.queue.purge();
-});
-
 const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
 
 const accountId = (sub: string): AccountId =>
