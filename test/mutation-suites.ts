@@ -5,6 +5,20 @@
 import type { Suite } from "./mutation.ts";
 
 export const suites: Record<string, Suite> = {
+  view: {
+    about:
+      "What the poll and the rules show the page, and whether an ask is sorted with the rules in force.",
+    mutate: [
+      "service/src/api.ts:132-190",
+      "service/src/api.ts:249-283",
+      "service/src/sorter.ts:82-84",
+    ],
+    tests: [
+      "service/api.int.ts",
+      "service/src/sorter.test.ts",
+      "fitness/sort-queue.int.ts",
+    ],
+  },
   rate: {
     about:
       "The rate limits' windows and the time left in one, against their unit tests.",
