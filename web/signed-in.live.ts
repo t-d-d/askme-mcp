@@ -7,8 +7,21 @@ import {
 } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { pagePaths } from "../shared/page-api";
+import {
+  askChange,
+  askChangePaths,
+  pagePaths,
+  samplesPath,
+  type PageAsk,
+} from "../shared/page-api";
 import { mcpUrl, pageUrl, phone } from "../test/live";
+import {
+  failsWith,
+  sampleCount,
+  screen,
+  sendSortAndDismiss,
+  watchAnswers,
+} from "../test/live-page";
 
 // Clerk's test mode verifies a +clerk_test address with the code 424242 and
 // sends no email. The address may be public, and is used as it is, never
@@ -17,6 +30,10 @@ const testAddress = "askme-live+clerk_test@example.com";
 const testCode = "424242";
 
 const stepMs = 30_000;
+
+// A sort that fails once comes back after the queue's six-minute visibility
+// timeout, so this leaves room for the second try (ADR 26).
+const sortMs = 8 * 60_000;
 
 // Clerk's Frontend API. A screen starts an attempt with a POST to signIns or
 // signUps, then asks for the code to be sent with a POST under it.
@@ -48,6 +65,9 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
   let page: Page;
   // Heard on the context, so calls from a worker the page starts count too.
   const apiCalls: string[] = [];
+  const dismissed: string[] = [];
+  let answer: ReturnType<typeof watchAnswers>;
+  let posted: PageAsk[] = [];
 
   beforeAll(async () => {
     browser = await chromium.launch();
@@ -58,7 +78,12 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
       if (url.origin === origin && url.pathname.startsWith("/api/")) {
         apiCalls.push(`${request.method()} ${url.pathname}`);
       }
+      if (url.origin === origin && url.pathname === askChangePaths.dismissed) {
+        const change = askChange.safeParse(request.postDataJSON());
+        dismissed.push(change.data?.id ?? "(no id)");
+      }
     });
+    answer = watchAnswers(page, origin);
     await page.goto(pageUrl());
     await signIn(page);
   }, 5 * stepMs);
@@ -119,14 +144,23 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
     4 * stepMs,
   );
 
-  // The reload shows Clerk ended the session, so the run leaves none behind.
+  // Starts on Connect your agents, where the step above left the page.
+  describe("fitness: sample asks are sorted on the live site (test-tiers.md)", () => {
+    it(
+      "sends sample asks, sees each one sorted, and dismisses them",
+      async () => {
+        posted = await sendSortAndDismiss(page, answer, { stepMs, sortMs });
+      },
+      sortMs + (4 + 2 * sampleCount) * stepMs,
+    );
+  });
+
+  // The page ends on the list after the last dismissal, and the header
+  // there links to the rules. The reload shows Clerk ended the session, so
+  // the run leaves none behind.
   it(
     "signs out from the rules and shows the signed-out page",
     async () => {
-      await page
-        .getByRole("link", { name: "All asks" })
-        .click({ timeout: stepMs })
-        .catch(failsWith(page, "Connect your agents showed no All asks link."));
       await page
         .getByRole("link", { name: "Rules", exact: true })
         .click({ timeout: stepMs })
@@ -151,12 +185,20 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
     4 * stepMs,
   );
 
-  // Runs last, so it sees every call the steps above made (ADR 20).
-  describe("fitness: the signed-in check sends the API only reads (test-tiers.md)", () => {
-    it("sends the page's API nothing but reads", () => {
+  // Runs last, so it sees every call the steps above made (ADR 20,
+  // ADR 26).
+  describe("fitness: the signed-in check writes only its samples (test-tiers.md)", () => {
+    it("sends the page's API reads, one press of the samples and their dismissals", () => {
       const reads = Object.values(pagePaths).map((path) => `GET ${path}`);
       expect(apiCalls).toContain(`GET ${pagePaths.asks}`);
-      expect(apiCalls.filter((call) => !reads.includes(call))).toEqual([]);
+      expect(apiCalls.filter((call) => !reads.includes(call)).sort()).toEqual(
+        [
+          `POST ${samplesPath}`,
+          ...posted.map(() => `POST ${askChangePaths.dismissed}`),
+        ].sort(),
+      );
+      expect(posted).toHaveLength(sampleCount);
+      expect([...dismissed].sort()).toEqual(posted.map(({ id }) => id).sort());
     });
   });
 });
@@ -285,20 +327,4 @@ function said(error: z.infer<typeof refusal>["errors"][number] | undefined) {
   return /captcha|\bbot\b/iu.test(what)
     ? `${what}. Its bot check blocked the run, and getting past it needs Clerk's secret key or a dashboard step, which ADR 16 leaves to a new decision.`
     : what;
-}
-
-function failsWith(page: Page, message: string) {
-  return async (error: unknown): Promise<never> => {
-    throw new Error(`${message} It showed: ${await screen(page)}`, {
-      cause: error,
-    });
-  };
-}
-
-async function screen(page: Page): Promise<string> {
-  const words = await page
-    .locator("body")
-    .innerText({ timeout: 1000 })
-    .catch(() => "(nothing readable)");
-  return words.replace(/\s+/gu, " ").slice(0, 500);
 }

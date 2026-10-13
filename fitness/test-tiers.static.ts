@@ -385,18 +385,21 @@ describe("fitness: the live tier makes no other account (test-tiers.md)", () => 
   });
 });
 
-// None of these writes to askme's store (ADR 20).
-const readingControls = [
+// Only Send sample asks and Dismiss write to askme's store (ADR 20,
+// ADR 26).
+const listedControls = [
   "Sign in",
   "Sign up",
   "Continue",
   "Rules",
   "Connect agents",
   "All asks",
+  "Send sample asks",
+  "Dismiss",
   "Sign out",
 ];
 
-describe("fitness: the live tier presses only controls that read (test-tiers.md)", () => {
+describe("fitness: the live tier presses only listed controls (test-tiers.md)", () => {
   it("finds the name of every control a file finds by its role", () => {
     expect(
       controlNames(
@@ -428,12 +431,15 @@ describe("fitness: the live tier presses only controls that read (test-tiers.md)
     ]);
   });
 
-  it("finds only controls that sign in, sign out or move between screens", () => {
+  it("finds only controls that sign in or out, move between screens, send the samples or dismiss them", () => {
     const found = liveTierFiles().flatMap((path) =>
       controlNames(readRepoFile(path)).map((name) => ({ path, name })),
     );
-    const reading = new Set(readingControls.map((control) => `"${control}"`));
-    expect(found.map(({ name }) => name)).toContain('"Sign out"');
-    expect(found.filter(({ name }) => !reading.has(name))).toEqual([]);
+    const listed = new Set(listedControls.map((control) => `"${control}"`));
+    const names = found.map(({ name }) => name);
+    expect(names).toContain('"Sign out"');
+    expect(names).toContain('"Send sample asks"');
+    expect(names).toContain('"Dismiss"');
+    expect(found.filter(({ name }) => !listed.has(name))).toEqual([]);
   });
 });

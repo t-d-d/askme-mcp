@@ -25,6 +25,18 @@ const unanswered = [
     reason:
       "ADR 22 replaces it. The first call the cap refuses in a day records the reset through the write function, which raises the version.",
   },
+  {
+    record: 20,
+    check: "The live tier presses only controls that read",
+    reason:
+      'ADR 26 replaces it with "The live tier presses only listed controls", which adds Send sample asks and Dismiss.',
+  },
+  {
+    record: 20,
+    check: "The signed-in check sends the API only reads",
+    reason:
+      'ADR 26 replaces it with "The signed-in check writes only its samples", which allows one press of Send sample asks and its dismissals.',
+  },
 ];
 
 // Checks a record repeats from an earlier record, which a test answers under
