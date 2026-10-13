@@ -318,3 +318,96 @@ describe("fitness: standard runners only (repo-and-delivery.md)", () => {
     expect(other).toEqual([]);
   });
 });
+
+// The deploy job holds the deploy role, which can change everything, so what
+// it runs is fixed to its content, not to a label someone can move (#326).
+describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
+  // A local workflow or action is this repo's own code, at this commit.
+  const pinned = (uses: string): boolean =>
+    uses.startsWith("./") || /^[^@\s]+@[0-9a-f]{40}$/u.test(uses);
+
+  const usesIn = (path: string): string[] =>
+    Object.values(readWorkflow(path).jobs).flatMap((job) => [
+      ...(job.uses === undefined ? [] : [job.uses]),
+      ...(job.steps ?? []).flatMap((step) =>
+        step.uses === undefined ? [] : [step.uses],
+      ),
+    ]);
+
+  it("tells a commit from a tag, a branch or a short SHA", () => {
+    expect(
+      pinned("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"),
+    ).toBe(true);
+    expect(pinned("./.github/workflows/gate.yml")).toBe(true);
+    expect(pinned("actions/checkout@v7")).toBe(false);
+    expect(pinned("actions/checkout@main")).toBe(false);
+    expect(pinned("actions/checkout@3d3c42e")).toBe(false);
+    expect(pinned("actions/checkout")).toBe(false);
+    expect(pinned("docker://alpine:3")).toBe(false);
+  });
+
+  it("names every outside action by a full commit SHA", () => {
+    const unpinned = workflowPaths().flatMap((path) =>
+      usesIn(path)
+        .filter((uses) => !pinned(uses))
+        .map((uses) => `${path}: ${uses}`),
+    );
+    expect(usesIn(deployPath).length).toBeGreaterThan(0);
+    expect(unpinned).toEqual([]);
+  });
+
+  it("has Dependabot propose updates to the pinned actions", () => {
+    const config = readYaml(
+      ".github/dependabot.yml",
+      z.object({
+        version: z.literal(2),
+        updates: z.array(
+          z.looseObject({
+            "package-ecosystem": z.string(),
+            directory: z.string().optional(),
+          }),
+        ),
+      }),
+    );
+    expect(config.updates).toContainEqual(
+      expect.objectContaining({
+        "package-ecosystem": "github-actions",
+        directory: "/",
+      }),
+    );
+  });
+
+  it("holds the Serverless installer at one exact version in the lockfile", () => {
+    const { devDependencies } = z
+      .object({ devDependencies: z.record(z.string(), z.string()) })
+      .parse(JSON.parse(readRepoFile("package.json")));
+    const lock = z
+      .object({
+        packages: z.record(
+          z.string(),
+          z.looseObject({ version: z.string().optional() }),
+        ),
+      })
+      .parse(JSON.parse(readRepoFile("package-lock.json")));
+    expect(devDependencies.serverless).toMatch(/^\d+\.\d+\.\d+$/u);
+    expect(lock.packages["node_modules/serverless"]?.version).toBe(
+      devDependencies.serverless,
+    );
+  });
+
+  it("runs the framework from node_modules, never fetched by npx", () => {
+    // npm exec and npm x are npx under other names.
+    const npx = /\b(?:npx|npm\s+(?:exec|x))\b/u;
+    const framework = /\b(?:serverless|sls)\b/u;
+    const runs = allJobs().flatMap(([, job]) => runsIn(job));
+    expect(runs.filter((run) => npx.test(run) && framework.test(run))).toEqual(
+      [],
+    );
+    expect(
+      runs.filter((run) => /--yes\b|\s-y\b/u.test(run) && npx.test(run)),
+    ).toEqual([]);
+    expect(runsIn(readWorkflow(deployPath).jobs.deploy)).toContain(
+      "node_modules/.bin/serverless deploy",
+    );
+  });
+});

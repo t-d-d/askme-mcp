@@ -27,8 +27,8 @@ jobs:
       url: ${{ steps.page.outputs.url }}
       mcp: ${{ steps.page.outputs.mcp }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: npm
@@ -39,7 +39,7 @@ jobs:
         run: npm run build
         env:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
-      - uses: aws-actions/configure-aws-credentials@v6
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -54,7 +54,7 @@ jobs:
           GitHubOwnerId=${{ github.repository_owner_id }}
           GitHubRepoId=${{ github.repository_id }}
       - name: Deploy the stack
-        run: npx --yes serverless@4.43.0 deploy
+        run: node_modules/.bin/serverless deploy
         env:
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }}
           CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
@@ -84,8 +84,8 @@ jobs:
     needs: deploy
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: npm
