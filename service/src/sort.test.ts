@@ -154,6 +154,19 @@ describe("the sorting prompt", () => {
     );
   });
 
+  // The model moves on a change of a few words, in asks far from the edit,
+  // so these lines are pinned whole. A change to one needs an eval run
+  // before and after.
+  it("puts a money saving missed at high, and keeps savings out of normal (issue #262)", () => {
+    const { system } = sortingPrompt(rules, ask);
+    expect(levelLine(system, "high")).toBe(
+      "high: never acting would cost something, however small the job or the step: someone would go without something they need or were counting on, damage would go on, a customer would be lost, or money would be lost or a money saving missed. A loss at home counts as much as one at work;",
+    );
+    expect(levelLine(system, "normal")).toBe(
+      "normal: never acting would leave things as they are, a little worse than they could be, other than a saving;",
+    );
+  });
+
   it("asks for a shorter reason than the limit, since the model runs past what it is asked", () => {
     const { system } = sortingPrompt(rules, ask);
     expect(reasonAsked).toBeLessThan(reasonLimit);
