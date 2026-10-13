@@ -73,7 +73,8 @@ async function startRun(): Promise<{ pid: number; container: string }> {
   });
   const endpoint = await new Promise<string>((resolve, reject) => {
     createInterface({ input: child.stdout }).once("line", resolve);
-    child.once("exit", () => {
+    // On close, not exit, so everything the run wrote is in the message.
+    child.once("close", () => {
       reject(
         new Error(`The run ended before its database was ready.\n${errors}`),
       );
@@ -103,6 +104,8 @@ describe("a killed integration run's database", () => {
       const thisRun = await containerAt(inject("databaseEndpoint"));
       expect(await running(thisRun)).toBe(true);
     },
-    30_000,
+    // Longer than the run's own waits for its database, so a failure shows
+    // as the run's error and not as a timeout.
+    60_000,
   );
 });
