@@ -427,7 +427,14 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
     const check = deploySteps().find((step) => step.name === checkName);
     const run = check?.run ?? "";
     expect(run).toContain(`version=${frameworkVersion()}\n`);
+    expect(run).toContain(
+      '"https://install.serverless.com/archives/serverless-$version.tgz"',
+    );
     expect(run).toContain("sha256sum --check --strict <<EOF\n");
+    // Nothing unchecked can come from the host once the check has passed.
+    expect(run.trimEnd().split("\n").at(-1)).toBe(
+      'echo "0.0.0.0 install.serverless.com" | sudo tee -a /etc/hosts > /dev/null',
+    );
     expect(
       [...run.matchAll(/^[0-9a-f]{64} {2}(\S+)$/gmu)].map((sum) => sum[1]),
     ).toEqual([
