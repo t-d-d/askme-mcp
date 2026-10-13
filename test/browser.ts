@@ -136,6 +136,21 @@ export function answerPoll(url: URL, list: AsksAnswer): unknown {
     : list;
 }
 
+// Answers each poll for the list as answerPoll does, with a Date header that
+// gives the service's time as it is when the poll arrives. Both the list and
+// the service's time are read afresh for each poll, so a test can change
+// them between polls.
+export const datedPolls = (
+  list: () => AsksAnswer,
+  serviceNow: () => number,
+): Answering =>
+  new Answering(
+    (url) =>
+      new Status(200, answerPoll(url, list()), {
+        date: new Date(serviceNow()).toUTCString(),
+      }),
+  );
+
 // A colour, or a custom property that holds one, as the page's browser
 // computes it. A test compares an element's colour with this, so no colour
 // is written in a test of the page (styling.md).

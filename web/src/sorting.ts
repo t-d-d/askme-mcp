@@ -38,7 +38,7 @@ export function sortingState(
 export function capSpentUntil(
   resetsAt: string | undefined,
   at: number,
-  serviceAhead = 0,
+  serviceAhead: number,
 ): number | null {
   if (resetsAt === undefined) return null;
   const until = Date.parse(resetsAt);

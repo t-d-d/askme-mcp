@@ -32,15 +32,15 @@ describe("the daily cap on model calls", () => {
   const resets = "2026-10-13T00:00:00.000Z";
 
   it("is spent until the time the list gives, and not from then", () => {
-    expect(capSpentUntil(resets, Date.parse(resets) - 1)).toBe(
+    expect(capSpentUntil(resets, Date.parse(resets) - 1, 0)).toBe(
       Date.parse(resets),
     );
-    expect(capSpentUntil(resets, Date.parse(resets))).toBeNull();
-    expect(capSpentUntil(resets, Date.parse(resets) + minute)).toBeNull();
+    expect(capSpentUntil(resets, Date.parse(resets), 0)).toBeNull();
+    expect(capSpentUntil(resets, Date.parse(resets) + minute, 0)).toBeNull();
   });
 
   it("is not spent when the list gives no time", () => {
-    expect(capSpentUntil(undefined, now)).toBeNull();
+    expect(capSpentUntil(undefined, now, 0)).toBeNull();
   });
 
   // The service counts the cap by its own clock, which the poll's Date

@@ -13,6 +13,7 @@ import {
   answerPoll,
   Answering,
   computedColour,
+  datedPolls,
   openPage,
   Status,
   stepUntil,
@@ -287,11 +288,9 @@ describe("the sorting line while today's sorting limit is reached", () => {
         clock: { stoppedAt: new Date(pageAt) },
         timeZone: "Europe/London",
         api: {
-          [pagePaths.asks]: new Answering(
-            (url) =>
-              new Status(200, answerPoll(url, list), {
-                date: new Date(pageAt + serviceAhead).toUTCString(),
-              }),
+          [pagePaths.asks]: datedPolls(
+            () => list,
+            () => pageAt + serviceAhead,
           ),
         },
       });

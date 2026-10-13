@@ -8,8 +8,8 @@ import {
 } from "../shared/page-api";
 import {
   Answering,
-  answerPoll,
   computedColour,
+  datedPolls,
   openPage,
   Status,
   stepUntil,
@@ -23,6 +23,7 @@ import { resetTime } from "./src/resets";
 const phone = { width: 390, height: 844 };
 const session = "test-session-token";
 const email = "sam@example.com";
+const minute = 60_000;
 
 const text =
   "#work is my day job. Only show it on weekdays between 8am and 6pm.\n\n#shop is my online shop. Anything a customer can see comes first.";
@@ -466,14 +467,14 @@ describe("the rules screen", () => {
   // reads 23:57. The page's clock stands still and moves only when the test
   // moves it, so each answer can give the service's time as it is then.
   it.each([
-    ["fast", -3 * 60_000],
-    ["slow", 3 * 60_000],
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
   ])(
     "wakes Save rules when the service's day ends, on a clock a few minutes %s",
     async (_, serviceAhead) => {
       const resets = "2026-10-13T00:00:00.000Z";
       const reset = Date.parse(resets) - serviceAhead;
-      let pageAt = reset - 2 * 60_000;
+      let pageAt = reset - 2 * minute;
       const stopped: AsksAnswer = {
         ...list,
         modelCapResetsAt: resets,
@@ -496,11 +497,9 @@ describe("the rules screen", () => {
         clock: { stoppedAt: new Date(pageAt) },
         api: {
           [pagePaths.rules]: saved,
-          [pagePaths.asks]: new Answering(
-            (url) =>
-              new Status(200, answerPoll(url, stopped), {
-                date: new Date(pageAt + serviceAhead).toUTCString(),
-              }),
+          [pagePaths.asks]: datedPolls(
+            () => stopped,
+            () => pageAt + serviceAhead,
           ),
         },
       });
