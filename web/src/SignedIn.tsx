@@ -82,7 +82,7 @@ export function SignedIn() {
   const [queries] = useState(newQueries);
   const { screen, card, askFirst } = useScreen();
   // Kept above the screens, so a dismissal sent as the list goes, and the
-  // note if it fails, outlive the list (useDismissing.ts).
+  // note if it fails, outlive the list (dismissing.ts).
   const dismissing = useDismissing(screen === "asks");
   return (
     <QueryClientProvider client={queries}>

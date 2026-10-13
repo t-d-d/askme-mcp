@@ -8,7 +8,6 @@ import { useAuth } from "./auth";
 import {
   initial,
   step,
-  type DismissEffect,
   type DismissEvent,
   type DismissNote,
   type Timer,
@@ -35,9 +34,11 @@ export function useDismissing(listShown: boolean): Dismissing {
   useEffect(() => {
     token.current = getToken;
   }, [getToken]);
-  const state = useRef(initial(listShown));
-  const [dismissed, setDismissed] = useState(state.current.dismissed);
-  const [note, setNote] = useState(state.current.note);
+  const [first] = useState(() => initial(listShown));
+  // The latest state, which events step from before the page renders it.
+  const state = useRef(first);
+  const [dismissed, setDismissed] = useState(first.dismissed);
+  const [note, setNote] = useState(first.note);
   const timers = useRef<Record<Timer, number | undefined>>({
     undo: undefined,
     failed: undefined,
@@ -48,7 +49,7 @@ export function useDismissing(listShown: boolean): Dismissing {
     state.current = next.state;
     setDismissed(next.state.dismissed);
     setNote(next.state.note);
-    next.effects.forEach((effect: DismissEffect) => {
+    next.effects.forEach((effect) => {
       switch (effect.type) {
         case "send":
           void changeAsk(
@@ -61,6 +62,8 @@ export function useDismissing(listShown: boolean): Dismissing {
           });
           return;
         case "start":
+          // A timer started again runs once, from now.
+          window.clearTimeout(timers.current[effect.timer]);
           timers.current[effect.timer] = window.setTimeout(() => {
             dispatch({ type: "timeUp", timer: effect.timer });
           }, undoMs);
