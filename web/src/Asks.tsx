@@ -79,7 +79,8 @@ export function Asks({
   card: string | null;
   dismissing: Dismissing;
 }) {
-  const { data, receivedAt, polledAt, serviceAhead, failed } = useAsks();
+  const { data, receivedAt, polledAt, serviceAhead, receivedAhead, failed } =
+    useAsks();
   const [chosen, choose] = useState<Tab>(everything);
   const [showingHeld, showHeld] = useState(false);
   const [showingLapsed, showLapsed] = useState(false);
@@ -206,7 +207,7 @@ export function Asks({
           ask={open}
           tab={tab}
           now={receivedAt}
-          serviceAhead={serviceAhead}
+          serviceAhead={receivedAhead}
           colours={hashtagColours(coloured)}
           actions={actions}
           noted={noted}
@@ -244,7 +245,7 @@ export function Asks({
                 hashtags={coloured}
                 tab={tab}
                 now={receivedAt}
-                serviceAhead={serviceAhead}
+                serviceAhead={receivedAhead}
                 actions={actions}
               />
             </main>
