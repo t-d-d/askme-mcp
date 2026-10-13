@@ -22,6 +22,13 @@ import {
   inConformanceEnvironment,
   type Job,
 } from "../test/repo";
+import {
+  asNamed,
+  checksIn,
+  constraintHistory,
+  fitnessTests,
+  records,
+} from "../test/records";
 import { tierPattern, tiers } from "../test/tiers";
 
 const projectsSchema = z.object({
@@ -403,7 +410,7 @@ const readingControls = [
   "Sign out",
 ];
 
-describe("fitness: the live tier writes nothing of its own (test-tiers.md)", () => {
+describe("fitness: the live tier presses only controls that read (test-tiers.md)", () => {
   it("finds the name of every control a file finds by its role", () => {
     expect(
       controlNames(
@@ -442,5 +449,80 @@ describe("fitness: the live tier writes nothing of its own (test-tiers.md)", () 
     const reading = new Set(readingControls.map((control) => `"${control}"`));
     expect(found.map(({ name }) => name)).toContain('"Sign out"');
     expect(found.filter(({ name }) => !reading.has(name))).toEqual([]);
+  });
+});
+
+// Checks that no test answers, each with why. A record is not edited once
+// merged (docs/adr/README.md), so a check a later record replaces stays in
+// its own table, and is listed here.
+const unanswered = [
+  {
+    record: 6,
+    check: "Real clients connect",
+    why: "Checked by hand after a deploy, as the record's table says. The README's checklist for connecting a real agent is the step.",
+  },
+  {
+    record: 21,
+    check: "A capped sort leaves the version alone",
+    why: "ADR 22 replaces it: the first call the cap refuses in a day records the reset through the write function, which raises the version.",
+  },
+];
+
+describe("fitness: every ADR check exists (test-tiers.md)", () => {
+  const history = constraintHistory();
+  const tests = fitnessTests();
+  const behind = (record: number): string[] =>
+    [...history]
+      .filter(([, cited]) => cited.includes(record))
+      .map(([name]) => name);
+
+  it("reads a fitness table with at least one check from every record", () => {
+    expect(records().length).toBeGreaterThan(0);
+    const empty = records().filter(
+      ({ path }) => checksIn(readRepoFile(path)).length === 0,
+    );
+    expect(empty.map(({ path }) => path)).toEqual([]);
+  });
+
+  it("finds every constraint file named by at least one test", () => {
+    const named = new Set(tests.map(({ constraint }) => constraint));
+    expect([...history.keys()].filter((name) => !named.has(name))).toEqual([]);
+  });
+
+  // A check that a later record repeats stays the first record's, and is
+  // answered under that record's constraint file.
+  it("finds each check as a test naming a constraint file behind its record", () => {
+    const first = new Map<string, number>();
+    const missing: string[] = [];
+    for (const { record, path } of records()) {
+      for (const check of checksIn(readRepoFile(path))) {
+        const owner = first.get(asNamed(check)) ?? record;
+        first.set(asNamed(check), owner);
+        if (unanswered.some((u) => u.record === record && u.check === check))
+          continue;
+        const files = behind(owner);
+        const found = tests.some(
+          ({ name, constraint }) =>
+            asNamed(name) === asNamed(check) && files.includes(constraint),
+        );
+        if (!found) {
+          missing.push(
+            `ADR ${String(record)}: "${check}" (${files.map((file) => `${file}.md`).join(" or ")})`,
+          );
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("lists as unanswered only checks that are in their record and have no test", () => {
+    for (const { record, check } of unanswered) {
+      const path = records().find((entry) => entry.record === record)?.path;
+      expect(path).toBeDefined();
+      expect(checksIn(readRepoFile(path ?? ""))).toContain(check);
+      expect(
+        tests.filter(({ name }) => asNamed(name) === asNamed(check)),
+      ).toEqual([]);
+    }
   });
 });

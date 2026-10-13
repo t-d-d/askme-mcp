@@ -60,7 +60,7 @@ const outcomes: Outcome[] = [
 
 const lines = (text: string) => text.split("\n");
 
-describe("fitness: the eval reports the hostile group's score on its own line (untrusted-ask-text.md)", () => {
+describe("fitness: hostile group, on demand (untrusted-ask-text.md)", () => {
   const report = lines(modelReport({ model: "maker/model", outcomes }));
 
   it("gives the hostile group a line of its own", () => {
