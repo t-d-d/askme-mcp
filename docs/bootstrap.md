@@ -13,7 +13,7 @@ The accounts and settings a new deployment of askme needs before its first deplo
 4. **GitHub.** Set the repo variables `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `CLERK_PUBLISHABLE_KEY` and `CLERK_ISSUER`, and the repo secret `SERVERLESS_ACCESS_KEY`. Give main a ruleset that requires a pull request and the `gate` check. A daily conformance check reads the ruleset back.
 5. **Clerk.** Make a development instance, and set it up as the next section says.
 6. **OpenRouter.** Two keys in a workspace of askme's own: the service's key above, and an eval key with a small limit. In a Claude cloud environment, add the eval key as a network secret for `openrouter.ai`, with the header `Authorization` and the prefix `Bearer`.
-7. **The first deploy.** Merge to main. The deploy run's summary gives both addresses. Put them at the top of the README, or the live check after each deploy fails. Then confirm the alert email, as below.
+7. **The first deploy.** Merge to main. The deploy run's summary gives both addresses. Its live check fails until the README gives them, so put them near the top of the README in a pull request of their own, and the next deploy's live check passes. Then confirm the alert email, as below.
 
 ## Clerk dashboard settings
 
