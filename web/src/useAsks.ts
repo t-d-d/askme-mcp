@@ -67,10 +67,12 @@ document.addEventListener("visibilitychange", () => {
 // is let go at its hours even while the page is not connected. With it, how
 // far the service's clock is ahead of this browser's as of that poll: as the
 // last poll that reached askme found it, counted on since then while polls
-// fail, or 0 before a poll has reached askme.
+// fail, or 0 before a poll has reached askme. And how far it was ahead when
+// the list was received, as that poll found it, to go with receivedAt.
 export interface PolledAnswer extends Answer<AsksAnswer> {
   polledAt: number;
   serviceAhead: number;
+  receivedAhead: number;
 }
 
 export function useAsks(): PolledAnswer {
@@ -131,6 +133,7 @@ export function useAsks(): PolledAnswer {
       query.error instanceof PollFailed
         ? query.error.serviceAhead
         : (query.data?.serviceAhead ?? 0),
+    receivedAhead: query.data?.serviceAhead ?? 0,
     failed: query.isError,
   };
 }

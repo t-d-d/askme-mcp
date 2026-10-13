@@ -14,6 +14,8 @@ import {
   Answering,
   answerPoll,
   datedPolls,
+  failingPolls,
+  moveDeviceClock,
   openPage,
   Status,
   stepUntilShown,
@@ -21,6 +23,7 @@ import {
   type OpenPage,
   type PageOptions,
 } from "../test/browser";
+import { pollMs } from "./src/poll";
 
 type Locator = ReturnType<OpenPage["page"]["locator"]>;
 
@@ -823,6 +826,39 @@ describe("how long an ask has waited", () => {
       await card.getByRole("link", { name: oldest }).click();
       await stepUntilShown(page, page.getByRole("link", { name: "All asks" }));
       expect(await page.locator("body").innerText()).toContain("Waiting 4 min");
+    },
+  );
+
+  // An ask's age is counted to the time the list was last read, by the
+  // service's clock as that poll found it. So the device putting its clock
+  // right while polls fail leaves it as it was.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "stays as the last poll that reached askme found it, though a clock a few minutes %s is put right while polls fail",
+    async (_, serviceAhead) => {
+      const polls = failingPolls(
+        () => listOf(posted("a", oldest, 4 * minute)),
+        () => serviceNow,
+      );
+      view = await openPage(inject("pageUrl"), phone, {
+        session,
+        clock: { stoppedAt: new Date(serviceNow - serviceAhead) },
+        api: { [pagePaths.asks]: polls.answering },
+      });
+      const { page } = view;
+      const card = page.getByRole("article");
+      await stepUntilShown(page, card);
+      expect(await card.innerText()).toContain("Waiting 4 min");
+      polls.fail();
+      await moveDeviceClock(page, serviceAhead);
+      await page.clock.pauseAt(new Date(serviceNow + pollMs + 1000));
+      await stepUntilShown(
+        page,
+        page.getByText("Not connected. Trying again."),
+      );
+      expect(await card.innerText()).toContain("Waiting 4 min");
     },
   );
 });
