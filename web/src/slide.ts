@@ -38,12 +38,15 @@ let held: (() => void)[] | null = null;
 // the picture of the screen being left. A change that comes in that frame
 // joins the slide and is held behind it, so the changes are made in the
 // order they came and the picture shows the screen as it was before either.
+// When the browser has drawn its own movement for the change that joins,
+// the slide is skipped, and both changes are made at once.
 //
 // The page cannot be tapped while the screens move. Taps go to the pictures,
 // whatever the page's styles say.
 export function slide(change: () => void, browserMoved = false): void {
   if (held !== null) {
     held.push(change);
+    if (browserMoved) underWay?.skipTransition();
     return;
   }
   if (

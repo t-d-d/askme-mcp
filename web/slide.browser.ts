@@ -216,6 +216,30 @@ async function slides(
 const click = (page: Page, name: string) => () =>
   page.getByRole("link", { name }).click();
 
+// Taps an open card's Dismiss and, in the same frame, changes the address to
+// the list's, as a keyboard's Back might. Both come just after a frame is
+// drawn, and the change of address must reach the page before the next.
+async function dismissAndGo(page: Page) {
+  const first = await page
+    .getByRole("button", { name: "Dismiss" })
+    .evaluate(async (button) => {
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => setTimeout(resolve)),
+      );
+      if (!(button instanceof HTMLButtonElement)) return "no Dismiss";
+      const first = new Promise<string>((resolve) => {
+        window.addEventListener("hashchange", () => resolve("the address"), {
+          once: true,
+        });
+        requestAnimationFrame(() => resolve("the next frame"));
+      });
+      button.click();
+      window.location.hash = "#asks";
+      return first;
+    });
+  expect(first, "what comes first after Dismiss").toBe("the address");
+}
+
 describe("the rules and Connect your agents", () => {
   it("slide in, the rules over the list and Connect your agents over the rules", async () => {
     const page = await open("");
@@ -325,17 +349,7 @@ describe("an ask's card", () => {
     await slides(page, () => row(page, 3).click(), slidesIn);
     await theCard(page);
     const card = await page.screenshot();
-    await page
-      .getByRole("button", { name: "Dismiss" })
-      .evaluate(async (button) => {
-        // Just after a frame is drawn, so both come before the next.
-        await new Promise((resolve) =>
-          requestAnimationFrame(() => setTimeout(resolve)),
-        );
-        if (!(button instanceof HTMLButtonElement)) return;
-        button.click();
-        window.location.hash = "#asks";
-      });
+    await dismissAndGo(page);
     expect(await moving(page)).toEqual(slidesOut);
     await atStart(page);
     const leaving = await page.screenshot();
@@ -399,4 +413,23 @@ it("changes the screen at once on Back when the browser has drawn its own moveme
   await page.goBack();
   await theList(page);
   expect(await anyMoving(page)).toBe(false);
+});
+
+// The browser's own movement can come in the frame a card's Dismiss waits
+// for its pictures. Both changes are made, in order, and at once.
+it("changes the screen at once when the browser draws its own movement in the frame Dismiss slides", async () => {
+  const page = await open("");
+  await theList(page);
+  await slides(page, () => row(page, 3).click(), slidesIn);
+  await theCard(page);
+  await page.evaluate(() => {
+    Object.defineProperty(PopStateEvent.prototype, "hasUAVisualTransition", {
+      configurable: true,
+      get: () => true,
+    });
+  });
+  await dismissAndGo(page);
+  await theList(page);
+  expect(await anyMoving(page)).toBe(false);
+  await page.getByRole("button", { name: "Undo" }).waitFor();
 });
