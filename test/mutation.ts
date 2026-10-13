@@ -53,6 +53,10 @@ export interface Mutant {
 // page, which a mutant does not rebuild.
 const runnable = new Set(["unit", "int"]);
 
+// The name of the tier a test file's suffix puts it in.
+const tierOf = (path: string) =>
+  tiers.find((tier) => path.endsWith(tier.suffix))?.name;
+
 // The vitest command that runs a suite's tests, in the tiers they belong to.
 export function testCommand(tests: readonly string[]): string {
   if (tests.length === 0) throw new Error("A suite needs a test file.");
@@ -63,13 +67,13 @@ export function testCommand(tests: readonly string[]): string {
         `${path} has a character the shell would read, so a suite cannot run it.`,
       );
     }
-    const tier = tiers.find((each) => path.endsWith(each.suffix));
-    if (tier === undefined || !runnable.has(tier.name)) {
+    const tier = tierOf(path);
+    if (tier === undefined || !runnable.has(tier)) {
       throw new Error(
         `${path} is not a unit or integration test, so a suite cannot run it.`,
       );
     }
-    used.add(tier.name);
+    used.add(tier);
   }
   const projects = tiers
     .filter((tier) => used.has(tier.name))
@@ -77,12 +81,21 @@ export function testCommand(tests: readonly string[]): string {
   return ["npx vitest run", ...projects, ...tests].join(" ");
 }
 
-// The most mutants run at once. Each run is a whole vitest run, and an
-// integration suite's starts its own DynamoDB. A crowded machine slows a run
-// past Stryker's time limit, and Stryker counts a mutant that timed out as
-// killed, which would hide a survivor. Three at once on four cores gave no
-// timeouts for an integration suite of eight files.
+// The most mutants a suite of unit tests runs at once. Each is a whole
+// vitest run. A crowded machine slows a run past Stryker's time limit, and
+// Stryker counts a mutant that timed out as killed, which would hide a
+// survivor.
 const mostAtOnce = 3;
+
+// How many mutants run at once. A suite with an integration test runs one
+// at a time, as Stryker's first run without a mutant did. Each integration
+// run starts its own DynamoDB, and with three at once on four cores a test
+// that polls sixty times passed vitest's time limit with no mutant at all.
+// The command failed, and Stryker counted the mutant killed (#286).
+function atOnce(suite: Suite, cores: number): number {
+  if (suite.tests.some((path) => tierOf(path) === "int")) return 1;
+  return Math.max(1, Math.min(mostAtOnce, cores - 1));
+}
 
 // Stryker's options for a suite, with its sandboxes in the given folder.
 // The only reporter writes to the terminal, so nothing lands in the repo.
@@ -96,7 +109,7 @@ export function strykerOptions(
     commandRunner: { command: testCommand(suite.tests) },
     mutate: [...suite.mutate],
     coverageAnalysis: "off" as const,
-    concurrency: Math.max(1, Math.min(mostAtOnce, cores - 1)),
+    concurrency: atOnce(suite, cores),
     reporters: ["clear-text"],
     tempDirName: sandboxes,
     cleanTempDir: true,
@@ -141,6 +154,14 @@ export function verdict(mutants: readonly Mutant[]): string | undefined {
   }
   if (!mutants.some(killed)) {
     return "No mutant was killed, so the harness ran no tests, or ran them without the mutant switched on. Its survivors say nothing about the tests.";
+  }
+  // A mutant no test reached did not run.
+  const ran = mutants.filter(
+    (mutant) => killed(mutant) || mutant.status === "Survived",
+  );
+  const timedOut = ran.filter((mutant) => mutant.status === "Timeout");
+  if (timedOut.length * 2 > ran.length) {
+    return `Most of the mutants timed out, ${String(timedOut.length)} of the ${String(ran.length)} that ran, so the machine was likely too slow for Stryker's time limit. A timeout counts as killed, so the run's survivors say nothing about the tests.`;
   }
   return undefined;
 }
