@@ -94,7 +94,7 @@ describe("one sort of an eval ask", () => {
       fits,
     ]);
     const sorted = sortEvalAsk(model, one);
-    await vi.advanceTimersByTimeAsync(rateWaits[0] ?? 0);
+    await vi.advanceTimersByTimeAsync(rateWaits[0]?.most ?? 0);
     const outcome = await sorted;
     expect(requests).toHaveLength(2);
     expect(requests[1]).toEqual(requests[0]);

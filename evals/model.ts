@@ -63,23 +63,42 @@ export const clientFor = (model: string, key: string | undefined): Model =>
     key: () => Promise.resolve(key),
   });
 
+// The least and the most a wait may be, in milliseconds.
+interface RateWait {
+  least: number;
+  most: number;
+}
+
 // The wait before each new try of a call the provider refused for rate: a
-// minute in all. On #273 a call OpenRouter refused for rate got a reply a
-// minute later. The time limits for sorting allow for every wait.
-export const rateWaits: readonly number[] = [10_000, 20_000, 30_000];
+// minute in all at the least. On #273 a call OpenRouter refused for rate got
+// a reply a minute later. Each wait is picked at random between its least
+// and its most, so calls the provider refused together are sent again at
+// different moments (#312). The time limits for sorting allow for every wait
+// at its most.
+export const rateWaits: readonly RateWait[] = [
+  { least: 10_000, most: 15_000 },
+  { least: 20_000, most: 30_000 },
+  { least: 30_000, most: 45_000 },
+];
 
 // The longest a call waits, in all, for the provider to stop refusing it
 // for rate.
-export const rateWaitMs = rateWaits.reduce((sum, wait) => sum + wait, 0);
+export const rateWaitMs = rateWaits.reduce((sum, { most }) => sum + most, 0);
 
 const pause = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+// A wait picked at random between its least and its most, in whole
+// milliseconds.
+const randomWait = ({ least, most }: RateWait) =>
+  least + Math.round(Math.random() * (most - least));
+
 // A model that sends a call again when the provider refuses it for rate,
-// with a 429, once after each wait in rateWaits (#303). A 429 means the
-// model never saw the call, so a new try draws nothing new from it. The
-// service's plain second try is a second draw, and the eval leaves it out.
-// The last 429 is thrown as it came, so the call counts as refused.
+// with a 429, once after each wait in rateWaits (#303), each picked at random
+// (#312). A 429 means the model never saw the call, so a new try draws
+// nothing new from it. The service's plain second try is a second draw, and
+// the eval leaves it out. The last 429 is thrown as it came, so the call
+// counts as refused.
 export const retryingOnRate = (model: Model): Model => ({
   async reply(request) {
     for (const wait of rateWaits) {
@@ -90,7 +109,7 @@ export const retryingOnRate = (model: Model): Model => ({
           throw error;
         }
       }
-      await pause(wait);
+      await pause(randomWait(wait));
     }
     return model.reply(request);
   },
