@@ -504,6 +504,41 @@ describe("the lapsed line", () => {
     expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
   });
 
+  // A device can sleep without hiding the page, such as a desktop that
+  // suspends with no screen lock. Its clock moves on an hour, with
+  // performance.now() standing still, which is more than a device putting
+  // its clock right is likely to move it. So the page counts that hour by the
+  // device's clock, and an ask whose time passed while the device slept has
+  // lapsed on the first poll after it wakes, though that poll fails.
+  it("takes an ask out of the list whose time passed while the device slept with the page showing, though the poll on waking fails", async () => {
+    const polls = failingPolls(
+      () =>
+        listOf(
+          ask("a", schoolRun, family("low")),
+          ask("b", passkey, shop("high"), 20 * minute),
+        ),
+      () => evening.getTime(),
+    );
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: { stoppedAt: evening },
+      api: { [pagePaths.asks]: polls.answering },
+    });
+    const { page } = view;
+    await stepUntil(
+      page,
+      async () =>
+        (await summaries(page)).join("\n") === `${passkey}\n${schoolRun}`,
+      "the list to show",
+    );
+    polls.fail();
+    await moveDeviceClock(page, 60 * minute);
+    await page.clock.fastForward(pollMs);
+    await stepUntilShown(page, page.getByText("Not connected. Trying again."));
+    expect(await summaries(page)).toEqual([schoolRun]);
+    expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
+  });
+
   // Leaving the list for the rules and coming back, with the page visible
   // throughout, is no reason to stop counting by performance.now().
   it("takes an ask out of the list when the service's time for it comes, though a slow clock is put right while polls fail and the person goes to the rules and back", async () => {
