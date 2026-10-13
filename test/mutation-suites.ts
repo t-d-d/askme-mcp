@@ -23,6 +23,12 @@ export const suites: Record<string, Suite> = {
     mutate: ["web/src/refusalNote.ts", "web/src/resets.ts"],
     tests: ["web/src/refusalNote.test.ts", "web/src/resets.test.ts"],
   },
+  rulesState: {
+    about:
+      "What the rules screen shows: the text, whether it changed, whether Save rules is awake, and the note, against their unit tests.",
+    mutate: ["web/src/rulesState.ts"],
+    tests: ["web/src/rulesState.test.ts", "web/src/sorting.test.ts"],
+  },
   rate: {
     about:
       "The rate limits' windows and the time left in one, against their unit tests.",

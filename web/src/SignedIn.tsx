@@ -3,12 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Asks } from "./Asks";
 import { Connect } from "./Connect";
 import { Rules } from "./Rules";
-import { cardIn, screenIn, type Screen } from "./screen";
+import { cardIn, screenIn, type AskFirst, type Screen } from "./screen";
 import { useDismissing, type Dismissing } from "./useDismissing";
-
-// A screen with unsaved work gives the question to ask before it is left,
-// and null once it can be left without asking.
-export type AskFirst = (question: string | null) => void;
 
 // Where this page's entry sits in the history, where the browser can say.
 const historyIndex = (): number | null =>
