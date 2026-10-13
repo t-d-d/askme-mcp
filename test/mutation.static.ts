@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { targetFile, testCommand } from "./mutation";
+import { testCommand } from "./mutation";
 import { suites } from "./mutation-suites";
 import { root, scripts } from "./repo";
 import { tierPattern, tiers } from "./tiers";
@@ -64,10 +64,17 @@ describe("the mutation suites", () => {
 
   it.each(all)("%s mutates source files that exist", (_, suite) => {
     expect(suite.mutate.length).toBeGreaterThan(0);
+    for (const path of suite.mutate) {
+      expect(existsSync(join(root, path)), path).toBe(true);
+      expect(isTest(path), path).toBe(false);
+    }
+  });
+
+  // A line number moves when code above it changes, and a suite that names
+  // one goes on running clean while it measures another line (#280).
+  it.each(all)("%s mutates whole files, not ranges of lines", (_, suite) => {
     for (const target of suite.mutate) {
-      const path = targetFile(target);
-      expect(existsSync(join(root, path)), target).toBe(true);
-      expect(isTest(path), target).toBe(false);
+      expect(target, target).not.toMatch(/:\d/u);
     }
   });
 
