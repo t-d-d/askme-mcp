@@ -59,7 +59,9 @@ export interface PageOptions {
   api?: Record<string, unknown>;
   // Give the page Playwright's clock, which runs as usual until a test
   // moves it on with page.clock. Given a time, the clock starts there.
-  clock?: boolean | Date;
+  // "stopped", it stands still from before the page loads, and moves only
+  // when a test moves it on.
+  clock?: boolean | Date | "stopped";
   // The browser's time zone, such as Europe/London. Without one it is the
   // machine's.
   timeZone?: string;
@@ -126,8 +128,9 @@ export async function computedColour(
 }
 
 // The space between whatever sits above All clear, the header or the tabs,
-// and its headline, and between its last line and the foot: the held line
-// with the given words, or else the foot of the screen. A missing part
+// and its headline, and between its last line and the foot: the line at
+// the foot with the given words, held, lapsed or sorting, or else the foot of
+// the screen. A missing part
 // throws, so a test never measures from 0.
 export async function allClearGaps(
   page: Page,
@@ -154,19 +157,19 @@ export async function allClearGaps(
             [...document.querySelectorAll("span")].find(
               (span) => span.textContent === footText,
             )?.parentElement,
-            "held line",
+            "line at the foot",
           ).top;
     return { above: headline.top - above.bottom, below: foot - last.bottom };
   }, footText);
 }
 
 // With the page scrolled to its foot, where the note at the foot of the
-// screen starts, and where All clear's last line ends, and the held line
-// with the given words. A missing part throws.
+// screen starts, and where All clear's last line ends, and the line at the
+// foot with the given words. A missing part throws.
 export async function underTheNote(
   page: Page,
   footText?: string,
-): Promise<{ note: number; last: number; held: number | undefined }> {
+): Promise<{ note: number; last: number; foot: number | undefined }> {
   return page.evaluate(async (footText) => {
     await document.fonts.ready;
     window.scrollTo(0, document.documentElement.scrollHeight);
@@ -179,16 +182,16 @@ export async function underTheNote(
     const note = box(document.querySelector('div[role="status"]'), "note");
     if (note.height === 0) throw new Error("The note is not showing");
     const last = box([...document.querySelectorAll("main p")].at(-1), "line");
-    const held =
+    const foot =
       footText === undefined
         ? undefined
         : box(
             [...document.querySelectorAll("span")].find(
               (span) => span.textContent === footText,
             )?.parentElement,
-            "held line",
+            "line at the foot",
           ).bottom;
-    return { note: note.top, last: last.bottom, held };
+    return { note: note.top, last: last.bottom, foot };
   }, footText);
 }
 
@@ -281,6 +284,13 @@ export async function openPage(
     await context.clock.install({ time: options.clock });
   } else if (options.clock === true) {
     await context.clock.install();
+  } else if (options.clock === "stopped") {
+    // Paused before there is a page, so it stops at this time exactly. A
+    // page's clock is running by the time a test could pause it, and a
+    // pause at a time already gone is refused.
+    const start = new Date();
+    await context.clock.install({ time: start });
+    await context.clock.pauseAt(start);
   }
   if (options.speech === "absent") {
     await context.addInitScript(() => {

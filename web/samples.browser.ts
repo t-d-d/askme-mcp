@@ -15,7 +15,10 @@ import {
   openPage,
   Status,
   type OpenPage,
+  type PageOptions,
 } from "../test/browser";
+
+type Locator = ReturnType<OpenPage["page"]["locator"]>;
 
 const phone = { width: 390, height: 844 };
 const session = "test-session-token";
@@ -80,7 +83,7 @@ async function openNewAccount(
     timeZone,
   }: {
     hash?: string;
-    clock?: boolean | Date;
+    clock?: PageOptions["clock"];
     postedAnyway?: boolean;
     timeZone?: string;
   } = {},
@@ -108,26 +111,46 @@ async function openNewAccount(
   });
 }
 
-// Stops the page's clock once the new account's card shows, just after
-// its first poll.
-async function stopClock({ page }: OpenPage): Promise<void> {
-  await page
-    .getByRole("heading", { name: "Your agents can ask here." })
-    .waitFor();
-  const now = await page.evaluate(() => Date.now());
-  await page.clock.pauseAt(now + 1);
+// Moves the page's stopped clock on a millisecond at a time until the part
+// shows. The page's requests take real time, which the stopped clock does
+// not count. Steps are at least 10ms of real time apart, so in the wait's
+// 10 seconds the clock moves on a second at most. A test waits twice, so
+// two seconds in all, well short of the next poll. An error thrown by one
+// of the page's timers as the clock moves fails the test.
+async function stepUntilShown(
+  { page }: OpenPage,
+  part: Locator,
+): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while ((await part.count()) === 0) {
+    expect(Date.now(), "the part to show within 10 seconds").toBeLessThan(
+      deadline,
+    );
+    await page.clock.runFor(1);
+    await new Promise((waited) => setTimeout(waited, 10));
+  }
 }
 
-// Moves the stopped clock on in small steps, a second in all, well short
-// of the next poll, until the sample asks show in the list.
-async function showsSamplesBeforeNextPoll({ page }: OpenPage): Promise<void> {
-  const card = page
+// Steps the stopped clock until the page's first poll is answered and the
+// new account's card shows.
+const firstPoll = (view: OpenPage) =>
+  stepUntilShown(
+    view,
+    view.page.getByRole("heading", { name: "Your agents can ask here." }),
+  );
+
+// Steps the stopped clock until the sample asks show in the list. No poll
+// fell due on the way: the page asked for the list when it loaded, and once
+// more after the press.
+async function showsSamplesBeforeNextPoll(view: OpenPage): Promise<void> {
+  const card = view.page
     .getByRole("article")
     .filter({ hasText: "Approve the hotfix for the login page" });
-  for (let step = 0; step < 20 && (await card.count()) === 0; step += 1) {
-    await page.clock.runFor(50);
-  }
+  await stepUntilShown(view, card);
   expect(await card.count()).toBe(1);
+  expect(
+    view.apiCalls.filter((call) => call.path === pagePaths.asks),
+  ).toHaveLength(2);
 }
 
 // Presses "Send sample asks" at 15:00 UTC on 12 October, into the daily
@@ -210,9 +233,9 @@ describe("a new account", () => {
   });
 
   it("sends sample asks with the session token, and shows them without waiting for the next poll", async () => {
-    view = await openNewAccount(new Status(204), { clock: true });
+    view = await openNewAccount(new Status(204), { clock: "stopped" });
     const { page } = view;
-    await stopClock(view);
+    await firstPoll(view);
     await samplesButton(page).click();
     // No poll falls due: the list is asked for again because the samples
     // were sent.
@@ -297,11 +320,11 @@ describe("a new account", () => {
   // is asked for again even when the press is refused.
   it("shows the samples posted before a limit stopped the press, without waiting for the next poll", async () => {
     view = await openNewAccount(refusal("rate_limited"), {
-      clock: true,
+      clock: "stopped",
       postedAnyway: true,
     });
     const { page } = view;
-    await stopClock(view);
+    await firstPoll(view);
     await samplesButton(page).click();
     await showsSamplesBeforeNextPoll(view);
   });

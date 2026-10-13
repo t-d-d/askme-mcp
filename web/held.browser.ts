@@ -568,9 +568,9 @@ describe("holding, with cards opened and dismissed", () => {
       const { page } = view;
       await dismissTheLastShowing(page);
       const line = "2 held until their hours";
-      const { last, held, note } = await underTheNote(page, line);
+      const { last, foot, note } = await underTheNote(page, line);
       expect(last).toBeLessThanOrEqual(note);
-      expect(held).toBeLessThanOrEqual(note);
+      expect(foot).toBeLessThanOrEqual(note);
       const noted = await allClearGaps(page, line);
       await page.clock.runFor(undoMs + 500);
       await page.getByRole("status").waitFor({ state: "hidden" });
@@ -588,9 +588,9 @@ describe("holding, with cards opened and dismissed", () => {
     const line = "2 held until their hours";
     for (const height of [400, 480, 560, 640]) {
       await page.setViewportSize({ width: 360, height });
-      const { last, held, note } = await underTheNote(page, line);
+      const { last, foot, note } = await underTheNote(page, line);
       expect(last).toBeLessThanOrEqual(note);
-      expect(held).toBeLessThanOrEqual(note);
+      expect(foot).toBeLessThanOrEqual(note);
       // The line moves up out of the note's way, but not over the last line.
       expect((await allClearGaps(page, line)).below).toBeGreaterThan(0);
     }

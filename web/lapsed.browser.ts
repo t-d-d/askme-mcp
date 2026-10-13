@@ -373,9 +373,9 @@ describe("the lapsed line", () => {
     await page.getByRole("button", { name: "Undo" }).waitFor();
     for (const height of [844, 560]) {
       await page.setViewportSize({ width: phone.width, height });
-      const { last, held, note } = await underTheNote(page, "1 has lapsed");
+      const { last, foot, note } = await underTheNote(page, "1 has lapsed");
       expect(last).toBeLessThanOrEqual(note);
-      expect(held).toBeLessThanOrEqual(note);
+      expect(foot).toBeLessThanOrEqual(note);
     }
   });
 
