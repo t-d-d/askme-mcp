@@ -1,5 +1,5 @@
 import styles from "./DismissedNote.module.css";
-import type { DismissNote } from "./useDismissing";
+import type { DismissNote } from "./dismissing";
 
 // The note at the foot of the screen after a dismissal: "Dismissed." with
 // Undo while the dismissal waits to be sent, or, if sending it failed,
