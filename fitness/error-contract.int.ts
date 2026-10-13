@@ -7,7 +7,7 @@ import { pagePaths } from "../shared/page-api";
 import { captureLogs, lineText } from "../test/logs";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
-import { connect, mcpUrl, origin, refusalOf } from "../test/mcp";
+import { connect, eras, mcpUrl, origin, refusalOf } from "../test/mcp";
 
 async function closedPort(): Promise<number> {
   const server = createServer();
@@ -47,8 +47,44 @@ afterAll(async () => {
 // A stack frame, a socket error, or the address the store was at.
 const internal = /\bat \S+ \(|ECONNREFUSED|127\.0\.0\.1|Error:/u;
 
+// The body of a refusal answered over HTTP: the refusal alone, with no
+// JSON-RPC envelope.
+const unavailableBody = z.strictObject({
+  code: z.literal("service_unavailable"),
+  class: z.literal("retry"),
+  message: z.string().min(1),
+});
+
+describe("fitness: a failure before the token is checked is answered over HTTP (error-contract.md)", () => {
+  // Must run while no key has been fetched, so before the tests below.
+  it.each(eras)(
+    "answers the official client's %s handshake with a 503 carrying service_unavailable, and no MCP message, when the identity service is down",
+    async (era) => {
+      issuer.failing = true;
+      try {
+        const seen: Response[] = [];
+        await expect(
+          connect(handler, { token: await issuer.token(), era, seen }),
+        ).rejects.toThrow();
+        expect(seen.length).toBeGreaterThan(0);
+        for (const response of seen) {
+          expect(response.status).toBe(503);
+          expect(response.headers.get("content-type")).toMatch(
+            /^application\/json/u,
+          );
+          const text = await response.text();
+          unavailableBody.parse(JSON.parse(text));
+          expect(text).not.toMatch(internal);
+        }
+      } finally {
+        issuer.failing = false;
+      }
+    },
+  );
+});
+
 describe("fitness: unknown failures are contained (error-contract.md)", () => {
-  // Must run first, while no key has been fetched.
+  // Must run while no key has been fetched, so before the tests below.
   it("answers an MCP call with service_unavailable when the identity service is down, saying nothing internal", async () => {
     issuer.failing = true;
     try {
@@ -61,15 +97,7 @@ describe("fitness: unknown failures are contained (error-contract.md)", () => {
       );
       expect(response.status).toBe(503);
       const text = await response.text();
-      const refusal = z
-        .strictObject({
-          code: z.string(),
-          class: z.string(),
-          message: z.string(),
-        })
-        .parse(JSON.parse(text));
-      expect(refusal.code).toBe("service_unavailable");
-      expect(refusal.class).toBe("retry");
+      unavailableBody.parse(JSON.parse(text));
       expect(text).not.toMatch(internal);
     } finally {
       issuer.failing = false;
@@ -123,15 +151,7 @@ describe("fitness: unknown failures are contained (error-contract.md)", () => {
     );
     expect(response.status).toBe(503);
     const text = await response.text();
-    const refusal = z
-      .strictObject({
-        code: z.string(),
-        class: z.string(),
-        message: z.string(),
-      })
-      .parse(JSON.parse(text));
-    expect(refusal.code).toBe("service_unavailable");
-    expect(refusal.class).toBe("retry");
+    unavailableBody.parse(JSON.parse(text));
     expect(text).not.toMatch(internal);
   }, 15_000);
 
@@ -140,6 +160,8 @@ describe("fitness: unknown failures are contained (error-contract.md)", () => {
       (line) =>
         line.method === "error" && lineText(line).includes("request-failed"),
     );
-    expect(failures.length).toBeGreaterThanOrEqual(4);
+    // One for each handshake in the first describe, and one for each of the
+    // four failures above.
+    expect(failures.length).toBeGreaterThanOrEqual(6);
   });
 });

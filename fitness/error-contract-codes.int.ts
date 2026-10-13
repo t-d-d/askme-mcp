@@ -2,6 +2,7 @@
 // cannot be reached.
 import { randomUUID } from "node:crypto";
 import { ProtocolErrorCode } from "@modelcontextprotocol/client";
+import { McpServer } from "@modelcontextprotocol/server";
 import {
   afterAll,
   afterEach,
@@ -185,6 +186,40 @@ describe.each(eras)(
         await expect(answer).rejects.toThrow("Tool asks not found");
       } finally {
         await agent.close();
+      }
+    });
+  },
+);
+
+// After the token is checked, the SDK answers a failure of its own before any
+// tool runs. askme keeps that answer and adds nothing (ADR 24).
+describe.each(eras)(
+  "fitness: a failure while the SDK holds the call keeps the SDK's answer (error-contract.md), %s handshake",
+  (era) => {
+    it("answers with HTTP 500 and JSON-RPC error -32603 when the MCP server cannot be built", async () => {
+      const register = vi
+        .spyOn(McpServer.prototype, "registerTool")
+        .mockImplementationOnce(() => {
+          throw new Error("Could not register");
+        });
+      try {
+        const seen: Response[] = [];
+        await expect(
+          connect(handler, {
+            token: await issuer.token({ claims: { sub: newAccount() } }),
+            era,
+            seen,
+          }),
+        ).rejects.toThrow();
+        const [answer] = seen;
+        expect(answer?.status).toBe(500);
+        z.object({
+          error: z.object({ code: z.literal(ProtocolErrorCode.InternalError) }),
+          // The id of the call that failed, so the client can match it.
+          id: z.union([z.string(), z.number()]),
+        }).parse(await answer?.json());
+      } finally {
+        register.mockRestore();
       }
     });
   },

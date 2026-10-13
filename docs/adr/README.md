@@ -26,6 +26,7 @@ Each technical decision that is hard to reverse is recorded here, one file per d
 | [20](0020-live-tier-reads.md) | The live tier only reads, and the service may write to answer it | [test-tiers.md](../constraints/test-tiers.md) |
 | [21](0021-model-call-cap.md) | Each account has a daily cap on model calls | [model-call-cap.md](../constraints/model-call-cap.md), [table-design.md](../constraints/table-design.md) |
 | [22](0022-sort-queue.md) | Sort jobs go through a FIFO queue, and the poll only reads | [sort-queue.md](../constraints/sort-queue.md), [hosting.md](../constraints/hosting.md), [polling.md](../constraints/polling.md), [table-design.md](../constraints/table-design.md), [model-call-cap.md](../constraints/model-call-cap.md), [test-tiers.md](../constraints/test-tiers.md) |
+| [24](0024-failure-before-a-tool-runs.md) | An MCP call that fails before a tool runs gets no tool result | [error-contract.md](../constraints/error-contract.md) |
 
 ## How a decision is recorded
 
