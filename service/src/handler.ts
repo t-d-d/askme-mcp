@@ -142,7 +142,7 @@ async function serve(
   if (!isRoute(route)) return new Response(null, { status: 404 });
   // The SDK's browser client sends MCP-Protocol-Version on the metadata GET,
   // so the browser asks here first.
-  if (routes[route] === "public" && request.method === "OPTIONS") {
+  if (route === "OPTIONS /.well-known/oauth-protected-resource/mcp") {
     return new Response(null, {
       status: 204,
       headers: {
