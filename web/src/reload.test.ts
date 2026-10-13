@@ -57,6 +57,16 @@ describe("reloading for an answer the page cannot read", () => {
     expect(reloads.count).toBe(3);
   });
 
+  it("keeps the first answer's mark when a second fails on the same page", () => {
+    const marks = memory();
+    const { reloads, reload } = counting();
+    reloadOnce(marks, reload, asks, first);
+    reloadOnce(marks, reload, rules, first);
+    answerRead(marks, rules);
+    reloadOnce(marks, reload, asks, second);
+    expect(reloads.count).toBe(2);
+  });
+
   it("reads a mark that holds the answer alone, as an older page kept it", () => {
     const marks = memory();
     marks.setItem("askme-reloaded-for", asks);

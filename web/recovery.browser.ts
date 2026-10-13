@@ -397,5 +397,16 @@ describe("a reload the person cancels", () => {
         return opened.loads();
       })
       .toBe(2);
+    // The page after the reload finds the first page's mark.
+    const polls = () =>
+      opened.apiCalls.filter(({ path }) => path === pagePaths.asks).length;
+    const after = polls() + 3;
+    await expect
+      .poll(async () => {
+        await page.clock.fastForward(pollMs);
+        return polls();
+      })
+      .toBeGreaterThanOrEqual(after);
+    expect(opened.loads()).toBe(2);
   });
 });
