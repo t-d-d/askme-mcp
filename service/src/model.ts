@@ -27,9 +27,18 @@ export const defaultModel = "anthropic/claude-haiku-5.5";
 // OpenRouter's API, which speaks OpenAI's chat completions.
 export const openRouterEndpoint = "https://openrouter.ai/api/v1";
 
+// A turn after the model's own earlier reply to the same system and user
+// messages: that reply, as the JSON it gave, and a user message about it.
+export interface FollowUp {
+  reply: string;
+  user: string;
+}
+
 export interface ModelRequest {
   system: string;
   user: string;
+  // When set, the call goes on from the model's earlier reply.
+  followUp?: FollowUp;
   // The name and JSON Schema the reply must follow.
   schemaName: string;
   schema: Record<string, unknown>;
@@ -108,6 +117,12 @@ export function createModel(config: {
             messages: [
               { role: "system", content: request.system },
               { role: "user", content: request.user },
+              ...(request.followUp === undefined
+                ? []
+                : [
+                    { role: "assistant", content: request.followUp.reply },
+                    { role: "user", content: request.followUp.user },
+                  ]),
             ],
             response_format: {
               type: "json_schema",

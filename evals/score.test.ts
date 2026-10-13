@@ -122,6 +122,26 @@ describe("a model's report", () => {
     expect(report).toContain("Replies from the model: 3 of 4");
     expect(report).toContain("Median reply time: 1.2s");
   });
+
+  // #243: the follow-up a reply with a long reason gets, as in the service.
+  it("says how many follow-ups for a long reason were sent, and how many got a reply that fit", () => {
+    const report = lines(
+      modelReport({
+        model: "maker/model",
+        outcomes: [
+          { ...sorted(core("a hotfix"), "high"), followedUp: true },
+          { ...sorted(core("a rollback"), "low"), followedUp: true },
+          { ...unsorted(core("a flaky test")), followedUp: true },
+          { one: core("a deploy"), failure: "timeout", followedUp: true },
+          sorted(core("a release"), "high"),
+          unsorted(core("a migration")),
+        ],
+      }),
+    );
+    expect(report).toContain(
+      "Follow-ups for a long reason: 4 sent, 2 got a reply that fit",
+    );
+  });
 });
 
 // Three models over the same asks: b gets all four right, a and c three.
@@ -185,6 +205,54 @@ describe("comparing models", () => {
   it("keeps each model's own report, misses and all", () => {
     const saved = scoresFile(runs, { date: "2026-10-12", rounds: 2 });
     for (const run of runs) expect(saved).toContain(modelReport(run));
+  });
+
+  const twin: EvalCase = {
+    name: "a hotfix from Monday",
+    group: "timing",
+    twinOf: "a hotfix",
+    area: "work",
+    ask,
+    expected: { hashtags: [["work"]], level: "high" },
+  };
+
+  it("says what each group checks, the timing group's being that the level ignores time (#158)", () => {
+    const saved = scoresFile(
+      runs.map(({ model, outcomes }) => ({
+        model,
+        outcomes: [...outcomes, sorted(twin, "high")],
+      })),
+      { date: "2026-10-12", rounds: 2 },
+    );
+    expect(saved).toContain("The core group holds");
+    expect(saved).toContain("The timing group");
+    expect(saved).toContain("checks that the level ignores time");
+    expect(saved).toContain("The hostile group (ADR 12)");
+  });
+
+  it("says nothing of a group the run does not have", () => {
+    const saved = scoresFile(runs, { date: "2026-10-12", rounds: 2 });
+    expect(saved).not.toContain("The timing group");
+  });
+
+  it("gives the timing group a column of its own when the set has one (#158)", () => {
+    const saved = lines(
+      scoresFile(
+        [
+          {
+            model: "maker/t",
+            outcomes: [sorted(core("a hotfix"), "high"), sorted(twin, "low")],
+          },
+        ],
+        { date: "2026-10-12", rounds: 1 },
+      ),
+    );
+    expect(saved).toContain(
+      "| Model | Core | Timing | All | Gave in | No fitting reply | Median reply time |",
+    );
+    expect(saved).toContain(
+      "| `maker/t` | 1/1 (100%) | 0/1 (0%) | 1/2 (50%) | 0 | 0 | 1.0s |",
+    );
   });
 });
 

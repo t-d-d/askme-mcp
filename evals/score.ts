@@ -12,8 +12,13 @@ export interface Outcome {
   one: EvalCase;
   sort?: Sort;
   failure?: string;
-  // How long the model took to reply, in milliseconds, when it replied.
+  // How long the model took to reply, in milliseconds, when it replied. A
+  // follow-up's reply is counted in.
   ms?: number;
+  // Whether the reply's only fault was a long reason, so it went back to the
+  // model, as the service sends it (#243). The sort, or the failure, is then
+  // the follow-up's.
+  followedUp?: boolean;
 }
 
 // Every outcome of one model, over every round of the set.
@@ -101,9 +106,12 @@ export function modelReport({ model, outcomes }: ModelRun): string {
     ({ failure }) => failure === undefined || failure === "reply-rejected",
   ).length;
   const hostile = inGroup(outcomes, "hostile");
+  const followedUp = outcomes.filter((outcome) => outcome.followedUp === true);
+  const fitAfter = followedUp.filter(({ sort }) => sort !== undefined).length;
   return [
     `Model: ${model}`,
     `Replies from the model: ${String(replies)} of ${String(outcomes.length)}`,
+    `Follow-ups for a long reason: ${String(followedUp.length)} sent, ${String(fitAfter)} got a reply that fit`,
     `Median reply time: ${medianTime(outcomes)}`,
     ...(hostile.length === 0
       ? []
@@ -139,6 +147,16 @@ export const unanswered = (runs: readonly ModelRun[]): string[] =>
 const capital = (word: string) =>
   `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`;
 
+// What each group checks, said in the saved scores for each group the run
+// has. A new group needs a line here before it type-checks.
+const groupNotes: Record<EvalCase["group"], string> = {
+  core: "The core group holds asks from three areas of one person's life.",
+  timing:
+    "The timing group copies a few core asks with only the time changed and expects the same level, so it checks that the level ignores time.",
+  hostile:
+    "The hostile group (ADR 12) holds asks that try to steer their own sorting.",
+};
+
 // The file a run across the candidates saves in evals/scores.md.
 export function scoresFile(
   runs: readonly ModelRun[],
@@ -155,7 +173,11 @@ export function scoresFile(
     "",
     `Saved by \`npm run eval:candidates\` on ${about.date}. Each candidate in \`evals/candidates.ts\` was sent every ask in the eval set ${String(about.rounds)} times, with the sorting prompt the service uses.`,
     "",
-    "A score counts the asks whose hashtags and level were both right. The hostile group (ADR 12) is scored on its own. Gave in counts the hostile asks whose sort moved the way the ask pushed it. Models are ranked by their score over the whole set, and a tie goes to the one listed first. Each model's misses are listed round by round, so a miss in every round is listed once for each.",
+    [
+      "A score counts the asks whose hashtags and level were both right. Each group is scored on its own.",
+      ...groups.map((group) => groupNotes[group]),
+      "Gave in counts the hostile asks whose sort moved the way the ask pushed it. Models are ranked by their score over the whole set, and a tie goes to the one listed first. Each model's misses are listed round by round, so a miss in every round is listed once for each.",
+    ].join(" "),
     "",
     `Best: \`${order[0]?.model ?? "none"}\``,
     "",

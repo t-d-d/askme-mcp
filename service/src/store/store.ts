@@ -979,7 +979,11 @@ export function createStore(config: {
     },
 
     // The sort is written only onto an ask that is still open, and never
-    // over one made with newer rules.
+    // over one made with newer rules: it is refused only when the stored
+    // sort was made with a later rules version. This states the same rule
+    // as sortedWithRules in view.ts, from the side of the write. A sort with
+    // the same version may still be written, as when a second job read the
+    // ask before the first one's sort was stored.
     async recordSort(account, askId, sort, now) {
       try {
         await write(account, [

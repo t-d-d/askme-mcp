@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
+import { reasonLimit } from "../service/src/sort";
 import { sortAttempts } from "../service/src/sorter";
 import { sortKeys } from "../service/src/store/keys";
 import { pagePaths } from "../shared/page-api";
@@ -107,6 +108,15 @@ describe("fitness: a bad reply changes nothing (untrusted-ask-text.md)", () => {
     [
       "an extra field",
       { hashtags: ["work"], level: "high", reason: "r", rules: "#work" },
+    ],
+    // Sent back once for a shorter reason (#243), and still too long.
+    [
+      "a reason over the limit",
+      {
+        hashtags: ["work"],
+        level: "high",
+        reason: "x".repeat(reasonLimit + 1),
+      },
     ],
   ])(
     "discards a reply with %s, and the ask stays unsorted",
