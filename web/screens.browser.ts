@@ -99,6 +99,19 @@ describe("reaching a screen by following a link", () => {
     expect(await page.title()).toBe("askme");
   });
 
+  it("moves focus to the summary of a card reached from another card's address", async () => {
+    const { page } = await open("#ask/top");
+    await page.getByRole("heading", { level: 1, name: "Merge it?" }).waitFor();
+    await page.evaluate(() => {
+      window.location.hash = "#ask/row";
+    });
+    await page
+      .getByRole("heading", { level: 1, name: "Which date format?" })
+      .waitFor();
+    expect(await page.title()).toBe("Ask | askme");
+    await expectHeadingFocus(page, "Which date format?");
+  });
+
   it("opens Rules and then Connect with focus on each one's heading and its own title", async () => {
     const { page } = await open();
     await page.getByRole("article").waitFor();

@@ -1129,6 +1129,39 @@ describe("dismissing", () => {
     await goesAfter(opened, () => page.mouse.move(5, 5));
   });
 
+  it("keeps the note with Undo that comes back after the note that an earlier dismissal failed, while the pointer stays over it", async () => {
+    let fail: () => void = () => undefined;
+    const failing = new Promise<void>((resolve) => {
+      fail = resolve;
+    });
+    const opened = await open(listOf(both, sessionOnly, neither), {
+      clock: true,
+      change: new Answering(async (_url, _authorization, { body }) => {
+        if (askChange.parse(JSON.parse(body ?? "")).id !== "both") {
+          return new Status(204);
+        }
+        await failing;
+        return unavailable;
+      }),
+    });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await swipe(opened, page.getByRole("article"));
+    // Low on the note's left, so the pointer stays over it as the failed
+    // note, which is shorter, takes its place.
+    await page.mouse.move(20, phone.height - 4);
+    fail();
+    await expect.poll(() => page.getByRole("status").innerText()).toBe(failed);
+    await page.clock.runFor(undoMs + 500);
+    await expect
+      .poll(() => page.getByRole("status").innerText())
+      .toMatch(/^Dismissed\.\s+Undo$/u);
+    await page.clock.runFor(undoMs * 2);
+    expect(await page.getByRole("button", { name: "Undo" }).count()).toBe(1);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual(["both"]);
+  });
+
   it("sends the first dismissal at once when a second ask is dismissed", async () => {
     const opened = await open(listOf(both, sessionOnly, neither), {
       clock: true,

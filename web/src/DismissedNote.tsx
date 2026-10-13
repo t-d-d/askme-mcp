@@ -17,13 +17,13 @@ export function DismissedNote({
   const [focus, setFocus] = useState(false);
   const [pointer, setPointer] = useState(false);
   // Undo can go with focus on it, and a browser need not say focus left.
+  // The pointer stays over a failed note, which keeps the region on the
+  // page, so only an empty, hidden region forgets it.
   const [shown, setShown] = useState(note);
   if (note !== shown) {
     setShown(note);
-    if (note !== "dismissed") {
-      setFocus(false);
-      setPointer(false);
-    }
+    if (note !== "dismissed") setFocus(false);
+    if (note === null) setPointer(false);
   }
   const kept = note === "dismissed" && (focus || pointer);
   // Listened for on the region, not set as props: it only watches, and is

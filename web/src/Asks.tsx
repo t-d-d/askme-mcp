@@ -111,7 +111,9 @@ export function Asks({
   return (
     <>
       {open !== undefined ? (
+        // Keyed, so another ask's card is a new screen and takes focus.
         <OpenCard
+          key={open.id}
           ask={open}
           tab={tab}
           now={receivedAt}
