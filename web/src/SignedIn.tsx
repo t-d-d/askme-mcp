@@ -4,6 +4,7 @@ import { Asks } from "./Asks";
 import { Connect } from "./Connect";
 import { Rules } from "./Rules";
 import { cardIn, screenIn, type Screen } from "./screen";
+import { useDismissing, type Dismissing } from "./useDismissing";
 
 // A screen with unsaved work gives the question to ask before it is left,
 // and null once it can be left without asking.
@@ -84,9 +85,17 @@ const newQueries = () =>
 export function SignedIn() {
   const [queries] = useState(newQueries);
   const { screen, card, askFirst } = useScreen();
+  // Kept above the screens, so a dismissal sent as the list goes, and the
+  // note if it fails, outlive the list (useDismissing.ts).
+  const dismissing = useDismissing(screen === "asks");
   return (
     <QueryClientProvider client={queries}>
-      <Shown screen={screen} card={card} askFirst={askFirst} />
+      <Shown
+        screen={screen}
+        card={card}
+        askFirst={askFirst}
+        dismissing={dismissing}
+      />
     </QueryClientProvider>
   );
 }
@@ -97,14 +106,16 @@ function Shown({
   screen,
   card,
   askFirst,
+  dismissing,
 }: {
   screen: Screen;
   card: string | null;
   askFirst: AskFirst;
+  dismissing: Dismissing;
 }) {
   switch (screen) {
     case "asks":
-      return <Asks card={card} />;
+      return <Asks card={card} dismissing={dismissing} />;
     case "connect":
       return <Connect />;
     case "rules":
