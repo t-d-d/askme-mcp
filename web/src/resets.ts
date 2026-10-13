@@ -16,7 +16,10 @@ export function resetsAt(at: number): number {
 // daily cap by its own clock, which is serviceAhead ahead of this one
 // (load.ts). On a clock a few minutes out, this browser's own next midnight
 // would come a few minutes early or late, or, just past it on a fast clock,
-// a day late.
+// a day late. serviceAhead errs behind by a second or so, which places a
+// refused press a little early on the service's clock. It still falls in
+// the day the cap was spent: at askme's rate limit, no account can spend
+// its cap in the first few minutes of a day.
 export function resetsHere(at: number, serviceAhead: number): number {
   return resetsAt(at + serviceAhead) - serviceAhead;
 }
