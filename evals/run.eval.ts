@@ -24,7 +24,7 @@ import {
   rateWaits,
 } from "./model";
 import { modelReport, notSaved, scoresFile, type ModelRun } from "./score";
-import { inPool, sortEvalAsk } from "./sorting";
+import { inPool, sortEvalAsk, sortingTimeoutMs } from "./sorting";
 
 const acrossCandidates = process.env.EVAL_CANDIDATES === "1";
 
@@ -42,6 +42,10 @@ const rounds = acrossCandidates ? 2 : 1;
 // How many asks are sent at once.
 const parallel = 5;
 
+// The models run at once, each with its own pool, so a run takes as long as
+// its slowest model.
+const timeout = sortingTimeoutMs(rounds * cases.length, parallel);
+
 const header = [
   keyLine,
   proxyLine,
@@ -49,7 +53,7 @@ const header = [
 ].join("\n");
 
 describe("the eval set against the real model", () => {
-  it("sorts every ask and reports the scores", async () => {
+  it("sorts every ask and reports the scores", { timeout }, async () => {
     const key = evalKey();
     if (acrossCandidates && namedModels.length > 0) {
       throw new Error(

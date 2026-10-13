@@ -4,7 +4,7 @@ import {
   type Model,
   type ModelRequest,
 } from "../service/src/model";
-import { rateWaits, retryingOnRate } from "./model";
+import { rateWaitMs, rateWaits, retryingOnRate } from "./model";
 
 // A model that answers each call with the next reply in the list, a thrown
 // error included, and keeps the time of every call it was sent.
@@ -33,8 +33,6 @@ const request: ModelRequest = {
 
 const refused = () => new ModelFailed("status-429");
 
-const total = rateWaits.reduce((sum, wait) => sum + wait, 0);
-
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "performance"] });
 });
@@ -62,7 +60,7 @@ describe("a call the provider refuses for rate (#303)", () => {
     const failure = expect(reply).rejects.toMatchObject({
       reason: "status-429",
     });
-    await vi.advanceTimersByTimeAsync(total);
+    await vi.advanceTimersByTimeAsync(rateWaitMs);
     await failure;
     expect(sentAt.slice(1).map((at, n) => at - (sentAt[n] ?? 0))).toEqual(
       rateWaits,
@@ -78,7 +76,7 @@ describe("a call that fails for any other reason", () => {
     ]);
     const reply = retryingOnRate(model).reply(request);
     await expect(reply).rejects.toMatchObject({ reason: "timeout" });
-    await vi.advanceTimersByTimeAsync(total);
+    await vi.advanceTimersByTimeAsync(rateWaitMs);
     expect(sentAt).toHaveLength(1);
   });
 });

@@ -65,9 +65,12 @@ export const clientFor = (model: string, key: string | undefined): Model =>
 
 // The wait before each new try of a call the provider refused for rate: a
 // minute in all. On #273 a call OpenRouter refused for rate got a reply a
-// minute later. A model refused on every call still finishes a run across
-// the candidates inside the eval's time limit.
-export const rateWaits = [10_000, 20_000, 30_000];
+// minute later. The time limits for sorting allow for every wait.
+export const rateWaits: readonly number[] = [10_000, 20_000, 30_000];
+
+// The longest a call waits, in all, for the provider to stop refusing it
+// for rate.
+export const rateWaitMs = rateWaits.reduce((sum, wait) => sum + wait, 0);
 
 const pause = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));

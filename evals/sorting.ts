@@ -16,7 +16,7 @@ import {
 } from "../service/src/sort";
 import { sortMaxTokens, sortTimeoutMs } from "../service/src/sorter";
 import { evalRules, type EvalCase } from "./cases";
-import { retryingOnRate } from "./model";
+import { rateWaitMs, retryingOnRate } from "./model";
 import type { Outcome } from "./score";
 
 const account = callerOf({
@@ -79,6 +79,13 @@ export async function sortEvalAsk(
     throw error;
   }
 }
+
+// How long sorting the given number of asks may take, the given number at
+// once: each sort timing out, and timing out again on its follow-up, with
+// each call first waiting out every 429 (#303). A run that ran out of time
+// would save nothing it paid for.
+export const sortingTimeoutMs = (sorts: number, parallel: number): number =>
+  Math.ceil(sorts / parallel) * 2 * (sortTimeoutMs + rateWaitMs) + 60_000;
 
 // Runs a task for every item, at most `parallel` at once, and gives back
 // their results in the items' order. Each worker takes the next item as soon

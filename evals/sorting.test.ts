@@ -7,8 +7,8 @@ import {
 import { reasonLimit } from "../service/src/sort";
 import { sortMaxTokens, sortTimeoutMs } from "../service/src/sorter";
 import { cases } from "./cases";
-import { rateWaits } from "./model";
-import { evalPrompt, inPool, sortEvalAsk } from "./sorting";
+import { rateWaitMs, rateWaits } from "./model";
+import { evalPrompt, inPool, sortEvalAsk, sortingTimeoutMs } from "./sorting";
 
 // A model that answers each request with the next reply in the list, a
 // thrown error included, and keeps every request it was sent.
@@ -135,5 +135,14 @@ describe("a pool of tasks", () => {
       running--;
     });
     expect(most).toBe(3);
+  });
+});
+
+describe("the time limit for sorting asks", () => {
+  it("covers every sort timing out, with its follow-up, each call after waiting out every 429 (#303)", () => {
+    // 96 sorts, 5 at once: 20 turns, each up to two calls.
+    expect(sortingTimeoutMs(96, 5)).toBeGreaterThanOrEqual(
+      20 * 2 * (sortTimeoutMs + rateWaitMs),
+    );
   });
 });
