@@ -216,9 +216,9 @@ describe("a trial's report of an ask the owner accepts as a miss", () => {
     expect(report).toContain(`| ${towels.name} | hostile | low | 2/3 |`);
   });
 
-  it("says what a known miss is", () => {
+  it("says what a known miss is, and that only its level is accepted", () => {
     expect(report).toContain(
-      "A known miss is an ask the owner kept at its level though the default model misses it, in the issue named beside it.",
+      "\nA known miss is an ask the owner kept at its level though the default model misses it, in the issue named beside it. Only its level is accepted, so a sort of it with other hashtags or no fitting reply is a new miss.\n",
     );
   });
 });

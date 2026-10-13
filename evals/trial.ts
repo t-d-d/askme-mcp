@@ -10,6 +10,7 @@ import { levels, type Level } from "../shared/page-api";
 import type { EvalCase } from "./cases";
 import { modelsNamed } from "./model";
 import {
+  accepted,
   bothRight,
   gaveIn,
   hashtagsRight,
@@ -160,10 +161,8 @@ export function trialReport(
   const askRows = asks.map((one) => {
     const sorts = outcomes.filter((outcome) => outcome.one === one);
     const right = sorts.filter(bothRight).length;
-    const mark = one.knownMiss === undefined ? "" : knownMissMark(one);
-    return `| ${one.name}${mark} | ${one.group} | ${one.expected.level} | ${String(right)}/${String(sorts.length)} | ${levelsGiven(sorts)} |`;
+    return `| ${one.name}${knownMissMark(one)} | ${one.group} | ${one.expected.level} | ${String(right)}/${String(sorts.length)} | ${levelsGiven(sorts)} |`;
   });
-  const known = asks.some(({ knownMiss }) => knownMiss !== undefined);
   const groups = [...new Set(asks.map(({ group }) => group))];
   const groupRows = groups.map((group) => {
     const sorts = outcomes.filter(({ one }) => one.group === group);
@@ -180,7 +179,12 @@ export function trialReport(
     "| Ask | Group | Expected | Right | Levels |",
     "| --- | --- | --- | --- | --- |",
     ...askRows,
-    ...(known ? ["", knownMissNote] : []),
+    ...(outcomes.some(accepted)
+      ? [
+          "",
+          `${knownMissNote} Only its level is accepted, so a sort of it with other hashtags or no fitting reply is a new miss.`,
+        ]
+      : []),
     "",
     "| Group | Both right | A run of the set |",
     "| --- | --- | --- |",

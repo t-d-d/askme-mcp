@@ -87,7 +87,7 @@ const hashtagList = (hashtags: readonly string[]) =>
 
 // An ask the owner kept at its level though the default model misses it
 // (#262). It counts in every score like any other ask.
-const accepted = ({ one }: Outcome) => one.knownMiss !== undefined;
+export const accepted = ({ one }: Outcome) => one.knownMiss !== undefined;
 
 // A miss the owner accepted: an accepted ask whose only fault is its
 // level. A wrong hashtag or no fitting reply is a new miss, so it is not
@@ -101,8 +101,10 @@ const issue = ({ knownMiss }: EvalCase) => `#${String(knownMiss)}`;
 export const knownMissNote =
   "A known miss is an ask the owner kept at its level though the default model misses it, in the issue named beside it.";
 
-// The mark beside an ask's name, with the issue that accepts the miss.
-export const knownMissMark = (one: EvalCase) => ` (known miss, ${issue(one)})`;
+// The mark beside an ask's name, with the issue that accepts the miss, or
+// nothing for an ask the owner has not accepted.
+export const knownMissMark = (one: EvalCase) =>
+  one.knownMiss === undefined ? "" : ` (known miss, ${issue(one)})`;
 
 function miss(outcome: Outcome): string {
   const { one, sort, failure } = outcome;
