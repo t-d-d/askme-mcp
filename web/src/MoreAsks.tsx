@@ -3,10 +3,10 @@ import type { PageAsk } from "../../shared/page-api";
 import type { AskActions } from "./actions";
 import { destinations } from "./links";
 import styles from "./MoreAsks.module.css";
-import { askColour, tagColour, type HashtagColour } from "./palette";
+import { askColour, neutral, tagColour, type HashtagColour } from "./palette";
 import { cardHref } from "./screen";
 import { SiteName } from "./SiteName";
-import { shownUnder, type Tab } from "./tab";
+import type { Tab } from "./tab";
 import { useSwipe } from "./useSwipe";
 import { age } from "./waiting";
 
@@ -71,7 +71,6 @@ function Row({
 }) {
   const { id, summary, postedAt, sort, opened } = ask;
   const { main } = destinations(ask);
-  const shown = sort === null ? undefined : shownUnder(sort, tab);
   const swipe = useSwipe(
     useCallback(() => {
       dismiss(id);
@@ -90,7 +89,15 @@ function Row({
           {sort === null ? (
             <span className={styles.pill}>Not sorted yet</span>
           ) : (
-            shown !== undefined && <span className={styles.pill}>#{shown}</span>
+            sort.hashtags.map((name) => (
+              <span
+                className={styles.pill}
+                key={name}
+                style={tagColour(colours.get(name) ?? neutral)}
+              >
+                #{name}
+              </span>
+            ))
           )}
           <span>{age(postedAt, now, serviceAhead)}</span>
           {opened && <span>Opened</span>}
