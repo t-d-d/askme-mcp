@@ -50,3 +50,86 @@ describe("a queued reply left unused", () => {
     }).not.toThrow();
   });
 });
+
+const sendBatch = async (deduplicationId: string): Promise<number> =>
+  (
+    await fetch(fakes.queue.endpoint, {
+      method: "POST",
+      headers: {
+        "x-amz-target": "AmazonSQS.SendMessageBatch",
+        "content-type": "application/x-amz-json-1.0",
+      },
+      body: JSON.stringify({
+        QueueUrl: fakes.queue.url,
+        Entries: [
+          {
+            Id: "1",
+            MessageBody: "{}",
+            MessageGroupId: "group",
+            MessageDeduplicationId: deduplicationId,
+          },
+        ],
+      }),
+    })
+  ).status;
+
+const askParameter = async (): Promise<void> => {
+  await fetch(fakes.parameters.endpoint, {
+    method: "POST",
+    headers: { "x-amz-target": "AmazonSSM.GetParameter" },
+    body: JSON.stringify({ Name: "/askme/other" }),
+  });
+};
+
+// The tests run in order, and the second sees what the first left.
+describe("every fake between tests", () => {
+  it("leaves every fake changed", async () => {
+    expect(await sendBatch("between-tests")).toBe(200);
+    await askParameter();
+    fakes.queue.loseAnswers(1);
+    fakes.queue.failing = true;
+    fakes.queue.hanging = true;
+    fakes.queue.refusing = true;
+    fakes.parameters.hanging = true;
+    expect(fakes.queue.waiting()).toBe(1);
+  });
+
+  it("starts the next test with every fake as it began", async () => {
+    expect(fakes.queue.failing).toBe(false);
+    expect(fakes.queue.hanging).toBe(false);
+    expect(fakes.queue.refusing).toBe(false);
+    expect(fakes.queue.sent).toEqual([]);
+    expect(fakes.queue.calls).toEqual([]);
+    expect(fakes.queue.waiting()).toBe(0);
+    expect(fakes.parameters.hanging).toBe(false);
+    expect(fakes.parameters.asked).toEqual([]);
+    // No lost answer is left, and the earlier message is not a repeat.
+    expect(await sendBatch("between-tests")).toBe(200);
+    expect(fakes.queue.sent.map(({ taken }) => taken)).toEqual([true]);
+  });
+});
+
+describe("resetting every fake", () => {
+  it("returns each fake to its starting state", async () => {
+    fakes.model.reply({ status: 429 });
+    expect(await sendBatch("reset")).toBe(200);
+    await askParameter();
+    fakes.queue.loseAnswers(1);
+    fakes.queue.failing = true;
+    fakes.queue.hanging = true;
+    fakes.queue.refusing = true;
+    fakes.parameters.hanging = true;
+    fakes.reset();
+    expect(fakes.model.unused()).toBe(0);
+    expect(fakes.queue.failing).toBe(false);
+    expect(fakes.queue.hanging).toBe(false);
+    expect(fakes.queue.refusing).toBe(false);
+    expect(fakes.queue.sent).toEqual([]);
+    expect(fakes.queue.calls).toEqual([]);
+    expect(fakes.queue.waiting()).toBe(0);
+    expect(fakes.parameters.hanging).toBe(false);
+    expect(fakes.parameters.asked).toEqual([]);
+    expect(await sendBatch("reset")).toBe(200);
+    expect(fakes.queue.sent.map(({ taken }) => taken)).toEqual([true]);
+  });
+});

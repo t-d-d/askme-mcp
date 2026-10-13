@@ -962,12 +962,8 @@ describe("sorting", () => {
   it("posts the ask when the queue cannot take its sort, and it waits unsorted", async () => {
     const account = newAccount();
     fakes.queue.failing = true;
-    try {
-      const id = await post(account);
-      expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
-    } finally {
-      fakes.queue.failing = false;
-    }
+    const id = await post(account);
+    expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
   });
 
   it("posts the ask when the queue answers but takes none of it, and it waits unsorted", async () => {
@@ -995,15 +991,11 @@ describe("sorting", () => {
   it(`posts the ask, waiting at most ${String(sortRequestTimeoutMs)}ms on a queue that does not answer, and it waits unsorted`, async () => {
     const account = newAccount();
     fakes.queue.hanging = true;
-    try {
-      const started = Date.now();
-      const id = await post(account);
-      // The rest of the post, on loopback, takes well under a second.
-      expect(Date.now() - started).toBeLessThan(sortRequestTimeoutMs + 1000);
-      expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
-    } finally {
-      fakes.queue.hanging = false;
-    }
+    const started = Date.now();
+    const id = await post(account);
+    // The rest of the post, on loopback, takes well under a second.
+    expect(Date.now() - started).toBeLessThan(sortRequestTimeoutMs + 1000);
+    expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
   });
 
   it("leaves the ask unsorted when the model fails, and the queue delivers it again, with no poll", async () => {
