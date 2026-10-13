@@ -94,8 +94,6 @@
   --space-note: calc(var(--tap) + 2 * var(--space-6) + var(--hairline));
   --gap-buttons: var(--space-8);
 
-  --opacity-opened: 0.55;
-
   /* A swiped card going back to its place */
   --duration-move: 150ms;
   --duration-screen: 250ms;

@@ -17,6 +17,7 @@ const at = (more: Partial<DismissState>): DismissState => ({
 });
 
 // holding: the failed note shows over b, which waits with its timer stopped.
+// kept: the note with Undo has focus or the pointer, so its timer stopped.
 const states: Record<string, DismissState> = {
   idle,
   waiting: at({ dismissed: ids("a"), note: "dismissed", waiting: "a" }),
@@ -29,6 +30,12 @@ const states: Record<string, DismissState> = {
   }),
   away: at({ listShown: false }),
   failedAway: at({ listShown: false, note: "failed", failedAway: true }),
+  kept: at({
+    dismissed: ids("a"),
+    note: "dismissed",
+    waiting: "a",
+    kept: true,
+  }),
 };
 const from = (name: string): DismissState => {
   const state = states[name];
@@ -66,6 +73,7 @@ describe("the state a page starts in", () => {
       failedTiming: false,
       failedAway: false,
       listShown: true,
+      kept: false,
     });
   });
 
@@ -117,6 +125,16 @@ describe("dismissing C", () => {
       }),
       [clearFailed, startUndo],
     ],
+    [
+      "kept",
+      at({
+        dismissed: ids("a", "c"),
+        note: "dismissed",
+        waiting: "c",
+        kept: true,
+      }),
+      [clearUndo, send("a"), clearFailed],
+    ],
   ]);
 });
 
@@ -128,6 +146,7 @@ describe("Undo", () => {
     ["holding", at({ failedTiming: true }), [clearUndo]],
     ["away", from("away"), []],
     ["failedAway", from("failedAway"), []],
+    ["kept", at({ kept: true }), [clearUndo]],
   ]);
 });
 
@@ -143,6 +162,7 @@ describe("the note with Undo running out of time", () => {
     ],
     ["away", from("away"), []],
     ["failedAway", from("failedAway"), []],
+    ["kept", at({ dismissed: ids("a"), kept: true }), [clearUndo, send("a")]],
   ]);
 });
 
@@ -158,6 +178,7 @@ describe("the note that a dismissal failed going", () => {
     ],
     ["away", from("away"), []],
     ["failedAway", at({ listShown: false, failedAway: true }), []],
+    ["kept", from("kept"), [clearUndo]],
   ]);
 });
 
@@ -187,6 +208,17 @@ describe("sending S failing", () => {
       [clearFailed],
     ],
     ["failedAway", from("failedAway"), [clearFailed]],
+    [
+      "kept",
+      at({
+        dismissed: ids("a"),
+        note: "failed",
+        waiting: "a",
+        failedTiming: true,
+        kept: true,
+      }),
+      [clearUndo, clearFailed, startFailed],
+    ],
   ]);
 
   it("brings S back to the list", () => {
@@ -239,6 +271,11 @@ describe("leaving the list for another screen", () => {
     ],
     ["away", from("away"), []],
     ["failedAway", from("failedAway"), []],
+    [
+      "kept",
+      at({ dismissed: ids("a"), listShown: false, kept: true }),
+      [clearUndo, send("a")],
+    ],
   ]);
 });
 
@@ -254,6 +291,7 @@ describe("the list showing", () => {
       at({ note: "failed", failedTiming: true }),
       [clearFailed, startFailed],
     ],
+    ["kept", from("kept"), []],
   ]);
 });
 
@@ -269,6 +307,11 @@ describe("closing the page", () => {
     ],
     ["away", from("away"), []],
     ["failedAway", from("failedAway"), []],
+    [
+      "kept",
+      at({ dismissed: ids("a"), kept: true }),
+      [clearUndo, send("a", true)],
+    ],
   ]);
 });
 
@@ -288,5 +331,37 @@ describe("signing out", () => {
     ],
     ["away", from("away"), [clearFailed]],
     ["failedAway", from("failedAway"), [clearFailed]],
+    [
+      "kept",
+      at({ dismissed: ids("a"), kept: true }),
+      [clearUndo, send("a"), clearFailed],
+    ],
+  ]);
+});
+
+// Focus or the pointer on the note with Undo stops its clock, and it starts
+// again from the full time when both have left. On any other note, nothing
+// runs differently.
+describe("the note with Undo taking focus or the pointer", () => {
+  each({ type: "keep", kept: true }, [
+    ["idle", at({ kept: true }), []],
+    ["waiting", from("kept"), [clearUndo]],
+    ["failed", at({ note: "failed", failedTiming: true, kept: true }), []],
+    ["holding", { ...from("holding"), kept: true }, []],
+    ["away", at({ listShown: false, kept: true }), []],
+    ["failedAway", { ...from("failedAway"), kept: true }, []],
+    ["kept", from("kept"), [clearUndo]],
+  ]);
+});
+
+describe("focus and the pointer both leaving the note", () => {
+  each({ type: "keep", kept: false }, [
+    ["idle", from("idle"), []],
+    ["waiting", from("waiting"), [startUndo]],
+    ["failed", from("failed"), []],
+    ["holding", from("holding"), []],
+    ["away", from("away"), []],
+    ["failedAway", from("failedAway"), []],
+    ["kept", from("waiting"), [startUndo]],
   ]);
 });

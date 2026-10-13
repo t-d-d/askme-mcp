@@ -16,6 +16,8 @@ export interface DismissState {
   failedTiming: boolean;
   failedAway: boolean;
   listShown: boolean;
+  // The note has focus or the pointer. Its Undo clock stops while it does.
+  kept: boolean;
 }
 
 export type DismissEvent =
@@ -24,6 +26,8 @@ export type DismissEvent =
   | { type: "timeUp"; timer: Timer }
   | { type: "failed"; id: string; error: unknown }
   | { type: "list"; shown: boolean }
+  // kept: the note has focus or the pointer. false once both have left.
+  | { type: "keep"; kept: boolean }
   // Closing the page or leaving it for another site.
   | { type: "pageHidden" }
   // The page signing out.
@@ -46,6 +50,7 @@ export const initial = (listShown: boolean): DismissState => ({
   failedTiming: false,
   failedAway: false,
   listShown,
+  kept: false,
 });
 
 const without = (ids: ReadonlySet<string>, id: string) => {
@@ -53,6 +58,13 @@ const without = (ids: ReadonlySet<string>, id: string) => {
   kept.delete(id);
   return kept;
 };
+
+// The note with Undo shows, so its clock runs unless the note is kept.
+const undoShows = (state: DismissState): boolean =>
+  state.note === "dismissed" && state.waiting !== null;
+
+const startUndo = (state: DismissState): DismissEffect[] =>
+  state.kept ? [] : [{ type: "start", timer: "undo" }];
 
 const stopFailed = ({ state, effects }: Stepped): Stepped => ({
   state: { ...state, failedTiming: false },
@@ -102,7 +114,7 @@ export function step(state: DismissState, event: DismissEvent): Stepped {
           note: "dismissed",
           waiting: event.id,
         },
-        effects: [...sent.effects, { type: "start", timer: "undo" }],
+        effects: [...sent.effects, ...startUndo(sent.state)],
       };
     }
     case "undo": {
@@ -125,10 +137,7 @@ export function step(state: DismissState, event: DismissEvent): Stepped {
       }
       return {
         state: { ...ended, note: "dismissed" },
-        effects: [
-          { type: "clear", timer: "undo" },
-          { type: "start", timer: "undo" },
-        ],
+        effects: [{ type: "clear", timer: "undo" }, ...startUndo(state)],
       };
     }
     case "failed": {
@@ -159,6 +168,15 @@ export function step(state: DismissState, event: DismissEvent): Stepped {
         state: { ...listed, failedAway: false },
         effects: [],
       });
+    }
+    case "keep": {
+      const kept = { ...state, kept: event.kept };
+      if (!undoShows(state)) return { state: kept, effects: [] };
+      // From the full time again when both have left.
+      return {
+        state: kept,
+        effects: [{ type: event.kept ? "clear" : "start", timer: "undo" }],
+      };
     }
     case "pageHidden":
       return sendWaiting(unchanged, true);

@@ -18,6 +18,8 @@ export interface Dismissing {
   note: DismissNote | null;
   dismiss: (id: string) => void;
   undo: () => void;
+  // Whether the note has focus or the pointer.
+  keep: (kept: boolean) => void;
 }
 
 export function useDismissing(listShown: boolean): Dismissing {
@@ -79,6 +81,13 @@ export function useDismissing(listShown: boolean): Dismissing {
     dispatch({ type: "undo" });
   }, [dispatch]);
 
+  const keep = useCallback(
+    (kept: boolean) => {
+      dispatch({ type: "keep", kept });
+    },
+    [dispatch],
+  );
+
   useEffect(() => {
     dispatch({ type: "list", shown: listShown });
   }, [listShown, dispatch]);
@@ -94,5 +103,5 @@ export function useDismissing(listShown: boolean): Dismissing {
     };
   }, [dispatch]);
 
-  return { dismissed, note, dismiss, undo };
+  return { dismissed, note, dismiss, undo, keep };
 }

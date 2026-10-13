@@ -7,9 +7,11 @@ import { SampleAsks } from "./SampleAsks";
 import { layers, useLayer } from "./slide";
 import { backToList, followToList } from "./toList";
 import { useAnswer } from "./useAnswer";
+import { screenTitle, useScreenHeading } from "./useScreenHeading";
 
 export function Connect() {
   useLayer(layers.connect);
+  const heading = useScreenHeading(screenTitle("Connect your agents"));
   const { data, failed } = useAnswer(pagePaths.connection, connectionAnswer);
   const address = useRef<HTMLInputElement>(null);
   const addressId = useId();
@@ -46,7 +48,9 @@ export function Connect() {
       </header>
       <main className={styles.main}>
         <div className={styles.intro}>
-          <h1 className={styles.title}>Connect your agents</h1>
+          <h1 className={styles.title} ref={heading} tabIndex={-1}>
+            Connect your agents
+          </h1>
           <p className={styles.note}>
             Any agent that can use an MCP server can post asks here. You approve
             each connection once, by signing in. There are no keys to copy.
