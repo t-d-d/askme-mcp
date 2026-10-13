@@ -539,10 +539,7 @@ describe("a run of the sort function", () => {
   it.each([
     ["no event", undefined],
     ["no records", {}],
-    [
-      "a receive count that is not a whole number",
-      { Records: [record("1 1")] },
-    ],
+    ["a receive count that is not one number", { Records: [record("1 1")] }],
   ])(
     "lets an event with %s go at once, at error, since only the trigger sends one",
     async (_, event) => {
@@ -568,6 +565,23 @@ describe("a run of the sort function", () => {
     await handler({ Records: [record("1")] }, context);
     expect(logged()).toEqual([
       expect.objectContaining({ errorClass: "UnreadableJob", requestId }),
+    ]);
+  });
+
+  it("hands the job the trigger's count of its deliveries, of more than one digit, so a late one is let go before any work", async () => {
+    const late = {
+      ...record("12"),
+      body: JSON.stringify({ accountId: owner, askId: ask.id }),
+    };
+    expect(
+      await handler({ Records: [late] }, { awsRequestId: "sort-7" }),
+    ).toEqual({ batchItemFailures: [] });
+    expect(logged()).toEqual([
+      expect.objectContaining({
+        level: "warn",
+        event: "sort-failed",
+        errorClass: "deliveries-spent",
+      }),
     ]);
   });
 });
