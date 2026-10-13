@@ -13,8 +13,10 @@ import {
   allClearGaps,
   Answering,
   answerPoll,
+  datedPolls,
   openPage,
   Status,
+  stepUntilShown,
   underTheNote,
   type OpenPage,
   type PageOptions,
@@ -726,6 +728,57 @@ describe("the open card", () => {
     });
     await view.page.getByRole("article").waitFor();
   });
+});
+
+describe("how long an ask has waited", () => {
+  // Monday 12 October 2026, 6pm UTC, by the service's clock.
+  const serviceNow = Date.parse("2026-10-12T18:00:00Z");
+  const posted = (id: string, summary: string, waited: number) =>
+    ask(id, summary, 0, {
+      postedAt: new Date(serviceNow - waited).toISOString(),
+    });
+  const oldest = "Choose the colour for the new labels?";
+
+  // The service gives the time an ask was posted by its own clock, so the
+  // top card, the rows and the open card count its age by that clock, even
+  // on a page whose clock is a few minutes out. At 18:00 UTC by the
+  // service's clock, a clock three minutes fast reads 18:03, and one three
+  // minutes slow reads 17:57. The page's clock stands still, and each poll's
+  // answer gives the service's time in its Date header.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "counts by the service's clock, on a clock a few minutes %s",
+    async (_, serviceAhead) => {
+      view = await openPage(inject("pageUrl"), phone, {
+        session,
+        clock: { stoppedAt: new Date(serviceNow - serviceAhead) },
+        api: {
+          [pagePaths.asks]: datedPolls(
+            () =>
+              listOf(
+                posted("a", oldest, 4 * minute),
+                posted("b", "Keep the old supplier on?", 2 * minute),
+                posted("c", "Reply to the courier?", 0),
+              ),
+            () => serviceNow,
+          ),
+        },
+      });
+      const { page } = view;
+      const card = page.getByRole("article");
+      await stepUntilShown(page, card);
+      expect(await card.innerText()).toContain("Waiting 4 min");
+      const rows = await page.getByRole("listitem").allInnerTexts();
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toContain("2 min");
+      expect(rows[1]).toContain("Just now");
+      await card.getByRole("link", { name: oldest }).click();
+      await stepUntilShown(page, page.getByRole("link", { name: "All asks" }));
+      expect(await page.locator("body").innerText()).toContain("Waiting 4 min");
+    },
+  );
 });
 
 describe("Listen", () => {

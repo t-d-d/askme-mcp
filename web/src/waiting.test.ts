@@ -23,17 +23,37 @@ describe("how long an ask has waited", () => {
     [24 * 60 * minute, "1 d"],
     [50 * 60 * minute, "2 d"],
   ])("after %i ms is %s", (elapsed, words) => {
-    expect(age(ago(elapsed), now)).toBe(words);
+    expect(age(ago(elapsed), now, 0)).toBe(words);
   });
 
   it("reads as just now when the clocks disagree a little", () => {
-    expect(age(new Date(now + 5000).toISOString(), now)).toBe("Just now");
+    expect(age(new Date(now + 5000).toISOString(), now, 0)).toBe("Just now");
   });
 
   it("says Waiting on the top card, except just now", () => {
-    expect(waiting(ago(4 * minute), now)).toBe("Waiting 4 min");
-    expect(waiting(ago(0), now)).toBe("Just now");
+    expect(waiting(ago(4 * minute), now, 0)).toBe("Waiting 4 min");
+    expect(waiting(ago(0), now, 0)).toBe("Just now");
   });
+
+  // The service gives the time an ask was posted by its own clock, so the
+  // age counts by that clock, even on a browser whose clock is a few minutes
+  // out. Three minutes fast, the browser reads 12:03 when the service reads
+  // 12:00, and three minutes slow, 11:57.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "counts by the service's clock on a clock a few minutes %s",
+    (_, serviceAhead) => {
+      const here = now - serviceAhead;
+      expect(age(ago(0), here, serviceAhead)).toBe("Just now");
+      expect(age(ago(2 * minute), here, serviceAhead)).toBe("2 min");
+      expect(waiting(ago(0), here, serviceAhead)).toBe("Just now");
+      expect(waiting(ago(4 * minute), here, serviceAhead)).toBe(
+        "Waiting 4 min",
+      );
+    },
+  );
 });
 
 describe("the order of the list", () => {

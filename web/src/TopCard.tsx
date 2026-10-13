@@ -27,12 +27,14 @@ export function TopCard({
   ask,
   tab,
   now,
+  serviceAhead,
   colours,
   actions,
 }: {
   ask: PageAsk;
   tab: Tab;
   now: number;
+  serviceAhead: number;
   colours: ReadonlyMap<string, HashtagColour>;
   actions: AskActions;
 }) {
@@ -57,7 +59,7 @@ export function TopCard({
       <div className={styles.meta}>
         <Pills sort={sort} colours={colours} />
         <span className={styles.when}>
-          <span>{waiting(ask.postedAt, now)}</span>
+          <span>{waiting(ask.postedAt, now, serviceAhead)}</span>
           {opened && <span>Opened</span>}
         </span>
       </div>
