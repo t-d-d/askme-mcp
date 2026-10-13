@@ -2,16 +2,17 @@
 
 One place where all of a person's AI agents ask for their input, sorted by rules the person writes in plain English.
 
-> **This is a demo.** Every ask is deleted a month after it is posted. The service runs on a Clerk development instance, which holds at most 100 accounts, so sign-up stops at the hundredth.
+> **This is a fully functional demo.** Every ask is deleted a month after it is posted. The service runs on a Clerk development instance, which holds at most 100 accounts, so sign-up stops at the hundredth.
 
-The page is live at https://d1dqzjjllemayb.cloudfront.net. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps. The [deploy runs on main](https://github.com/t-d-d/askme-mcp/actions/workflows/deploy.yml?query=branch%3Amain) are listed newest first, and the summary of each run that deployed gives both addresses.
+The page is live at https://d1dqzjjllemayb.cloudfront.net. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps.
 
 ## What it is
 
-A person who runs several agents gets asked for input by each of them, in each agent's own app. askme gives those agents one place to ask, and gives the person one list, ordered by rules they write themselves.
+People now run several AI agents at once, at work and at home, and each one stops to ask for their input in its own app. The asks arrive in different places, at any hour, all wanting attention. askme gives every agent one place to ask, and puts the person in charge of that channel. Any agent that can connect to an MCP server can post to it. The person's own rules, written in plain English, decide how each ask is sorted, what shows first and what waits for its hours. Every area of their life ends up in one list on their phone.
 
 - An agent calls the MCP server's `ask` tool with a summary, the area of work, a version written to be heard, and up to two links, one to where the person should act and one back to its own session.
 - The service sorts the ask against the person's rules into their hashtags and one of three levels.
+- The rules can limit a hashtag to certain hours, such as "#work only on weekdays, 8am to 6pm". An ask outside its hashtag's hours is held back until those hours, and a line says how many are held, with a control to show them. Each hashtag has its own tab.
 - The page shows the list on a phone, with the first ask shown large. A card can be read aloud. Its main button opens the place to act, such as a pull request or the agent's session.
 - The agent calls `resolve` when its wait is over, and the card clears. The person can also swipe it away.
 
@@ -75,7 +76,7 @@ The agents work to rules kept in the repo, so each session starts from the same 
 - [CLAUDE.md](CLAUDE.md) says how to work: one branch per issue, tests first, the gate before every push, and the owner merges.
 - [.claude/skills/](.claude/skills/) holds the steps for picking up an issue, checking the constraints, reviewing a branch before it is pushed, and writing a pull request.
 
-Changes start as GitHub issues, in a simple workflow. An issue describes one change, with a label for its type, such as `type: enhancement` or `type: bug`, and one for its mode. An agent takes a `mode: afk` issue from its text to a pull request on a branch of its own, and the pull request closes the issue. Anything only the owner can do, such as making accounts, setting secrets or connecting a real agent, is a `mode: human` issue, and its closing comment records the result. All but two of the merged pull requests close or refer to an issue, so a change can be traced to the issue that asked for it.
+Changes start as GitHub issues, in a simple workflow. An issue describes one change, with a label for its type, such as `type: enhancement` or `type: bug`, and one for its mode. An agent takes a `mode: afk` issue from its text to a pull request on a branch of its own, and the pull request closes the issue. Anything only the owner can do, such as making accounts, setting secrets or connecting a real agent, is a `mode: human` issue, and its closing comment records the result.
 
 ## How it is tested
 
@@ -109,9 +110,9 @@ Some things only a person, or an agent looking at a screenshot, can check.
 - **The page against the design.** Before pushing a change to the page, the coding agent opens it at phone width in headless Chromium and compares it with the mockup by eye. The gate checks parts of the design: colours and font sizes come from the design's tokens, each hashtag's ink is readable on its tint and white on its strong colour, and the controls the browser tests measure are big enough to tap. No test compares the layout with the mockup.
 - **The AWS account and the alert email.** While [bootstrapping](docs/bootstrap.md), the owner keeps the AWS account to askme alone, switches on billing alerts and confirms the alert email. A test alarm shows that the email arrives.
 
-## Trade-offs
+## Design choices
 
-- **The page polls.** It asks for changes every few seconds while it is open, and not at all while hidden. A new ask can take a few seconds to show, and nothing runs while nobody looks ([ADR 1](docs/adr/0001-polling.md)).
+- **The page polls.** It asks for changes every few seconds while it is open, and not at all while hidden. This keeps the service fully serverless. It holds no open connection, and nothing runs while nobody looks. A new ask can take a few seconds to show ([ADR 1](docs/adr/0001-polling.md)).
 - **Agents read nothing.** An agent never learns whether its ask was opened or dismissed, and cannot list its own asks. It must keep the ids it was given, and always asks in its own session as well ([ADR 2](docs/adr/0002-agents-write-only.md), [ADR 11](docs/adr/0011-error-contract.md)).
 - **Rules are plain English, read by a model.** There is no compile step, and no fixed rule sits behind a sort. The eval set and the reason on each card are the checks on it.
 - **One environment.** There is no staging, so nothing deployed is tested before it merges. A live check signs in on the deployed page after each deploy ([ADR 4](docs/adr/0004-repo-and-delivery.md), [ADR 16](docs/adr/0016-live-sign-in.md)).
@@ -120,7 +121,7 @@ Some things only a person, or an agent looking at a screenshot, can check.
 - **One table, with no index and no scan.** Every read is one account's. A question across accounts needs a new decision ([ADR 13](docs/adr/0013-table-design.md)).
 - **The sort queue costs a little when idle.** Lambda polls the SQS queue whether or not it holds jobs, and AWS bills those requests. Everything else scales to zero ([ADR 22](docs/adr/0022-sort-queue.md)).
 - **Daily caps.** An account that reaches 2,000 model calls in a day stops being sorted until the next UTC day, and its asks that were left out wait until the rules are saved again ([ADR 21](docs/adr/0021-model-call-cap.md)).
-- **Not tried at scale.** askme has run with no more than a handful of people. The AWS account's Lambda limit caps how many requests run at once, and a new account may start at 10 ([bootstrapping](docs/bootstrap.md), step 1).
+- **Sized for a demo.** askme has run with no more than a handful of people. The AWS account's Lambda limit caps how many requests run at once, and a new account may start at 10 ([bootstrapping](docs/bootstrap.md), step 1).
 
 ## Setup
 
