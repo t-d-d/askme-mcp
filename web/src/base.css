@@ -30,3 +30,36 @@ input,
 textarea {
   font: inherit;
 }
+
+/* Moving between screens (slide.ts). The browser draws a picture of the
+   screen being left and of the one coming. In place of its fade, the one
+   coming slides in from the right over the other, or the one being left
+   slides out to the right to show the other. Where the device asks for
+   reduced motion, slide.ts changes the screen at once. */
+html[data-slide]::view-transition-group(root),
+html[data-slide]::view-transition-old(root),
+html[data-slide]::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+html[data-slide="in"]::view-transition-new(root) {
+  animation: slide-in var(--duration-screen) ease-out;
+}
+
+html[data-slide="out"]::view-transition-old(root) {
+  z-index: 1;
+  animation: slide-out var(--duration-screen) ease-out;
+}
+
+@keyframes slide-in {
+  from {
+    translate: 100% 0;
+  }
+}
+
+@keyframes slide-out {
+  to {
+    translate: 100% 0;
+  }
+}
