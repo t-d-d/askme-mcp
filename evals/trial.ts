@@ -10,9 +10,12 @@ import { levels, type Level } from "../shared/page-api";
 import type { EvalCase } from "./cases";
 import { modelsNamed } from "./model";
 import {
+  accepted,
   bothRight,
   gaveIn,
   hashtagsRight,
+  knownMissMark,
+  knownMissNote,
   percent,
   type Outcome,
 } from "./score";
@@ -147,8 +150,9 @@ function levelsGiven(sorts: readonly Outcome[]): string {
   ].join(", ");
 }
 
-// What a trial prints: a line for each ask, then each group's score, both as
-// a share of its sorts and as the score one run of the set would expect.
+// What a trial prints: a line for each ask, with the known misses (#262)
+// marked whatever levels they got, then each group's score, both as a share
+// of its sorts and as the score one run of the set would expect.
 export function trialReport(
   outcomes: readonly Outcome[],
   about: { model: string; sorts: number; draft: string | undefined },
@@ -157,7 +161,7 @@ export function trialReport(
   const askRows = asks.map((one) => {
     const sorts = outcomes.filter((outcome) => outcome.one === one);
     const right = sorts.filter(bothRight).length;
-    return `| ${one.name} | ${one.group} | ${one.expected.level} | ${String(right)}/${String(sorts.length)} | ${levelsGiven(sorts)} |`;
+    return `| ${one.name}${knownMissMark(one)} | ${one.group} | ${one.expected.level} | ${String(right)}/${String(sorts.length)} | ${levelsGiven(sorts)} |`;
   });
   const groups = [...new Set(asks.map(({ group }) => group))];
   const groupRows = groups.map((group) => {
@@ -175,6 +179,12 @@ export function trialReport(
     "| Ask | Group | Expected | Right | Levels |",
     "| --- | --- | --- | --- | --- |",
     ...askRows,
+    ...(outcomes.some(accepted)
+      ? [
+          "",
+          `${knownMissNote} Only its level is accepted, so a sort of it with other hashtags or no fitting reply is a new miss.`,
+        ]
+      : []),
     "",
     "| Group | Both right | A run of the set |",
     "| --- | --- | --- |",
