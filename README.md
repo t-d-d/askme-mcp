@@ -140,6 +140,27 @@ aws cloudwatch set-alarm-state \
 
 An email titled `ALARM: "askme-error-lines" in US East (N. Virginia)` arrives. The command changes only the alarm's state, and the alarm returns to OK at its next one-minute check without sending another email. Use `askme-error-lines` for this. `askme-spend` checks only every six hours, so it would stay in ALARM for hours.
 
+### Restoring the table
+
+The table keeps point-in-time recovery for 35 days. It stays when the stack is deleted or would replace it, and it has deletion protection. A restore makes a new table and leaves the live one alone, so restoring is two steps: restore a copy, then copy its items back into the live table. Run this in CloudShell in `us-east-1`, with the time to go back to in UTC:
+
+```
+LIVE=$(aws cloudformation describe-stack-resource --stack-name askme-prod \
+  --logical-resource-id Table \
+  --query StackResourceDetail.PhysicalResourceId --output text)
+aws dynamodb restore-table-to-point-in-time \
+  --source-table-name "$LIVE" --target-table-name askme-restored \
+  --restore-date-time 2026-01-31T12:00:00Z
+aws dynamodb wait table-exists --table-name askme-restored
+aws dynamodb scan --table-name askme-restored --query Items --output json \
+  | jq -c '.[]' | while read -r item; do
+      aws dynamodb put-item --table-name "$LIVE" --item "$item"
+    done
+aws dynamodb delete-table --table-name askme-restored
+```
+
+Each copied item replaces the live item with the same key, and items made since that time stay. If the stack was deleted and deployed again, the old table is still there under its old name: copy from it in the same way, with its name in place of `askme-restored`, and keep it until the copy is checked.
+
 ## Checklist for connecting a real agent
 
 No test can connect a real agent, so the owner runs this checklist by hand after a deploy that changes sign-in or the MCP server. The Connect your agents screen gives the steps for Claude and Cursor.
