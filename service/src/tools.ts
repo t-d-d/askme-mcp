@@ -12,7 +12,8 @@ import type { SortRequests } from "./jobs";
 import { createLogger, errorClass, type Logger } from "./log";
 import type { Store } from "./store/store";
 
-// What a tool works with: the store, and the sorter it hands new asks to.
+// What a tool works with: the store, and the queue it hands new asks' sorts
+// to.
 export interface ToolServices {
   store: Store;
   sorts: SortRequests;

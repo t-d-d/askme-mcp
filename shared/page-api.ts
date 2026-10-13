@@ -10,7 +10,8 @@ export const pagePaths = {
   rules: "/api/rules",
 } as const;
 
-// How much an ask matters, judged on what is stalled, from most to least.
+// How much an ask matters, judged on what it would cost if the person never
+// acted, from most to least.
 // Sorting picks one, and the page orders by it. It is never shown.
 export const levels = ["high", "normal", "low"] as const;
 
@@ -84,6 +85,11 @@ const link = z.url({ protocol: /^https$/u });
 // sort: its hashtags, in the rules' order, its level, and the model's one
 // line on why. An ask not sorted yet carries null.
 //
+// An ask behind the rules, not sorted yet or sorted with rules saved
+// before, carries the time it turns from sorting to stopped (ADR 22). The
+// page works out which it is as time passes, with no new poll. An ask
+// sorted with the rules in force carries none.
+//
 // Saving the rules sorts every open ask again, and each keeps its old sort
 // until then, so an ask can carry a hashtag the rules no longer name. Those
 // are the former hashtags, each with its colour. They have no tab, and no
@@ -92,12 +98,18 @@ const link = z.url({ protocol: /^https$/u });
 // The time zone is the one the rules were saved in, which their hours use.
 // It is absent until rules are saved with one, and the page then uses its
 // own.
+//
+// While the account's daily cap on model calls is spent, the answer carries
+// when it resets, the next midnight UTC (ADR 22). It is there from the
+// first call the cap refuses, and only while that time is ahead. Nothing is
+// written when it passes, so the page stops showing the cap by the clock.
 export const asksAnswer = z.object({
   version: z.number().int().nonnegative(),
   everAsked: z.boolean(),
   hashtags: z.array(hashtag),
   formerHashtags: z.array(hashtag),
   timeZone: z.string().optional(),
+  modelCapResetsAt: z.iso.datetime().optional(),
   asks: z.array(
     z.object({
       id: z.string(),
@@ -108,6 +120,7 @@ export const asksAnswer = z.object({
       postedAt: z.iso.datetime(),
       lapsesAt: z.iso.datetime().optional(),
       opened: z.boolean(),
+      sortingUntil: z.iso.datetime().optional(),
       sort: z
         .object({
           hashtags: z.array(z.string()),

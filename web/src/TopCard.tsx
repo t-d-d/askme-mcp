@@ -2,11 +2,12 @@ import { useCallback } from "react";
 import type { PageAsk } from "../../shared/page-api";
 import type { AskActions } from "./actions";
 import { SessionIcon, SpeakerIcon } from "./Icon";
-import { destinations } from "./links";
+import { destinations, longSite } from "./links";
 import { OutLink } from "./OutLink";
 import { askColour, tagColour, type HashtagColour } from "./palette";
 import { Pills } from "./Pills";
 import { cardHref } from "./screen";
+import { SiteName } from "./SiteName";
 import type { Tab } from "./tab";
 import styles from "./TopCard.module.css";
 import { useSwipe } from "./useSwipe";
@@ -26,12 +27,14 @@ export function TopCard({
   ask,
   tab,
   now,
+  serviceAhead,
   colours,
   actions,
 }: {
   ask: PageAsk;
   tab: Tab;
   now: number;
+  serviceAhead: number;
   colours: ReadonlyMap<string, HashtagColour>;
   actions: AskActions;
 }) {
@@ -56,7 +59,7 @@ export function TopCard({
       <div className={styles.meta}>
         <Pills sort={sort} colours={colours} />
         <span className={styles.when}>
-          <span>{waiting(ask.postedAt, now)}</span>
+          <span>{waiting(ask.postedAt, now, serviceAhead)}</span>
           {opened && <span>Opened</span>}
         </span>
       </div>
@@ -73,7 +76,12 @@ export function TopCard({
               onFollowed={followed}
             >
               <span className={styles.label}>{main.label}</span>
-              <span className={styles.site}>{main.site}</span>
+              <span
+                className={styles.site}
+                data-long={longSite(main.site) ? "" : undefined}
+              >
+                <SiteName site={main.site} />
+              </span>
             </OutLink>
           )}
           {speak !== undefined && (

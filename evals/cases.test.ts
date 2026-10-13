@@ -16,6 +16,8 @@ const timing = cases.filter((one): one is TimingCase => one.group === "timing");
 const hostile = cases.filter(
   (one): one is HostileCase => one.group === "hostile",
 );
+const level = (name: string) =>
+  cases.find((one) => one.name === name)?.expected.level;
 
 describe("the core eval set", () => {
   it("has about 30 asks, across three areas", () => {
@@ -94,12 +96,47 @@ describe("the core eval set", () => {
     );
   });
 
+  it("holds the levels the owner set by what never acting would cost, not by the price of the step or how it is done (#191)", () => {
+    expect(level("a plumber who can come today")).toBe("normal");
+    expect(level("a delivery slot held until tonight")).toBe("high");
+    expect(level("a sign-in code for the school's payment site")).toBe("high");
+    expect(level("a council tax direct debit")).toBe("high");
+  });
+
+  it("holds the major upgrade and the sprint ticket at low, since ignoring either leaves nobody worse off (#226)", () => {
+    expect(level("a major upgrade")).toBe("low");
+    expect(level("a ticket for next sprint")).toBe("low");
+  });
+
+  it("holds a saving passed up and a price rise left unanswered at high, since a saving not had costs as much as money lost (#226)", () => {
+    expect(level("a courier change from Monday")).toBe("high");
+    expect(level("a supplier's price rise next month")).toBe("high");
+  });
+
+  it("marks the four asks the owner accepts as misses, and keeps them in the set (#262)", () => {
+    const marked = cases
+      .filter(({ knownMiss }) => knownMiss !== undefined)
+      .map(({ name, knownMiss }) => `${name}, #${String(knownMiss)}`);
+    expect(marked.sort()).toEqual(
+      [
+        "a ticket for next sprint, #262",
+        "the passkey ask, #262",
+        "a sign-in code for the school's payment site, #262",
+        "a consent form due next week, #262",
+      ].sort(),
+    );
+  });
+
   it("has rules that say nothing about when an ask is due, since the level ignores time (#101)", () => {
     expect(evalRules.text).not.toMatch(/\bdue\b|next week|later|soon/iu);
   });
 });
 
 describe("the timing group (#101)", () => {
+  it("holds a twin below high, so a model that lifts an ask for being soon misses it", () => {
+    expect(timing.some((one) => one.expected.level !== "high")).toBe(true);
+  });
+
   it("holds a few twins, across at least two areas", () => {
     expect(timing.length).toBeGreaterThanOrEqual(3);
     expect(new Set(timing.map((one) => one.area)).size).toBeGreaterThan(1);

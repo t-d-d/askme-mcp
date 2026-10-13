@@ -14,7 +14,9 @@ import {
   answerPoll,
   openPage,
   Status,
+  stepUntilShown,
   type OpenPage,
+  type PageOptions,
 } from "../test/browser";
 
 const phone = { width: 390, height: 844 };
@@ -66,8 +68,8 @@ const withSamples: AsksAnswer = {
   ],
 };
 
-const refusal = (code: string) =>
-  new Status(429, { code, class: "retry", message: "Refused." });
+const refusal = (code: string, headers?: Record<string, string>) =>
+  new Status(429, { code, class: "retry", message: "Refused." }, headers);
 
 // A new account's page, whose list gains the samples once they are sent,
 // and whose samples route answers as given.
@@ -80,7 +82,7 @@ async function openNewAccount(
     timeZone,
   }: {
     hash?: string;
-    clock?: boolean | Date;
+    clock?: PageOptions["clock"];
     postedAnyway?: boolean;
     timeZone?: string;
   } = {},
@@ -108,26 +110,75 @@ async function openNewAccount(
   });
 }
 
-// Stops the page's clock once the new account's card shows, just after
-// its first poll.
-async function stopClock({ page }: OpenPage): Promise<void> {
-  await page
-    .getByRole("heading", { name: "Your agents can ask here." })
-    .waitFor();
-  const now = await page.evaluate(() => Date.now());
-  await page.clock.pauseAt(now + 1);
-}
+// Steps the stopped clock until the page's first poll is answered and the
+// new account's card shows. Each wait moves the clock on a second at most
+// (stepUntil). A test waits twice, so two seconds in all, well short of the
+// next poll.
+const firstPoll = (view: OpenPage) =>
+  stepUntilShown(
+    view.page,
+    view.page.getByRole("heading", { name: "Your agents can ask here." }),
+  );
 
-// Moves the stopped clock on in small steps, a second in all, well short
-// of the next poll, until the sample asks show in the list.
-async function showsSamplesBeforeNextPoll({ page }: OpenPage): Promise<void> {
-  const card = page
+// Steps the stopped clock until the sample asks show in the list. No poll
+// fell due on the way: the page asked for the list when it loaded, and once
+// more after the press.
+async function showsSamplesBeforeNextPoll(view: OpenPage): Promise<void> {
+  const card = view.page
     .getByRole("article")
     .filter({ hasText: "Approve the hotfix for the login page" });
-  for (let step = 0; step < 20 && (await card.count()) === 0; step += 1) {
-    await page.clock.runFor(50);
-  }
+  await stepUntilShown(view.page, card);
   expect(await card.count()).toBe(1);
+  expect(
+    view.apiCalls.filter((call) => call.path === pagePaths.asks),
+  ).toHaveLength(2);
+}
+
+// Presses "Send sample asks" at 15:00 UTC on 12 October, into the daily
+// cap, and gives the note that says so once it shows. The cap resets at
+// the next midnight UTC.
+async function pressIntoCap(hash = ""): Promise<OpenPage> {
+  const opened = await openNewAccount(refusal("cap_reached"), {
+    hash,
+    clock: new Date("2026-10-12T15:00:00Z"),
+    timeZone: "Europe/London",
+  });
+  await samplesButton(opened.page).click();
+  await capNote(opened.page).waitFor();
+  return opened;
+}
+
+const capNote = (page: OpenPage["page"]) =>
+  page
+    .getByRole("status")
+    .filter({ hasText: "You've reached today's limit. It resets at 01:00." });
+
+// Presses "Send sample asks" into the daily cap on a page whose clock
+// stands still at a time, and gives the note once it shows. The service
+// refuses the press at 23:58 UTC on 12 October by its own clock, which its
+// answer's Date header gives, two minutes before the cap resets.
+async function pressIntoCapAt(pageClock: Date): Promise<OpenPage> {
+  const opened = await openNewAccount(
+    refusal("cap_reached", { date: "Mon, 12 Oct 2026 23:58:00 GMT" }),
+    { clock: { stoppedAt: pageClock }, timeZone: "Europe/London" },
+  );
+  await firstPoll(opened);
+  await samplesButton(opened.page).click();
+  await stepUntilShown(opened.page, capNote(opened.page));
+  return opened;
+}
+
+// Moves the clock to a second before the cap resets, by the page's clock,
+// where the note still shows, then two seconds on, past the reset, where it
+// has gone.
+async function dropsCapNoteAt(
+  { page }: OpenPage,
+  reset = new Date("2026-10-13T00:00:00Z"),
+): Promise<void> {
+  await page.clock.pauseAt(new Date(reset.getTime() - 1000));
+  expect(await capNote(page).count()).toBe(1);
+  await page.clock.runFor(2000);
+  await expect.poll(() => capNote(page).count()).toBe(0);
 }
 
 // The page, or a part of it.
@@ -182,9 +233,9 @@ describe("a new account", () => {
   });
 
   it("sends sample asks with the session token, and shows them without waiting for the next poll", async () => {
-    view = await openNewAccount(new Status(204), { clock: true });
+    view = await openNewAccount(new Status(204), { clock: "stopped" });
     const { page } = view;
-    await stopClock(view);
+    await firstPoll(view);
     await samplesButton(page).click();
     // No poll falls due: the list is asked for again because the samples
     // were sent.
@@ -260,15 +311,35 @@ describe("a new account", () => {
     },
   );
 
+  it("drops the cap note once the cap resets, with no reload", async () => {
+    view = await pressIntoCap();
+    await dropsCapNoteAt(view);
+  });
+
+  // The service counts the cap by its own clock, so the note goes when the
+  // service's day ends, even on a page whose clock is a few minutes out. A
+  // clock three minutes fast reads 00:03 then, and one three minutes slow
+  // reads 23:57.
+  it.each([
+    ["fast", "2026-10-13T00:01:00Z", "2026-10-13T00:03:00Z"],
+    ["slow", "2026-10-12T23:55:00Z", "2026-10-12T23:57:00Z"],
+  ])(
+    "drops the cap note when the service's day ends, on a clock a few minutes %s",
+    async (_, pressed, reset) => {
+      view = await pressIntoCapAt(new Date(pressed));
+      await dropsCapNoteAt(view, new Date(reset));
+    },
+  );
+
   // A limit reached part way keeps the asks posted before it, so the list
   // is asked for again even when the press is refused.
   it("shows the samples posted before a limit stopped the press, without waiting for the next poll", async () => {
     view = await openNewAccount(refusal("rate_limited"), {
-      clock: true,
+      clock: "stopped",
       postedAnyway: true,
     });
     const { page } = view;
-    await stopClock(view);
+    await firstPoll(view);
     await samplesButton(page).click();
     await showsSamplesBeforeNextPoll(view);
   });
@@ -340,5 +411,11 @@ describe("Connect your agents, for someone with no agent yet", () => {
         .getByRole("heading", { name: "Connect your agents" })
         .isVisible(),
     ).toBe(true);
+  });
+
+  // Connect your agents does not poll the list, so nothing else redraws it.
+  it("drops the cap note once the cap resets, with no reload", async () => {
+    view = await pressIntoCap("#connect");
+    await dropsCapNoteAt(view);
   });
 });

@@ -46,6 +46,9 @@ export function useRules() {
       ),
     onSuccess: (answer: RulesAnswer) => {
       queries.setQueryData([pagePaths.rules], answer);
+      // A save queues sorts, so the list is polled again at once, and shows
+      // the asks being sorted. The save does not wait for it.
+      void queries.invalidateQueries({ queryKey: [pagePaths.asks] });
     },
   });
   return { loaded, save };

@@ -1,19 +1,17 @@
-import {
-  useEffect,
-  useId,
-  useState,
-  type MouseEvent,
-  type SubmitEvent,
-} from "react";
+import { useId, useState, type ReactNode, type SubmitEvent } from "react";
 import { rulesLimit } from "../../shared/page-api";
 import { useAuth } from "./auth";
-import { Refusal } from "./load";
-import type { AskFirst } from "./SignedIn";
 import { hoursText } from "./hours";
 import { layers, useLayer } from "./slide";
 import { colourOf, tagColour } from "./palette";
+import { refusalNote } from "./refusalNote";
 import styles from "./Rules.module.css";
-import { elsewhere, followToList } from "./toList";
+import { rulesState, type NoteKind } from "./rulesState";
+import type { AskFirst } from "./screen";
+import { followToList } from "./toList";
+import { useAfter } from "./useAfter";
+import { useAsks } from "./useAsks";
+import { useLeaveGuard } from "./useLeaveGuard";
 import { browserTimeZone, useRules } from "./useRules";
 
 const leaving = "Leave without saving your rules?";
@@ -21,53 +19,59 @@ const leaving = "Leave without saving your rules?";
 // The rules: one box in plain English, and below it the hashtags askme read
 // from them, each with its hours. Saving waits while askme reads them. If
 // it cannot, the text is saved all the same, the old hashtags and hours
-// stay, and the page offers to try again. Either way, saving re-sorts every
-// open ask, and a last note says so, after the time zone the hours use. At
-// the foot, the address of the account signed in, and Sign out.
+// stay, and the page offers to try again. Either way, saving changed rules
+// re-sorts every open ask, and a last note says so, after the time zone the
+// hours use. At the foot, the address of the account signed in, and Sign
+// out.
+//
+// While some asks couldn't be sorted, "Save rules" works on unchanged text
+// too, unless today's sorting limit is reached. When the last reading
+// succeeded, that save reads nothing, and sorts again only the asks still
+// behind the rules (ADR 22). The screen polls the list, as the list does,
+// to know when asks stopped and when the limit is reached. A save refused
+// at the limit keeps the text in the box, and says when the limit resets.
+// That note goes once the limit resets, with no reload. The service's clock
+// decides when asks stop and when the limit resets, for the note and the
+// button alike.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   useLayer(layers.rules);
   const auth = useAuth();
   const { loaded, save } = useRules();
-  const { data, failed } = loaded;
+  const { data } = loaded;
+  const listed = useAsks();
   const boxId = useId();
   const readId = useId();
   // What the person has typed since the rules last loaded or saved.
   const [draft, setDraft] = useState<string | null>(null);
-  const text = draft ?? data?.text ?? "";
-  const changed = data !== undefined && draft !== null && draft !== data.text;
+  // Whether the last save sent the text unchanged, after a reading that
+  // succeeded, so askme sorts the asks again and reads nothing.
+  const [resorting, setResorting] = useState(false);
+  const refused =
+    save.error === null ? null : refusalNote(save.error, save.submittedAt);
+  // Once the limit resets, the refusal's note goes. The refused save sorted
+  // nothing, so no note says the asks are being sorted again either.
+  useAfter(refused?.goesAt, () => {
+    setResorting(false);
+    save.reset();
+  });
+  const { text, changed, ready, note } = rulesState({
+    loaded,
+    listed,
+    draft,
+    resorting,
+    save: {
+      pending: save.isPending,
+      succeeded: save.isSuccess,
+      submittedAt: save.submittedAt,
+      refused,
+    },
+  });
+  const { away, mayLeave } = useLeaveGuard(changed, askFirst, leaving);
 
-  // Leaving with unsaved text asks first. The screens ask when Back or a
-  // typed address changes the fragment, and the browser asks before the tab
-  // closes.
-  useEffect(() => {
-    if (!changed) return;
-    askFirst(leaving);
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => {
-      askFirst(null);
-      window.removeEventListener("beforeunload", warn);
-    };
-  }, [changed, askFirst]);
-  // This screen's own links ask before the address changes, so staying adds
-  // nothing to the history. Once the person agrees, they are not asked again.
-  // A link opened in a new tab or window leaves nothing, so it does not ask.
-  const away = (event: MouseEvent) => {
-    if (!changed || elsewhere(event)) return;
-    if (window.confirm(leaving)) askFirst(null);
-    else event.preventDefault();
-  };
-
-  // Signing out leaves the rules too, so unsaved text asks first, and once
-  // the person agrees they are not asked again. The screen goes from the
-  // address, so whoever signs in next starts at the list.
+  // Signing out leaves the rules too, so unsaved text asks first. The screen
+  // goes from the address, so whoever signs in next starts at the list.
   const signOut = () => {
-    if (changed) {
-      if (!window.confirm(leaving)) return;
-      askFirst(null);
-    }
+    if (!mayLeave()) return;
     const { pathname, search } = window.location;
     window.history.replaceState(null, "", pathname + search);
     auth.signOut();
@@ -75,6 +79,7 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
 
   const saveText = () => {
     const sent = text;
+    setResorting(!changed && data?.readFailed === false);
     save.mutate(sent, {
       // Text typed while the save was under way stays as typed.
       onSuccess: () => {
@@ -84,7 +89,7 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
   };
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
-    if (changed) saveText();
+    if (ready) saveText();
   };
 
   return (
@@ -133,26 +138,19 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
             disabled={data === undefined}
             onChange={(event) => {
               setDraft(event.target.value);
+              setResorting(false);
               // A failed save's note goes once the text changes.
               if (save.isError) save.reset();
             }}
           />
           <button
-            className={changed ? styles.save : styles.saved}
+            className={ready ? styles.save : styles.saved}
             type="submit"
-            disabled={!changed || save.isPending}
+            disabled={!ready || save.isPending}
           >
             Save rules
           </button>
-          <Note
-            failed={failed}
-            pending={save.isPending}
-            error={save.error}
-            changed={changed}
-            readFailed={data?.readFailed ?? false}
-            saved={data !== undefined && (data.text !== "" || save.isSuccess)}
-            onRetry={saveText}
-          />
+          <Note note={note} onRetry={saveText} />
         </form>
         <section className={styles.read} aria-labelledby={readId}>
           <h2 className={styles.heading} id={readId}>
@@ -200,9 +198,9 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
 }
 
 // The last note: the time zone the hours use, once the rules have loaded,
-// and that saving re-sorts every open ask. A save takes this browser's time
-// zone, so when another browser saved the rules, the note says which one
-// saving here uses.
+// and what saving sorts again. A save takes this browser's time zone, so
+// when another browser saved the rules, the note says which one saving
+// here uses.
 function Footnote({
   loaded,
   saved,
@@ -217,71 +215,56 @@ function Footnote({
       : `Hours use ${saved}, taken from the browser that saved them. Saving here uses ${here}. `;
   return (
     <p className={styles.footnote}>
-      {loaded && zone}Saving re-sorts every open ask.
+      {loaded && zone}Saving changed rules re-sorts every open ask, and saving
+      them unchanged sorts again any that couldn&apos;t be sorted.
     </p>
   );
 }
 
 // One short note under the button, giving the state.
-function Note({
-  failed,
-  pending,
-  error,
-  changed,
-  readFailed,
-  saved,
-  onRetry,
-}: {
-  failed: boolean;
-  pending: boolean;
-  error: Error | null;
-  changed: boolean;
-  readFailed: boolean;
-  saved: boolean;
-  onRetry: () => void;
-}) {
+function Note({ note, onRetry }: { note: NoteKind; onRetry: () => void }) {
+  if (note.kind === "none") return null;
   const retry = (
     <button className={styles.retry} type="button" onClick={onRetry}>
       Try again
     </button>
   );
-  if (failed) {
-    return (
-      <p className={styles.note} role="status">
-        Not connected. Trying again.
-      </p>
-    );
-  }
-  if (pending) {
-    return (
-      <p className={styles.note} role="status">
-        Reading your rules.
-      </p>
-    );
-  }
-  if (error !== null) {
-    return error instanceof Refusal && error.code === "rate_limited" ? (
-      <p className={styles.note} role="status">
-        Slow down a little. Try again in a few seconds.
-      </p>
-    ) : (
-      <p className={styles.note} role="status">
-        That didn&apos;t go through. {retry}
-      </p>
-    );
-  }
-  if (changed) return null;
-  if (readFailed) {
-    return (
-      <p className={styles.note} role="status">
-        askme couldn&apos;t read your rules just now. Your text is saved.{" "}
-        {retry}
-      </p>
-    );
-  }
-  return saved ? (
+  return (
     <p className={styles.note} role="status">
-      Saved. The button wakes up when you change the text.
+      {noteWords(note, retry)}
     </p>
-  ) : null;
+  );
+}
+
+// What a note says, ending with Try again where it offers one.
+function noteWords(
+  note: Exclude<NoteKind, { kind: "none" }>,
+  retry: ReactNode,
+): ReactNode {
+  switch (note.kind) {
+    case "notConnected":
+      return "Not connected. Trying again.";
+    case "reading":
+      return "Reading your rules.";
+    case "sorting":
+      return "Sorting your asks again.";
+    case "refused":
+      return (
+        <>
+          {note.words}
+          {note.retry && <> {retry}</>}
+        </>
+      );
+    case "readFailed":
+      return (
+        <>
+          askme couldn&apos;t read your rules just now. Your text is saved.{" "}
+          {retry}
+        </>
+      );
+    case "saved":
+      return "Saved.";
+    case "savedAsleep":
+      return "Saved. The button wakes up when you change the text.";
+  }
 }

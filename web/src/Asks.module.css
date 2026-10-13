@@ -22,11 +22,19 @@
   scroll-margin-bottom: calc(2 * var(--focus-width) + var(--space-note));
 }
 
-/* The tabs, and the held and lapsed lines under them. */
+/* The tabs, and the held and lapsed lines and the sorting line under them. */
 .bar,
 .lines {
   display: flex;
   flex-direction: column;
+}
+
+/* On All clear the same lines sit at the foot of the screen, because All
+   clear fills the space above them. Their margin is the screen's space at
+   the foot, so All clear sits the same with them or without them, whichever
+   line comes first. */
+.foot {
+  margin-top: var(--space-foot);
 }
 
 .note {

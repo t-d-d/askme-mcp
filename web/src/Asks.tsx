@@ -1,26 +1,25 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { PageAsk } from "../../shared/page-api";
 import type { AskActions } from "./actions";
 import { AllClear } from "./AllClear";
 import { AskList } from "./AskList";
 import { DismissedNote } from "./DismissedNote";
-import { everything, onTab, type Tab } from "./tab";
+import { listView } from "./listView";
+import { everything, type Tab } from "./tab";
 import styles from "./Asks.module.css";
 import { Header } from "./Header";
 import { Held } from "./Held";
-import { heldAsks } from "./hours";
 import { NewAccount } from "./NewAccount";
 import { OpenCard } from "./OpenCard";
 import { layers, useLayer } from "./slide";
 import { hashtagColours } from "./palette";
+import { SortingLine } from "./SortingLine";
 import { browserSpeech } from "./speech";
 import { Tabs, type TabsHandle } from "./Tabs";
 import { useAsks } from "./useAsks";
-import { useDismissing } from "./useDismissing";
+import type { Dismissing } from "./useDismissing";
 import { useLineFocus } from "./useLineFocus";
 import { useListPlace } from "./useListPlace";
 import { useOpening } from "./useOpening";
-import { inListOrder, lapsedAsks } from "./waiting";
 
 // The main screen: the person's open asks, or when none are waiting, All
 // clear, or for an account that has never had an ask, how to begin. The list
@@ -38,8 +37,11 @@ import { inListOrder, lapsedAsks } from "./waiting";
 // again. A hashtag the rules no longer name has no tab, but keeps its
 // colour on the asks that still carry it.
 //
-// The list is in order as of the last poll, so it follows the clock as asks
-// near the time they lapse (waiting.ts).
+// The list is in order as of the last poll, and an ask lapses then, by the
+// service's clock, which gives the time each ask lapses. So the list follows
+// that clock as asks near their time (waiting.ts). Each ask's age counts to
+// when the list was last read, by the same clock, which gives the time the
+// ask was posted.
 //
 // An ask with a hashtag outside its hours is held back, on every tab, as of
 // the last poll. So is an ask whose time has passed, which is lapsed, and
@@ -55,6 +57,15 @@ import { inListOrder, lapsedAsks } from "./waiting";
 // is still held until askme drops it, so Undo brings it back shown. A former
 // hashtag has no hours, so it holds nothing back.
 //
+// One line under the tabs, below the held and lapsed lines, says how
+// sorting stands: that today's sorting limit is reached and when it resets,
+// on the clock where the person is, or how many asks are being sorted with
+// the rules, or how many couldn't be sorted. It counts every ask, on every
+// tab, as of the last poll by the service's clock, which gives each time,
+// so an ask turns from sorting to stopped, and the limit goes once it
+// resets, with no reload. On All clear it sits at the foot, under the held
+// and lapsed lines when they show.
+//
 // An ask the person has opened shows as opened, and one they have dismissed
 // leaves the list, before the next poll says so.
 //
@@ -62,14 +73,21 @@ import { inListOrder, lapsedAsks } from "./waiting";
 // that opened the card, or the ask after it when that ask has moved or gone,
 // or on the All clear headline when nothing is left on the tab
 // (useListPlace.ts).
-export function Asks({ card }: { card: string | null }) {
-  const { data, receivedAt, polledAt, failed } = useAsks();
+export function Asks({
+  card,
+  dismissing,
+}: {
+  card: string | null;
+  dismissing: Dismissing;
+}) {
+  const { data, receivedAt, polledAt, serviceAhead, receivedAhead, failed } =
+    useAsks();
   const [chosen, choose] = useState<Tab>(everything);
   const [showingHeld, showHeld] = useState(false);
   const [showingLapsed, showLapsed] = useState(false);
   const [speak] = useState(browserSpeech);
   const { opened, markOpened } = useOpening();
-  const { dismissed, note, dismiss, undo } = useDismissing();
+  const { dismissed, note, dismiss, undo } = dismissing;
   const heldFocus = useLineFocus();
   const lapsedFocus = useLineFocus();
   const headline = useRef<HTMLHeadingElement>(null);
@@ -88,73 +106,62 @@ export function Asks({ card }: { card: string | null }) {
     () => ({ speak, markOpened, dismiss }),
     [speak, markOpened, dismiss],
   );
-  const asks = useMemo(
-    () =>
-      (data?.asks ?? [])
-        .filter(({ id }) => !dismissed.has(id))
-        .map((ask) => (opened.has(ask.id) ? { ...ask, opened: true } : ask)),
-    [data, dismissed, opened],
-  );
   const hashtags = data?.hashtags ?? [];
-  // Every hashtag an ask may carry, the former ones included, for colour.
-  const coloured =
-    data === undefined ? [] : [...hashtags, ...data.formerHashtags];
-  // Counted over the list as polled, so an ask dismissed here still counts
-  // until askme drops it, and Undo brings it back as it was.
-  const lapsed = useMemo(
-    () => lapsedAsks(data?.asks ?? [], polledAt),
-    [data, polledAt],
-  );
-  const held = useMemo(
+  // What the list shows, worked out in one place (listView.ts).
+  const {
+    open,
+    tab,
+    shown,
+    heldHere,
+    lapsedHere,
+    allClear,
+    sorting,
+    coloured,
+    keepHeld,
+    keepLapsed,
+  } = useMemo(
     () =>
-      heldAsks(
-        (data?.asks ?? []).filter(({ id }) => !lapsed.has(id)),
-        data?.hashtags ?? [],
-        data?.timeZone,
+      listView({
+        answer: data,
         polledAt,
-      ),
-    [data, lapsed, polledAt],
+        serviceAhead,
+        dismissed,
+        opened,
+        card,
+        chosen,
+        showingHeld,
+        showingLapsed,
+      }),
+    [
+      data,
+      polledAt,
+      serviceAhead,
+      dismissed,
+      opened,
+      card,
+      chosen,
+      showingHeld,
+      showingLapsed,
+    ],
   );
-  if (showingHeld && held.size === 0) showHeld(false);
-  if (showingLapsed && lapsed.size === 0) showLapsed(false);
-  const waiting = (list: readonly PageAsk[]) =>
-    list.filter(
-      ({ id }) =>
-        (showingHeld || !held.has(id)) && (showingLapsed || !lapsed.has(id)),
-    );
-  const open = card === null ? undefined : asks.find(({ id }) => id === card);
-  useLayer(open === undefined ? layers.list : layers.card);
-  // An open card keeps the list's tab, though every ask behind it is held or
-  // lapsed.
-  const allClear =
-    open === undefined &&
-    data?.everAsked === true &&
-    waiting(asks).length === 0;
-  const tab =
-    !allClear && hashtags.some(({ name }) => name === chosen)
-      ? chosen
-      : everything;
+  if (showingHeld && !keepHeld) showHeld(false);
+  if (showingLapsed && !keepLapsed) showLapsed(false);
   if (tab !== chosen) choose(tab);
-  const onThisTab = onTab(asks, tab);
-  const shown = inListOrder(waiting(onThisTab), polledAt);
-  const heldHere = onThisTab.filter(({ id }) => held.has(id)).length;
-  const lapsedHere = onThisTab.filter(({ id }) => lapsed.has(id)).length;
+  useLayer(open === undefined ? layers.list : layers.card);
   const list = useListPlace(
     open?.id,
     shown.map(({ id }) => id),
     headline,
   );
   const anyHeld = heldHere > 0 || lapsedHere > 0;
-  // The held line, and the lapsed line under it. At the foot of All clear,
-  // the first of them keeps the screen's space above it.
-  const heldLines = (atFoot: boolean) => (
+  // The held line, and the lapsed line under it.
+  const heldLines = () => (
     <>
       {heldHere > 0 && (
         <Held
           by="hours"
           count={heldHere}
           showing={showingHeld}
-          atFoot={atFoot}
           onToggle={() => {
             showHeld(!showingHeld);
           }}
@@ -166,7 +173,6 @@ export function Asks({ card }: { card: string | null }) {
           by="lapse"
           count={lapsedHere}
           showing={showingLapsed}
-          atFoot={atFoot && heldHere === 0}
           onToggle={() => {
             showLapsed(!showingLapsed);
           }}
@@ -203,6 +209,7 @@ export function Asks({ card }: { card: string | null }) {
           ask={open}
           tab={tab}
           now={receivedAt}
+          serviceAhead={receivedAhead}
           colours={hashtagColours(coloured)}
           actions={actions}
           noted={noted}
@@ -224,9 +231,8 @@ export function Asks({ card }: { card: string | null }) {
                 onBackWithFocus={tabsBackWithFocus}
                 ref={tabs}
               />
-              {anyHeld && (
-                <div className={styles.lines}>{heldLines(false)}</div>
-              )}
+              {anyHeld && <div className={styles.lines}>{heldLines()}</div>}
+              {sorting !== null && <SortingLine words={sorting} />}
             </div>
           )}
           {failed && (
@@ -241,13 +247,19 @@ export function Asks({ card }: { card: string | null }) {
                 hashtags={coloured}
                 tab={tab}
                 now={receivedAt}
+                serviceAhead={receivedAhead}
                 actions={actions}
               />
             </main>
           ) : data.everAsked ? (
             <>
               <AllClear noted={noted} ref={headline} />
-              {allClear && anyHeld && heldLines(true)}
+              {allClear && (anyHeld || sorting !== null) && (
+                <div className={styles.foot}>
+                  {heldLines()}
+                  {sorting !== null && <SortingLine words={sorting} />}
+                </div>
+              )}
             </>
           ) : (
             <NewAccount />

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { callerOf, type AccountId } from "./identity";
 import {
+  followUpForLongReason,
   levels,
   parseSortReply,
   reasonAsked,
@@ -25,6 +26,10 @@ const rules: SortingRules = {
   text: "#work is my day job.\n\n#shop is my online shop. Customers come first.\n\n#family is home.",
   hashtags: ["work", "shop", "family"],
 };
+
+// The line of the sorting prompt that draws one level, if there is one.
+const levelLine = (system: string, level: string) =>
+  new RegExp(`^${level}: .*$`, "mu").exec(system)?.[0];
 
 const ask: SortingAsk = {
   account: owner,
@@ -113,12 +118,53 @@ describe("the sorting prompt", () => {
     });
   });
 
-  it("says that a passkey or sign-in wait runs out, so the agent has to start again (issue #91)", () => {
+  it("judges each level by what it would cost if the person never acted (issue #157)", () => {
     const { system } = sortingPrompt(rules, ask);
-    expect(system).toMatch(/passkey/u);
-    expect(system).toMatch(/sign-in/u);
-    expect(system).toMatch(/times out/u);
-    expect(system).toMatch(/set the work up again/u);
+    expect(system).toContain("what it would cost if the person never acted");
+    for (const level of levels) {
+      expect(system).toMatch(
+        new RegExp(`^${level}: never acting would `, "mu"),
+      );
+    }
+  });
+
+  it("gives no weight to time, which the page orders by on its own (issue #157)", () => {
+    const { system } = sortingPrompt(rules, ask);
+    expect(system).toContain("never how soon");
+    expect(system).toContain(
+      "give no weight to a date, a deadline or a time limit the ask names",
+    );
+    // Nothing about time makes an ask high, and the lines #91 added are gone.
+    const high = levelLine(system, "high");
+    expect(high).toBeDefined();
+    expect(high).not.toMatch(/deadline|soon|time/u);
+    expect(system).not.toMatch(/passkey|sign-in|times out/u);
+  });
+
+  it("draws low as nobody worse off, and normal without the unfinished work every ask has (issue #258)", () => {
+    const { system } = sortingPrompt(rules, ask);
+    expect(levelLine(system, "low")).toContain(
+      "nobody worse off in a way they would notice: any answer, or none, would do",
+    );
+    const normal = levelLine(system, "normal");
+    expect(normal).toBeDefined();
+    expect(normal).not.toMatch(/unfinished/u);
+    expect(levelLine(system, "high")).toContain(
+      "someone would go without something they need or were counting on",
+    );
+  });
+
+  // The model moves on a change of a few words, in asks far from the edit,
+  // so these lines are pinned whole. A change to one needs an eval run
+  // before and after.
+  it("puts a money saving missed at high, and keeps savings out of normal (issue #262)", () => {
+    const { system } = sortingPrompt(rules, ask);
+    expect(levelLine(system, "high")).toBe(
+      "high: never acting would cost something, however small the job or the step: someone would go without something they need or were counting on, damage would go on, a customer would be lost, or money would be lost or a money saving missed. A loss at home counts as much as one at work;",
+    );
+    expect(levelLine(system, "normal")).toBe(
+      "normal: never acting would leave things as they are, a little worse than they could be, other than a saving;",
+    );
   });
 
   it("asks for a shorter reason than the limit, since the model runs past what it is asked", () => {
@@ -217,5 +263,55 @@ describe("a sorting reply", () => {
     expect(
       parseSortReply({ hashtags: ["work"], level: "low", reason: "r" }, []),
     ).toBeUndefined();
+  });
+});
+
+// A reply that fits in every way but its reason's length goes back to the
+// model on the second try, which asks for the whole reply again with a
+// shorter reason (#243). Any other fault gets a plain second try.
+describe("a sorting reply whose only fault is a long reason", () => {
+  const hashtags = rules.hashtags;
+  const long = {
+    hashtags: ["shop"],
+    level: "high",
+    reason: "x".repeat(reasonLimit + 1),
+  };
+
+  it("goes back to the model as its own message, with a turn that says how long the reason was and asks again for a shorter one", () => {
+    expect(followUpForLongReason(long, hashtags)).toEqual({
+      reply: JSON.stringify(long),
+      user: `Your reason has ${String(reasonLimit + 1)} characters, which is too long. Reply again with the whole JSON the schema asks for, with a reason of at most ${String(reasonAsked)} characters.`,
+    });
+  });
+
+  it("counts the reason's characters as the limit does, without the spaces around it", () => {
+    const padded = { ...long, reason: `  ${"x".repeat(150)}  ` };
+    expect(followUpForLongReason(padded, hashtags)?.user).toMatch(
+      /^Your reason has 150 characters,/u,
+    );
+  });
+
+  it("goes back too when the rules name no hashtag", () => {
+    const reply = { level: "low", reason: "x".repeat(reasonLimit + 1) };
+    expect(followUpForLongReason(reply, [])?.reply).toBe(JSON.stringify(reply));
+  });
+
+  it.each([
+    ["it fits", { ...long, reason: "x".repeat(reasonLimit) }],
+    ["an invented hashtag as well", { ...long, hashtags: ["urgent"] }],
+    ["a hashtag twice as well", { ...long, hashtags: ["shop", "shop"] }],
+    ["a fourth level as well", { ...long, level: "critical" }],
+    ["an extra field as well", { ...long, note: "x" }],
+    ["two lines as well", { ...long, reason: `a\n${long.reason}` }],
+    [
+      "an invented hashtag alone",
+      { ...long, hashtags: ["urgent"], reason: "r" },
+    ],
+    ["no reason", { hashtags: [], level: "low" }],
+    ["a reason that is not a string", { ...long, reason: 141 }],
+    ["a string", "high"],
+    ["nothing", undefined],
+  ])("is not sent back when %s", (_, reply) => {
+    expect(followUpForLongReason(reply, hashtags)).toBeUndefined();
   });
 });

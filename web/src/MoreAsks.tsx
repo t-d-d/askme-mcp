@@ -5,6 +5,7 @@ import { destinations } from "./links";
 import styles from "./MoreAsks.module.css";
 import { askColour, tagColour, type HashtagColour } from "./palette";
 import { cardHref } from "./screen";
+import { SiteName } from "./SiteName";
 import { shownUnder, type Tab } from "./tab";
 import { useSwipe } from "./useSwipe";
 import { age } from "./waiting";
@@ -18,12 +19,14 @@ export function MoreAsks({
   asks,
   tab,
   now,
+  serviceAhead,
   colours,
   actions,
 }: {
   asks: PageAsk[];
   tab: Tab;
   now: number;
+  serviceAhead: number;
   colours: ReadonlyMap<string, HashtagColour>;
   actions: AskActions;
 }) {
@@ -43,6 +46,7 @@ export function MoreAsks({
               ask={ask}
               tab={tab}
               now={now}
+              serviceAhead={serviceAhead}
               colours={colours}
               dismiss={actions.dismiss}
             />
@@ -61,12 +65,14 @@ function Row({
   ask,
   tab,
   now,
+  serviceAhead,
   colours,
   dismiss,
 }: {
   ask: PageAsk;
   tab: Tab;
   now: number;
+  serviceAhead: number;
   colours: ReadonlyMap<string, HashtagColour>;
   dismiss: AskActions["dismiss"];
 }) {
@@ -93,10 +99,12 @@ function Row({
           ) : (
             shown !== undefined && <span className={styles.pill}>#{shown}</span>
           )}
-          <span>{age(postedAt, now)}</span>
+          <span>{age(postedAt, now, serviceAhead)}</span>
           {opened && <span>Opened</span>}
           {main !== undefined && (
-            <span className={styles.site}>{main.site}</span>
+            <span className={styles.site}>
+              <SiteName site={main.site} />
+            </span>
           )}
         </span>
       </a>

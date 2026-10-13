@@ -161,13 +161,17 @@ const readingTimeoutMs = 7000;
 // tokens a window.
 const readingMaxTokens = 1200;
 
+// Whether rules are empty: blank text names no hashtag, so reading it and
+// sorting with it make no model call, and the cap never refuses its save.
+export const emptyRules = (text: string): boolean => text.trim() === "";
+
 // The hashtags the rules name and their hours, read by the model, or why
 // they could not be read. Empty rules name none, with no model call.
 export async function readRules(
   text: string,
   model: Model,
 ): Promise<Reading | { failed: string }> {
-  if (text.trim() === "") return { hashtags: [], hours: [] };
+  if (emptyRules(text)) return { hashtags: [], hours: [] };
   try {
     const reading = parseReading(
       await model.reply({

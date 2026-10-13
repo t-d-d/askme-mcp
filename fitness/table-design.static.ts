@@ -119,7 +119,6 @@ describe("fitness: one key builder (table-design.md)", () => {
     "export const k = (w: string) => ({ sk: `POLL#${w}` });\n",
     "export const k = (w: string) => ({ sk: `RATE#${w}` });\n",
     "export const k = (w: string) => ({ sk: `SAVE#${w}` });\n",
-    "export const k = (w: string) => ({ sk: `SORT#${w}` });\n",
   ])("refuses a key written by hand: %s", async (code) => {
     expect(await reported(code, servicePath)).toContain(
       "askme/no-hand-built-key",
@@ -244,8 +243,13 @@ describe("fitness: the key module builds every key from the list lint reads (tab
 describe("fitness: two functions write (table-design.md)", () => {
   const storePath = "service/src/store/store.ts";
 
+  // What lint reports for the store module as it stands. Linting the whole
+  // module takes longer than one test may when the gate keeps the machine
+  // busy, so it runs once here, and loads the project for the tests below.
+  let storeReported: string[];
+
   beforeAll(async () => {
-    await reported("", storePath);
+    storeReported = await reported(readRepoFile(storePath), storePath);
   }, 60_000);
 
   it.each([
@@ -297,10 +301,8 @@ describe("fitness: two functions write (table-design.md)", () => {
     );
   });
 
-  it("finds the store's own writes in those two functions", async () => {
-    expect(await reported(readRepoFile(storePath), storePath)).not.toContain(
-      "askme/write-functions",
-    );
+  it("finds the store's own writes in those two functions", () => {
+    expect(storeReported).not.toContain("askme/write-functions");
   });
 });
 

@@ -7,9 +7,9 @@ import { callerOf, type AccountId } from "../service/src/identity";
 import { keys } from "../service/src/store/keys";
 import { askLifetimeDays, createStore } from "../service/src/store/store";
 import { askChangePaths, pagePaths } from "../shared/page-api";
-import { handler as sorter } from "../service/src/sorter";
 import { storedItems } from "../test/dynamodb";
 import { fakes } from "../test/fakes";
+import { runSorts } from "../test/sorts";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, origin, refusalOf } from "../test/mcp";
@@ -107,10 +107,6 @@ const changeAsk = async (sub: string, path: string, id: string) =>
       body: JSON.stringify({ id }),
     }),
   );
-
-// Runs the sorts handed on so far, as Lambda would.
-const runSorts = () =>
-  fakes.lambda.drain((payload) => sorter(payload, { awsRequestId: "sort-1" }));
 
 describe("fitness: every change raises the version (table-design.md)", () => {
   it("raises it on posting", async () => {
@@ -243,7 +239,7 @@ describe("fitness: every change raises the version (table-design.md)", () => {
       token: await issuer.token({ claims: { sub } }),
     });
     try {
-      // Sorts other tests handed on run first, with the example rules their
+      // Sorts other tests queued run first, with the example rules their
       // new accounts start with, so the reply below goes to this ask.
       await runSorts();
       await saveRules(sub, "#home is the house.", ["home"]);

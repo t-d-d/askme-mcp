@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import { defaultModel } from "../service/src/model";
 import { readRepoFile } from "../test/repo";
 import { candidates } from "./candidates";
+import { cases } from "./cases";
+import { capital } from "./score";
 
 const saved = readRepoFile("evals/scores.md");
 
@@ -18,6 +20,19 @@ describe("the saved scores", () => {
       ([, model]) => model,
     );
     expect(rows.sort()).toEqual([...candidates].sort());
+  });
+
+  // The table's group columns run from after Model to before All, each named
+  // with a capital, as the run writes them. Their order is not checked: each
+  // row follows the header's order, so a table in any order reads right.
+  it("have a column for every group in the eval set, and no other group", () => {
+    const header = (/^\| Model \|(.*)$/mu.exec(saved)?.[1] ?? "")
+      .split("|")
+      .map((cell) => cell.trim());
+    expect(header).toContain("All");
+    const columns = header.slice(0, header.indexOf("All"));
+    const groups = [...new Set(cases.map(({ group }) => group))].map(capital);
+    expect(columns.sort()).toEqual(groups.sort());
   });
 });
 

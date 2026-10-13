@@ -9,15 +9,21 @@ import {
 import {
   Answering,
   computedColour,
+  datedPolls,
   openPage,
   Status,
+  stepUntil,
+  stepUntilShown,
   type OpenPage,
 } from "../test/browser";
 import { palette } from "./src/palette";
+import { pollMs } from "./src/poll";
+import { resetTime } from "./src/resets";
 
 const phone = { width: 390, height: 844 };
 const session = "test-session-token";
 const email = "sam@example.com";
+const minute = 60_000;
 
 const text =
   "#work is my day job. Only show it on weekdays between 8am and 6pm.\n\n#shop is my online shop. Anything a customer can see comes first.";
@@ -61,18 +67,47 @@ const list: AsksAnswer = {
   asks: [],
 };
 
+// An ask not sorted yet, which turns stopped at the time given by the
+// service's clock. It was posted half an hour before then unless another
+// time is given.
+const behindUntil = (
+  sortingUntil: string,
+  postedAt = new Date(Date.parse(sortingUntil) - 30 * minute).toISOString(),
+): AsksAnswer["asks"][number] => ({
+  id: "a",
+  summary: "Renew the shop's domain?",
+  spokenDetail: "The domain lapses on Friday.",
+  postedAt,
+  opened: false,
+  sortingUntil,
+  sort: null,
+});
+
+// The open list with one ask behind the rules, posted an hour ago, whose
+// sorting stops or stopped a while from now.
+const behind = (offset: number): AsksAnswer => ({
+  ...list,
+  asks: [
+    behindUntil(
+      new Date(Date.now() + offset).toISOString(),
+      new Date(Date.now() - 60 * minute).toISOString(),
+    ),
+  ],
+});
+
 // The rules screen, with the rules answered by the given answer and saved
-// by the given one.
+// by the given one, and the open asks by the list given.
 async function openRules(
   rules: RulesAnswer | Answering,
   viewport = phone,
   timeZone = "Europe/London",
+  asks: AsksAnswer = list,
 ): Promise<OpenPage> {
   const view = await openPage(`${inject("pageUrl")}#rules`, viewport, {
     session,
     email,
     timeZone,
-    api: { [pagePaths.rules]: rules, [pagePaths.asks]: list },
+    api: { [pagePaths.rules]: rules, [pagePaths.asks]: asks },
   });
   await view.page
     .getByRole("heading", { name: "Your rules", exact: true })
@@ -88,6 +123,49 @@ const rulesApi = (
   new Answering((_, __, sent) =>
     sent.method === "PUT" ? onSave(sent.body) : loaded,
   );
+
+// Opens the list in London on a page whose clock stands still two minutes
+// before a moment by the service's clock, which is serviceAhead ahead of
+// the page's, and waits for the sorting line to read as given. Then it opens
+// the rules, which have the list from the start, and finds Save rules
+// neutral until the first poll after the moment wakes it. Each poll's
+// answer gives the service's time in its Date header, as it is then,
+// because the page's clock moves only when the test moves it.
+async function wakesSaveRulesAt(
+  moment: string,
+  serviceAhead: number,
+  asks: AsksAnswer,
+  line: string,
+): Promise<void> {
+  const here = Date.parse(moment) - serviceAhead;
+  let pageAt = here - 2 * minute;
+  view = await openPage(inject("pageUrl"), phone, {
+    session,
+    email,
+    timeZone: "Europe/London",
+    clock: { stoppedAt: new Date(pageAt) },
+    api: {
+      [pagePaths.rules]: saved,
+      [pagePaths.asks]: datedPolls(
+        () => asks,
+        () => pageAt + serviceAhead,
+      ),
+    },
+  });
+  const { page } = view;
+  await stepUntilShown(page, page.getByText(line, { exact: true }));
+  await page.getByRole("link", { name: "Rules" }).click();
+  const save = page.getByRole("button", { name: "Save rules" });
+  await stepUntil(
+    page,
+    async () => (await page.getByRole("textbox").inputValue()) === text,
+    "the rules to load",
+  );
+  expect(await save.isDisabled()).toBe(true);
+  pageAt = here + pollMs;
+  await page.clock.pauseAt(new Date(pageAt));
+  await stepUntil(page, () => save.isEnabled(), "Save rules to wake");
+}
 
 const sleep = (ms: number) =>
   new Promise((resolve) => {
@@ -196,6 +274,349 @@ describe("the rules screen", () => {
     ).toBe(await computedColour(page, "var(--ink)"));
   });
 
+  it("makes Save rules ink while asks couldn't be sorted, and saves the same text, saying it sorts them again", async () => {
+    const bodies: (string | null)[] = [];
+    view = await openRules(
+      rulesApi(saved, async (body) => {
+        bodies.push(body);
+        await sleep(500);
+        return saved;
+      }),
+      phone,
+      "Europe/London",
+      behind(-60_000),
+    );
+    const { page } = view;
+    const save = page.getByRole("button", { name: "Save rules" });
+    await expect.poll(() => save.isEnabled()).toBe(true);
+    expect(
+      await save.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      ),
+    ).toBe(await computedColour(page, "var(--ink)"));
+    // The button is awake, so the note does not say it waits for a change.
+    expect(await page.getByText("Saved.", { exact: true }).isVisible()).toBe(
+      true,
+    );
+    await save.click();
+    await page.getByText("Sorting your asks again.").waitFor();
+    expect(bodies).toEqual([
+      JSON.stringify({ text, timeZone: await browserZone(page) }),
+    ]);
+    expect(await page.getByText("Reading your rules.").count()).toBe(0);
+  });
+
+  it("drops the note that asks are being sorted again once a later poll finds some stopped", async () => {
+    // Stopped, then being sorted after the save, then stopped again.
+    let answer = behind(-60_000);
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      email,
+      timeZone: "Europe/London",
+      api: {
+        [pagePaths.rules]: rulesApi(saved, () => {
+          answer = behind(60_000);
+          return saved;
+        }),
+        [pagePaths.asks]: new Answering(() => answer),
+      },
+    });
+    const { page } = view;
+    const save = page.getByRole("button", { name: "Save rules" });
+    await expect.poll(() => save.isEnabled()).toBe(true);
+    await save.click();
+    await page.getByText("Sorting your asks again.").waitFor();
+    await expect.poll(() => save.isDisabled()).toBe(true);
+    answer = behind(-60_000);
+    await page
+      .getByText("Saved.", { exact: true })
+      .waitFor({ timeout: 15_000 });
+    expect(await save.isEnabled()).toBe(true);
+    expect(await page.getByText("Sorting your asks again.").count()).toBe(0);
+  });
+
+  it("drops the note that asks are being sorted again once a later poll finds today's sorting limit reached", async () => {
+    let answer = behind(-60_000);
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      email,
+      timeZone: "Europe/London",
+      api: {
+        [pagePaths.rules]: rulesApi(saved, () => {
+          answer = behind(60_000);
+          return saved;
+        }),
+        [pagePaths.asks]: new Answering(() => answer),
+      },
+    });
+    const { page } = view;
+    const save = page.getByRole("button", { name: "Save rules" });
+    await expect.poll(() => save.isEnabled()).toBe(true);
+    await save.click();
+    await page.getByText("Sorting your asks again.").waitFor();
+    answer = {
+      ...behind(60_000),
+      version: 2,
+      modelCapResetsAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+    };
+    await page
+      .getByText("Saved. The button wakes up when you change the text.")
+      .waitFor({ timeout: 15_000 });
+    expect(await save.isDisabled()).toBe(true);
+  });
+
+  it("keeps Save rules neutral while asks are still being sorted", async () => {
+    view = await openRules(saved, phone, "Europe/London", behind(60_000));
+    const { page } = view;
+    await page.getByText("Saved.", { exact: false }).waitFor();
+    // The list has loaded, and says the ask is still being sorted.
+    await expect
+      .poll(() => view?.apiCalls.some(({ path }) => path === pagePaths.asks))
+      .toBe(true);
+    expect(
+      await page.getByRole("button", { name: "Save rules" }).isDisabled(),
+    ).toBe(true);
+  });
+
+  it("keeps Save rules neutral while asks couldn't be sorted and today's sorting limit is reached, until the text changes", async () => {
+    view = await openRules(saved, phone, "Europe/London", {
+      ...behind(-60_000),
+      modelCapResetsAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+    });
+    const { page } = view;
+    await expect
+      .poll(() => view?.apiCalls.some(({ path }) => path === pagePaths.asks))
+      .toBe(true);
+    await page
+      .getByText("Saved. The button wakes up when you change the text.")
+      .waitFor();
+    const save = page.getByRole("button", { name: "Save rules" });
+    expect(await save.isDisabled()).toBe(true);
+    expect(
+      await save.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      ),
+    ).toBe(await computedColour(page, "var(--neutral-tint)"));
+    await page.getByRole("textbox").fill(`${text}\n\n#family is home.`);
+    expect(await save.isEnabled()).toBe(true);
+  });
+
+  it("says today's limit is reached, and when it resets, when the save is refused at the cap, and keeps the text", async () => {
+    const changed = `${text}\n\n#family is home.`;
+    view = await openRules(
+      rulesApi(
+        saved,
+        () =>
+          new Status(429, {
+            code: "cap_reached",
+            class: "do not retry",
+            message: "Saving these rules needs model calls.",
+          }),
+      ),
+    );
+    const { page } = view;
+    await page.getByRole("textbox").fill(changed);
+    await page.getByRole("button", { name: "Save rules" }).click();
+    await page
+      .getByText(
+        `You've reached today's limit. It resets at ${resetTime(Date.now(), "Europe/London")}.`,
+      )
+      .waitFor();
+    expect(await page.getByRole("textbox").inputValue()).toBe(changed);
+    expect(await rows(page)).toEqual([
+      "#work\nWeekdays, 8am to 6pm",
+      "#shop\nAny time",
+    ]);
+  });
+
+  it("drops the cap note once the cap resets, with no reload, and keeps the text", async () => {
+    const changed = `${text}\n\n#family is home.`;
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      email,
+      timeZone: "Europe/London",
+      clock: new Date("2026-10-12T15:00:00Z"),
+      api: {
+        [pagePaths.rules]: rulesApi(
+          saved,
+          () =>
+            new Status(429, {
+              code: "cap_reached",
+              class: "do not retry",
+              message: "Saving these rules needs model calls.",
+            }),
+        ),
+        [pagePaths.asks]: list,
+      },
+    });
+    const { page } = view;
+    const capNote = page
+      .getByRole("status")
+      .filter({ hasText: "You've reached today's limit. It resets at 01:00." });
+    await page.getByRole("textbox").fill(changed);
+    await page.getByRole("button", { name: "Save rules" }).click();
+    await capNote.waitFor();
+    await page.clock.pauseAt(new Date("2026-10-12T23:59:59Z"));
+    expect(await capNote.count()).toBe(1);
+    await page.clock.runFor(2000);
+    await expect.poll(() => capNote.count()).toBe(0);
+    expect(await page.getByRole("textbox").inputValue()).toBe(changed);
+  });
+
+  // The service counts the cap by its own clock, so the note goes when the
+  // service's day ends, even on a page whose clock is a few minutes out. The
+  // service refuses the save at 23:58 UTC on 12 October by its own clock,
+  // which its answer's Date header gives, two minutes before the cap
+  // resets. A clock three minutes fast reads 00:03 then, and one three
+  // minutes slow reads 23:57.
+  it.each([
+    ["fast", "2026-10-13T00:01:00Z", "2026-10-13T00:03:00Z"],
+    ["slow", "2026-10-12T23:55:00Z", "2026-10-12T23:57:00Z"],
+  ])(
+    "drops the cap note when the service's day ends, on a clock a few minutes %s",
+    async (_, pressed, reset) => {
+      view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+        session,
+        email,
+        timeZone: "Europe/London",
+        clock: { stoppedAt: new Date(pressed) },
+        api: {
+          [pagePaths.rules]: rulesApi(
+            saved,
+            () =>
+              new Status(
+                429,
+                {
+                  code: "cap_reached",
+                  class: "do not retry",
+                  message: "Saving these rules needs model calls.",
+                },
+                { date: "Mon, 12 Oct 2026 23:58:00 GMT" },
+              ),
+          ),
+          [pagePaths.asks]: list,
+        },
+      });
+      const { page } = view;
+      const box = page.getByRole("textbox");
+      const capNote = page.getByRole("status").filter({
+        hasText: "You've reached today's limit. It resets at 01:00.",
+      });
+      await stepUntil(page, () => box.isEnabled(), "the rules to load");
+      await box.fill(`${text}\n\n#family is home.`);
+      await page.getByRole("button", { name: "Save rules" }).click();
+      await stepUntilShown(page, capNote);
+      await page.clock.pauseAt(new Date(Date.parse(reset) - 1000));
+      expect(await capNote.count()).toBe(1);
+      await page.clock.runFor(2000);
+      await expect.poll(() => capNote.count()).toBe(0);
+    },
+  );
+
+  // Asks that couldn't be sorted wake Save rules once today's sorting limit
+  // resets. The service counts the limit by its own clock, so the button
+  // wakes when the service's day ends, even on a page whose clock is a few
+  // minutes out. A clock three minutes fast reads 00:03 then, and one three
+  // minutes slow reads 23:57.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "wakes Save rules when the service's day ends, on a clock a few minutes %s",
+    async (_, serviceAhead) => {
+      const resets = "2026-10-13T00:00:00.000Z";
+      await wakesSaveRulesAt(
+        resets,
+        serviceAhead,
+        {
+          ...list,
+          modelCapResetsAt: resets,
+          asks: [behindUntil("2026-10-12T21:30:00.000Z")],
+        },
+        "Today's sorting limit is reached. It resets at 01:00.",
+      );
+    },
+  );
+
+  // An ask that couldn't be sorted wakes Save rules. The service gives the
+  // time an ask turns stopped by its own clock, so the button wakes when the
+  // service's time for it comes, even on a page whose clock is a few minutes
+  // out. For an ask that turns stopped at 18:30 UTC by the service's clock,
+  // a clock three minutes fast reads 18:33 then, and one three minutes slow
+  // reads 18:27.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "wakes Save rules when the service's time for an ask that couldn't be sorted comes, on a clock a few minutes %s",
+    async (_, serviceAhead) => {
+      const turns = "2026-10-12T18:30:00.000Z";
+      await wakesSaveRulesAt(
+        turns,
+        serviceAhead,
+        { ...list, asks: [behindUntil(turns)] },
+        "Sorting 1 ask with your rules",
+      );
+    },
+  );
+
+  it("does not say asks are being sorted again once the cap note goes, after the cap refused an unchanged save", async () => {
+    // One ask that couldn't be sorted, which closes while the save is
+    // refused, so no ask is stopped when the cap resets.
+    let answer: AsksAnswer = {
+      ...list,
+      asks: [
+        {
+          id: "a",
+          summary: "Renew the shop's domain?",
+          spokenDetail: "The domain lapses on Friday.",
+          postedAt: "2026-10-12T13:00:00.000Z",
+          opened: false,
+          sortingUntil: "2026-10-12T14:00:00.000Z",
+          sort: null,
+        },
+      ],
+    };
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      email,
+      timeZone: "Europe/London",
+      clock: new Date("2026-10-12T15:00:00Z"),
+      api: {
+        [pagePaths.rules]: rulesApi(saved, () => {
+          answer = { ...list, version: 2 };
+          return new Status(429, {
+            code: "cap_reached",
+            class: "do not retry",
+            message: "Saving these rules needs model calls.",
+          });
+        }),
+        [pagePaths.asks]: new Answering(() => answer),
+      },
+    });
+    const { page } = view;
+    const capNote = page
+      .getByRole("status")
+      .filter({ hasText: "You've reached today's limit. It resets at 01:00." });
+    const save = page.getByRole("button", { name: "Save rules" });
+    await expect.poll(() => save.isEnabled()).toBe(true);
+    await save.click();
+    await capNote.waitFor();
+    // A poll after the refusal finds the ask closed.
+    const polls = () =>
+      view?.apiCalls.filter(({ path }) => path === pagePaths.asks).length ?? 0;
+    const before = polls();
+    await page.clock.runFor(pollMs + 1000);
+    await expect.poll(polls).toBeGreaterThan(before);
+    await page.clock.pauseAt(new Date("2026-10-12T23:59:59Z"));
+    await page.clock.runFor(2000);
+    await expect.poll(() => capNote.count()).toBe(0);
+    expect(await page.getByText("Sorting your asks again.").count()).toBe(0);
+    expect(await page.getByRole("status").allInnerTexts()).toEqual([
+      "Saved. The button wakes up when you change the text.",
+    ]);
+  });
+
   it("saves the text, says it is reading the rules, then shows the hashtags read", async () => {
     const bodies: (string | null)[] = [];
     view = await openRules(
@@ -254,6 +675,30 @@ describe("the rules screen", () => {
     );
   });
 
+  it("says when a save did not go through, keeps the text, and offers to try again", async () => {
+    const changed = `${text}\n\n#family is home.`;
+    const bodies: (string | null)[] = [];
+    view = await openRules(
+      rulesApi(saved, (body) => {
+        bodies.push(body);
+        return new Status(503);
+      }),
+    );
+    const { page } = view;
+    await page.getByRole("textbox").fill(changed);
+    await page.getByRole("button", { name: "Save rules" }).click();
+    await page
+      .getByRole("status")
+      .filter({ hasText: "That didn't go through. Try again" })
+      .waitFor();
+    expect(await page.getByRole("textbox").inputValue()).toBe(changed);
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect.poll(() => bodies.length).toBe(2);
+    expect(bodies[1]).toBe(
+      JSON.stringify({ text: changed, timeZone: await browserZone(page) }),
+    );
+  });
+
   it("says to slow down when the rules are saved too often", async () => {
     view = await openRules(
       rulesApi(
@@ -274,16 +719,46 @@ describe("the rules screen", () => {
       .waitFor();
   });
 
-  it("says that saving re-sorts every open ask", async () => {
+  // Only a save that did not go through offers to try again. A limit's
+  // note says when to try instead.
+  it.each([
+    [
+      "rate_limited",
+      "retry",
+      "Slow down a little. Try again in a few seconds.",
+    ],
+    ["cap_reached", "do not retry", "You've reached today's limit."],
+  ])(
+    "offers no Try again button when a save is refused with %s",
+    async (code, retries, words) => {
+      view = await openRules(
+        rulesApi(
+          saved,
+          () => new Status(429, { code, class: retries, message: "No." }),
+        ),
+      );
+      const { page } = view;
+      await page.getByRole("textbox").fill("#work");
+      await page.getByRole("button", { name: "Save rules" }).click();
+      await page.getByRole("status").filter({ hasText: words }).waitFor();
+      expect(
+        await page.getByRole("button", { name: "Try again" }).count(),
+      ).toBe(0);
+    },
+  );
+
+  it("says that saving changed rules re-sorts every open ask, and saving them unchanged sorts again any that couldn't be sorted", async () => {
     view = await openRules(saved);
     const read = view.page.getByRole("region", {
       name: "askme read this from your rules",
     });
     await read.getByRole("listitem").first().waitFor();
-    expect(await read.innerText()).toContain("Saving re-sorts every open ask.");
+    expect(await read.innerText()).toContain(
+      "Saving changed rules re-sorts every open ask, and saving them unchanged sorts again any that couldn't be sorted.",
+    );
   });
 
-  it("says that saving re-sorts every open ask while the rules load", async () => {
+  it("says what saving sorts while the rules load", async () => {
     view = await openPage(`${inject("pageUrl")}#rules`, phone, {
       session,
       api: {
@@ -299,7 +774,11 @@ describe("the rules screen", () => {
       .getByRole("heading", { name: "Your rules", exact: true })
       .waitFor();
     expect(
-      await page.getByText("Saving re-sorts every open ask.").isVisible(),
+      await page
+        .getByText("Saving changed rules re-sorts every open ask", {
+          exact: false,
+        })
+        .isVisible(),
     ).toBe(true);
     expect(await page.getByText("Hours use").count()).toBe(0);
   });
@@ -354,7 +833,8 @@ describe("the rules screen", () => {
     await expect
       .poll(() => asked)
       .toEqual(["Leave without saving your rules?"]);
-    expect(new URL(page.url()).hash).toBe("#rules");
+    // The page puts #rules back only once the dismissal reaches it.
+    await expect.poll(() => new URL(page.url()).hash).toBe("#rules");
     expect(await box.inputValue()).toBe("#work only.");
     page.once("dialog", (dialog) => {
       void dialog.accept();
@@ -377,7 +857,8 @@ describe("the rules screen", () => {
     await expect
       .poll(() => asked)
       .toEqual(["Leave without saving your rules?"]);
-    expect(new URL(page.url()).hash).toBe("#rules");
+    // The page puts #rules back only once the dismissal reaches it.
+    await expect.poll(() => new URL(page.url()).hash).toBe("#rules");
     expect(await box.inputValue()).toBe("#work only.");
   });
 
@@ -429,10 +910,21 @@ describe("the rules screen", () => {
     expect(await box.inputValue()).toBe("#work only.");
   });
 
+  // Chromium asks before a tab closes only on a page someone has used, and
+  // only once the page has told the browser it has a beforeunload listener.
+  // The page adds the listener just after the update that turns Save rules
+  // on, before the typing's task ends, and tells the browser. That notice
+  // can reach the browser after fill returns, but always before the page's
+  // answer to a later check, so the tab closes only once Save rules is seen
+  // to be on.
   it("asks before the tab closes with unsaved text", async () => {
     view = await openRules(saved);
     const { page } = view;
-    await page.getByRole("textbox").fill("#work only.");
+    const box = page.getByRole("textbox");
+    const save = page.getByRole("button", { name: "Save rules" });
+    await box.click();
+    await box.fill("#work only.");
+    await expect.poll(() => save.isEnabled()).toBe(true);
     const asked = page.waitForEvent("dialog");
     await page.close({ runBeforeUnload: true });
     const dialog = await asked;
@@ -484,7 +976,9 @@ describe("signing out", () => {
     expect(await account.isVisible()).toBe(true);
     expect(await signOut.isVisible()).toBe(true);
     const footnote = await page
-      .getByText("Saving re-sorts every open ask.")
+      .getByText("Saving changed rules re-sorts every open ask", {
+        exact: false,
+      })
       .boundingBox();
     const [named, button] = await Promise.all([
       account.boundingBox(),

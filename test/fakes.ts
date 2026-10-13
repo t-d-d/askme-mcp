@@ -1,12 +1,13 @@
 // Stand-ins on loopback for the services the sorting path reaches (ADR 9):
 // the model, faked at the HTTP edge with recorded replies, Parameter
-// Store, which holds the model's key, and Lambda, which takes the asks
-// handed to the sort function.
+// Store, which holds the model's key, and the queue, which takes the sort
+// jobs for the sort function.
 //
 // The integration tier starts one set for each test file, in
 // test/service-env.ts, and points the service at them. A test imports
-// `fakes` from here to give the model its replies and to run the sorts
-// that were handed on.
+// `fakes` from here to give the model its replies and to deliver the jobs
+// that were queued.
+import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import {
   createServer,
@@ -20,8 +21,8 @@ import { z } from "zod";
 export const testModelKey = "test-model-key";
 export const modelKeyParameter = "/askme/openrouter/api-key";
 
-// The function the service hands asks to.
-export const sortFunction = "askme-prod-sort";
+// The queue the service sends sort jobs to.
+export const sortQueueName = "askme-sort.fifo";
 
 // What the model is to answer next: a reply, given as the JSON it holds or
 // as raw text, or a failure with only a status.
@@ -42,23 +43,44 @@ export interface FakeModel {
   reply(...replies: ModelReply[]): void;
 }
 
-export interface Invocation {
-  functionName: string;
-  invocationType: string | null;
-  payload: unknown;
+// A message sent to the queue: its group, its deduplication id, its body,
+// and whether the queue took it or dropped it as a repeat of one it took in
+// the last five minutes.
+export interface SentMessage {
+  groupId: string;
+  deduplicationId: string;
+  body: unknown;
+  taken: boolean;
 }
 
-export interface FakeLambda {
+export interface FakeQueue {
   endpoint: string;
-  // Every invoke, in order, whether or not it has run.
-  invoked: Invocation[];
-  // When set, Lambda refuses every invoke with a server error.
+  // The queue's address, which the service sends to.
+  url: string;
+  // Every message sent, in order, whether or not the queue took it.
+  sent: SentMessage[];
+  // How many messages each call the queue answered held, in order.
+  calls: number[];
+  // When set, the queue refuses every call with a server error.
   failing: boolean;
-  // When set, Lambda takes each invoke and never answers it.
+  // When set, the queue takes each call and never answers it.
   hanging: boolean;
-  // Runs each invoke not yet run through a handler, as Lambda would after
-  // the call that queued it has answered. Gives how many it ran.
-  drain(run: (payload: unknown) => Promise<void>): Promise<number>;
+  // When set, the queue answers each call, and takes none of its messages.
+  refusing: boolean;
+  // Takes the next calls' messages, then answers each with a server error,
+  // as when an answer is lost on its way back, so the SDK sends it again.
+  loseAnswers(count: number): void;
+  // How many messages wait to be delivered.
+  waiting(): number;
+  // Deletes every waiting message, as SQS's purge does.
+  purge(): void;
+  // Delivers each waiting message through a handler, one per run, as
+  // Lambda's trigger would after the call that sent it has answered. A
+  // message the run reports as failed, or whose run throws, waits for the
+  // next call, as SQS hides it for its visibility timeout, and holds back
+  // the later messages of its group until then. Any other is deleted. Gives
+  // how many runs it made.
+  deliver(run: (event: unknown) => Promise<unknown>): Promise<number>;
 }
 
 export interface FakeParameterStore {
@@ -71,7 +93,7 @@ export interface FakeParameterStore {
 
 export interface Fakes {
   model: FakeModel;
-  lambda: FakeLambda;
+  queue: FakeQueue;
   parameters: FakeParameterStore;
   close(): Promise<void>;
 }
@@ -182,52 +204,222 @@ async function startModel() {
   return { model, close: server.close };
 }
 
-// Lambda's Invoke call, as the SDK sends it.
-const invokePath = /^\/2015-03-31\/functions\/([^/]+)\/invocations$/u;
+// SQS's JSON protocol: one POST to the endpoint, which names its action in
+// a header.
+const sqsTarget = "AmazonSQS.SendMessageBatch";
+const sqsJson = "application/x-amz-json-1.0";
 
-async function startLambda() {
-  const invoked: Invocation[] = [];
-  let ran = 0;
-  const lambda: FakeLambda = {
+// What SQS takes in a group or deduplication id: up to 128 letters, digits
+// and punctuation.
+const sqsId = /^[\w!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~-]{1,128}$/u;
+
+// SQS drops a message whose deduplication id it took in the last five
+// minutes, and still answers that it took it.
+const dedupeMs = 5 * 60_000;
+
+const batchSchema = z.object({
+  QueueUrl: z.string(),
+  Entries: z
+    .array(
+      z.object({
+        Id: z.string(),
+        MessageBody: z.string().min(1),
+        MessageGroupId: z.string().regex(sqsId),
+        MessageDeduplicationId: z.string().regex(sqsId),
+      }),
+    )
+    .min(1)
+    .max(10)
+    .refine(
+      (entries) => new Set(entries.map(({ Id }) => Id)).size === entries.length,
+    ),
+});
+
+// What the sort function answers for a run: the messages it reports as
+// failed. An answer of nothing reports none.
+const runAnswer = z
+  .object({
+    batchItemFailures: z.array(z.object({ itemIdentifier: z.string() })),
+  })
+  .optional();
+
+interface Waiting {
+  messageId: string;
+  groupId: string;
+  deduplicationId: string;
+  body: string;
+  sentAt: number;
+  sequenceNumber: string;
+  receives: number;
+}
+
+function sqsError(outgoing: ServerResponse, status: number, type: string) {
+  outgoing.statusCode = status;
+  outgoing.setHeader("content-type", sqsJson);
+  outgoing.end(
+    JSON.stringify({ __type: `com.amazonaws.sqs#${type}`, message: type }),
+  );
+}
+
+async function startQueue() {
+  const sent: SentMessage[] = [];
+  const calls: number[] = [];
+  const waiting: Waiting[] = [];
+  const taken = new Map<string, number>();
+  let lost = 0;
+  let sequence = 0;
+  const queue: FakeQueue = {
     endpoint: "",
-    invoked,
+    url: "",
+    sent,
+    calls,
     failing: false,
     hanging: false,
-    async drain(run) {
-      let count = 0;
-      while (ran < invoked.length) {
-        const next = invoked[ran];
-        ran += 1;
-        if (next !== undefined) {
-          await run(next.payload);
-          count += 1;
+    refusing: false,
+    loseAnswers(count) {
+      lost = count;
+    },
+    waiting: () => waiting.length,
+    purge() {
+      waiting.length = 0;
+    },
+    async deliver(run) {
+      let runs = 0;
+      // A group whose message failed in this call waits for the next one.
+      const held = new Set<string>();
+      for (;;) {
+        const next = waiting.find(({ groupId }) => !held.has(groupId));
+        if (next === undefined) return runs;
+        next.receives += 1;
+        runs += 1;
+        let failed: boolean;
+        try {
+          const answer = runAnswer.parse(
+            await run({
+              Records: [
+                {
+                  messageId: next.messageId,
+                  receiptHandle: `${next.messageId}-${String(next.receives)}`,
+                  body: next.body,
+                  attributes: {
+                    ApproximateReceiveCount: String(next.receives),
+                    SentTimestamp: String(next.sentAt),
+                    SequenceNumber: next.sequenceNumber,
+                    MessageGroupId: next.groupId,
+                    SenderId: "AROAEXAMPLE:askme-prod-mcp",
+                    MessageDeduplicationId: next.deduplicationId,
+                    ApproximateFirstReceiveTimestamp: String(next.sentAt),
+                  },
+                  messageAttributes: {},
+                  md5OfBody: createHash("md5").update(next.body).digest("hex"),
+                  eventSource: "aws:sqs",
+                  eventSourceARN: `arn:aws:sqs:us-east-1:000000000000:${sortQueueName}`,
+                  awsRegion: "us-east-1",
+                },
+              ],
+            }),
+          );
+          failed = (answer?.batchItemFailures ?? []).some(
+            ({ itemIdentifier }) => itemIdentifier === next.messageId,
+          );
+        } catch {
+          // A run that throws fails, and Lambda leaves its message.
+          failed = true;
+        }
+        if (failed) {
+          held.add(next.groupId);
+        } else {
+          waiting.splice(waiting.indexOf(next), 1);
         }
       }
-      return count;
     },
   };
   const server = await listen(async (incoming, outgoing) => {
-    const body = await bodyOf(incoming);
-    const name = invokePath.exec(incoming.url ?? "")?.[1];
-    if (incoming.method !== "POST" || name === undefined) {
-      send(outgoing, 404);
+    const body = parsed(await bodyOf(incoming));
+    if (
+      incoming.method !== "POST" ||
+      incoming.headers["x-amz-target"] !== sqsTarget
+    ) {
+      sqsError(outgoing, 400, "InvalidAction");
       return;
     }
-    if (lambda.failing) {
-      send(outgoing, 500, { Type: "Service", message: "Lambda is down." });
+    if (queue.failing) {
+      sqsError(outgoing, 500, "InternalError");
       return;
     }
-    if (lambda.hanging) return;
-    const type = incoming.headers["x-amz-invocation-type"];
-    invoked.push({
-      functionName: decodeURIComponent(name),
-      invocationType: typeof type === "string" ? type : null,
-      payload: parsed(body),
+    if (queue.hanging) return;
+    const batch = batchSchema.safeParse(body);
+    if (!batch.success) {
+      sqsError(outgoing, 400, "InvalidParameterValue");
+      return;
+    }
+    if (batch.data.QueueUrl !== queue.url) {
+      sqsError(outgoing, 400, "QueueDoesNotExist");
+      return;
+    }
+    const { Entries: entries } = batch.data;
+    calls.push(entries.length);
+    if (queue.refusing) {
+      outgoing.setHeader("content-type", sqsJson);
+      outgoing.end(
+        JSON.stringify({
+          Successful: [],
+          Failed: entries.map(({ Id }) => ({
+            Id,
+            SenderFault: false,
+            Code: "InternalError",
+            Message: "The queue did not take it.",
+          })),
+        }),
+      );
+      return;
+    }
+    const now = Date.now();
+    const successful = entries.map((entry) => {
+      const deduplicationId = entry.MessageDeduplicationId;
+      const first = taken.get(deduplicationId);
+      const repeat = first !== undefined && now - first < dedupeMs;
+      sent.push({
+        groupId: entry.MessageGroupId,
+        deduplicationId,
+        body: parsed(entry.MessageBody),
+        taken: !repeat,
+      });
+      const messageId = randomUUID();
+      sequence += 1;
+      const sequenceNumber = String(sequence).padStart(20, "0");
+      if (!repeat) {
+        taken.set(deduplicationId, now);
+        waiting.push({
+          messageId,
+          groupId: entry.MessageGroupId,
+          deduplicationId,
+          body: entry.MessageBody,
+          sentAt: now,
+          sequenceNumber,
+          receives: 0,
+        });
+      }
+      return {
+        Id: entry.Id,
+        MessageId: messageId,
+        MD5OfMessageBody: createHash("md5")
+          .update(entry.MessageBody)
+          .digest("hex"),
+        SequenceNumber: sequenceNumber,
+      };
     });
-    send(outgoing, 202);
+    if (lost > 0) {
+      lost -= 1;
+      sqsError(outgoing, 500, "InternalError");
+      return;
+    }
+    outgoing.setHeader("content-type", sqsJson);
+    outgoing.end(JSON.stringify({ Successful: successful, Failed: [] }));
   });
-  lambda.endpoint = server.address;
-  return { lambda, close: server.close };
+  queue.endpoint = server.address;
+  queue.url = `${server.address}/000000000000/${sortQueueName}`;
+  return { queue, close: server.close };
 }
 
 async function startParameterStore() {
@@ -275,17 +467,17 @@ async function startParameterStore() {
 }
 
 export async function startFakes(): Promise<Fakes> {
-  const [model, lambda, parameters] = await Promise.all([
+  const [model, queue, parameters] = await Promise.all([
     startModel(),
-    startLambda(),
+    startQueue(),
     startParameterStore(),
   ]);
   return {
     model: model.model,
-    lambda: lambda.lambda,
+    queue: queue.queue,
     parameters: parameters.parameters,
     close: async () => {
-      await Promise.all([model.close(), lambda.close(), parameters.close()]);
+      await Promise.all([model.close(), queue.close(), parameters.close()]);
     },
   };
 }

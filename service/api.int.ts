@@ -9,6 +9,7 @@ import {
   expect,
   inject,
   it,
+  onTestFinished,
   vi,
 } from "vitest";
 import { z } from "zod";
@@ -19,13 +20,14 @@ import {
   samplesPath,
   timeZoneLimit,
 } from "../shared/page-api";
+import { noon, stopClockAt } from "../test/clock";
 import { storedItems } from "../test/dynamodb";
 import { fakes, testModelKey } from "../test/fakes";
+import { runSorts } from "../test/sorts";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, lineText } from "../test/logs";
 import { connect, origin } from "../test/mcp";
-import { sortRetryAfterMs } from "./src/api";
 import { handler } from "./src/handler";
 import { callerOf } from "./src/identity";
 import { sortRequestTimeoutMs } from "./src/jobs";
@@ -39,6 +41,7 @@ import {
   dedupeWindowMinutes,
   type NewAsk,
 } from "./src/store/store";
+import { sortingMs } from "./src/view";
 
 let issuer: FakeIssuer;
 beforeAll(async () => {
@@ -161,13 +164,19 @@ describe("the list of open asks", () => {
       .object({
         version: z.number(),
         everAsked: z.boolean(),
-        asks: z.array(z.looseObject({ postedAt: z.string() })),
+        asks: z.array(
+          z.looseObject({ postedAt: z.string(), sortingUntil: z.string() }),
+        ),
       })
       .parse(await response.json());
     expect(answer.version).toBe(1);
     expect(answer.everAsked).toBe(true);
     const [listed] = answer.asks;
-    const { postedAt: posted, ...rest } = listed ?? { postedAt: "" };
+    const {
+      postedAt: posted,
+      sortingUntil: until,
+      ...rest
+    } = listed ?? { postedAt: "", sortingUntil: "" };
     expect(answer.asks).toHaveLength(1);
     expect(rest).toEqual({
       id,
@@ -180,6 +189,8 @@ describe("the list of open asks", () => {
     const postedAt = Date.parse(posted);
     expect(postedAt).toBeGreaterThanOrEqual(before - 1000);
     expect(postedAt).toBeLessThanOrEqual(Date.now());
+    // Not sorted yet, so it shows as sorting for half an hour.
+    expect(Date.parse(until)).toBe(postedAt + sortingMs);
   });
 
   it("holds both of an ask's links, and leaves out one the agent did not send", async () => {
@@ -707,6 +718,11 @@ describe("the rules", () => {
   });
 
   it(`are saved at most ${String(rulesSaveLimit.saves)} times a minute for each account, then refused with rate_limited`, async () => {
+    // Every save falls in one window, so the last one is over the limit.
+    stopClockAt(noon);
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const account = newAccount();
     for (let n = 0; n < rulesSaveLimit.saves; n += 1) {
       expect((await saveRules(account, { text: "" })).status).toBe(200);
@@ -717,7 +733,7 @@ describe("the rules", () => {
     expect(refusal.code).toBe("rate_limited");
     expect(refusal.class).toBe("retry");
     expect(refusal.message).toContain(String(rulesSaveLimit.saves));
-    expect(refusal.message).toMatch(/Wait \d+ seconds?, then save again\./u);
+    expect(refusal.message).toContain("Wait 30 seconds, then save again.");
     // Another account is not held back by it.
     expect((await saveRules(newAccount(), { text: "" })).status).toBe(200);
   });
@@ -743,10 +759,6 @@ async function sorted(account: string) {
     .parse(await response.json());
 }
 
-// Runs the sorts handed on so far, as Lambda would.
-const runSorts = () =>
-  fakes.lambda.drain((payload) => sorter(payload, { awsRequestId: "sort-1" }));
-
 // The account's id as the token check gives it, for the store.
 const ownerOf = (account: string) =>
   callerOf({
@@ -765,9 +777,8 @@ afterAll(() => {
   store.close();
 });
 
-// Posts an ask straight to the store at a time in the past, so it is not
-// handed to the sort function, as when its sort failed back then. Gives its
-// id.
+// Posts an ask straight to the store at a time in the past, so no job is
+// queued for it, as when its sorting stopped back then. Gives its id.
 async function postEarlier(
   account: string,
   newAsk: NewAsk,
@@ -778,12 +789,18 @@ async function postEarlier(
   return posting.id;
 }
 
-// The sort function, handed one of the account's asks.
+// A job for one of the account's asks, as the queue took it.
 const sortOf = (account: string, askId: string) => ({
-  functionName: "askme-prod-sort",
-  invocationType: "Event",
-  payload: { accountId: account, askId },
+  groupId: askId,
+  body: { accountId: account, askId },
+  taken: true,
 });
+
+// The jobs sent to the queue since a point in its record.
+const sentSince = (from: number) =>
+  fakes.queue.sent
+    .slice(from)
+    .map(({ groupId, body, taken }) => ({ groupId, body, taken }));
 
 describe("an ask that stops mattering", () => {
   // Each ask as the page lists it, with its lapse time when it has one.
@@ -861,9 +878,11 @@ describe("sorting", () => {
     await runSorts();
     const calls = fakes.model.calls.length;
     const id = await post(account);
-    // Posting asked the model nothing: it handed the ask on.
+    // Posting asked the model nothing: it queued the ask's sort.
     expect(fakes.model.calls).toHaveLength(calls);
-    expect(fakes.lambda.invoked.at(-1)).toEqual(sortOf(account, id));
+    expect(sentSince(fakes.queue.sent.length - 1)).toEqual([
+      sortOf(account, id),
+    ]);
     expect(await sorted(account)).toEqual({
       hashtags: [
         { name: "work", colour: 0 },
@@ -928,20 +947,42 @@ describe("sorting", () => {
     });
   });
 
-  it("posts the ask when Lambda cannot take it, and it waits unsorted", async () => {
+  it("posts the ask when the queue cannot take its sort, and it waits unsorted", async () => {
     const account = newAccount();
-    fakes.lambda.failing = true;
+    fakes.queue.failing = true;
     try {
       const id = await post(account);
       expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
     } finally {
-      fakes.lambda.failing = false;
+      fakes.queue.failing = false;
     }
   });
 
-  it(`posts the ask, waiting at most ${String(sortRequestTimeoutMs)}ms on a Lambda that does not answer, and it waits unsorted`, async () => {
+  it("posts the ask when the queue answers but takes none of it, and it waits unsorted", async () => {
     const account = newAccount();
-    fakes.lambda.hanging = true;
+    const capture = captureLogs();
+    fakes.queue.refusing = true;
+    let id: string;
+    try {
+      id = await post(account);
+    } finally {
+      fakes.queue.refusing = false;
+      capture.restore();
+    }
+    expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
+    expect(
+      capture.lines.some(
+        (line) =>
+          line.method === "warn" &&
+          lineText(line).includes("sort-request-failed") &&
+          lineText(line).includes(id),
+      ),
+    ).toBe(true);
+  });
+
+  it(`posts the ask, waiting at most ${String(sortRequestTimeoutMs)}ms on a queue that does not answer, and it waits unsorted`, async () => {
+    const account = newAccount();
+    fakes.queue.hanging = true;
     try {
       const started = Date.now();
       const id = await post(account);
@@ -949,80 +990,65 @@ describe("sorting", () => {
       expect(Date.now() - started).toBeLessThan(sortRequestTimeoutMs + 1000);
       expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
     } finally {
-      fakes.lambda.hanging = false;
+      fakes.queue.hanging = false;
     }
   });
 
-  it("leaves the ask unsorted when the model fails, and a poll asks again after a minute", async () => {
+  it("leaves the ask unsorted when the model fails, and the queue delivers it again, with no poll", async () => {
     const account = newAccount();
-    // Rules saved before the ask was posted, so the save did not hand it on.
-    await store.saveRules(
-      ownerOf(account),
-      { text: rulesText, hashtags: ["work", "shop"] },
-      new Date(Date.now() - 3 * sortRetryAfterMs),
-    );
-    // An ask posted two minutes ago, whose sort failed.
-    const old = await postEarlier(
-      account,
-      { summary: "Old", area: "Shop", spokenDetail: "Old." },
-      new Date(Date.now() - 2 * sortRetryAfterMs),
-    );
-    // A new ask, which is not yet due to be asked for again.
-    const fresh = await post(account);
-    await runSorts();
-
-    const invoked = fakes.lambda.invoked.length;
-    expect((await sorted(account)).asks).toContainEqual({
-      id: old,
-      sort: null,
-    });
-    expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, old)]);
-    expect(fakes.lambda.invoked.slice(invoked)).not.toContainEqual(
-      expect.objectContaining({
-        payload: { accountId: account, askId: fresh },
-      }),
-    );
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
+    await saveRules(account, { text: rulesText });
+    const id = await post(account);
+    const deliver = () =>
+      fakes.queue.deliver((event) => sorter(event, { awsRequestId: "sort-1" }));
+    fakes.model.reply({ status: 503 }, { status: 503 });
+    expect(await deliver()).toBe(1);
     fakes.model.reply({
       json: { hashtags: ["shop"], level: "low", reason: "Routine." },
     });
-    await runSorts();
-    expect((await sorted(account)).asks).toContainEqual({
-      id: old,
-      sort: { hashtags: ["shop"], level: "low" },
-    });
+    expect(await deliver()).toBe(1);
+    expect((await sorted(account)).asks).toEqual([
+      { id, sort: { hashtags: ["shop"], level: "low" } },
+    ]);
+  });
+
+  it("lists an ask not sorted yet with the time it turns stopped, half an hour after it was stored, and a poll queues nothing for it", async () => {
+    const account = newAccount();
+    const storedAt = new Date(Date.now() - 2 * 60_000);
+    const id = await postEarlier(
+      account,
+      { summary: "Old", area: "Shop", spokenDetail: "Old." },
+      storedAt,
+    );
+    const from = fakes.queue.sent.length;
+    const response = await get(pagePaths.asks, await session(account));
+    const { asks } = z
+      .object({
+        asks: z.array(z.object({ id: z.string(), sortingUntil: z.string() })),
+      })
+      .parse(await response.json());
+    expect(asks).toEqual([
+      {
+        id,
+        sortingUntil: new Date(storedAt.getTime() + sortingMs).toISOString(),
+      },
+    ]);
+    expect(fakes.queue.sent.slice(from)).toEqual([]);
   });
 
   // A replacing ask keeps the posting time of the ask it replaces (ADR 13),
-  // so it looks overdue the moment it is stored.
-  it("does not ask again for a replacing ask while its first sort may still be running", async () => {
+  // but is queued, and judged, from when it was stored.
+  it("queues a replacing ask's sort as it is posted, and only then", async () => {
     const account = newAccount();
     const old = await postEarlier(
       account,
       { summary: "Old", area: "Shop", spokenDetail: "Old." },
-      new Date(Date.now() - 2 * sortRetryAfterMs),
+      new Date(Date.now() - 40 * 60_000),
     );
-    const invoked = fakes.lambda.invoked.length;
+    const from = fakes.queue.sent.length;
     const id = await post(account, { ...ask, replaces: old });
     expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
-    expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
-    await runSorts();
-  });
-
-  it("asks again for a replacing ask left unsorted a minute after it was stored", async () => {
-    const account = newAccount();
-    const old = await postEarlier(
-      account,
-      { summary: "Old", area: "Shop", spokenDetail: "Old." },
-      new Date(Date.now() - 3 * sortRetryAfterMs),
-    );
-    const id = await postEarlier(
-      account,
-      { summary: "New", area: "Shop", spokenDetail: "New.", replaces: old },
-      new Date(Date.now() - 2 * sortRetryAfterMs),
-    );
-    const invoked = fakes.lambda.invoked.length;
-    expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
-    expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
+    expect(sentSince(from)).toEqual([sortOf(account, id)]);
     await runSorts();
   });
 });
@@ -1056,7 +1082,7 @@ async function sortedEarlier(account: string, at: Date): Promise<string> {
 }
 
 describe("saving the rules again", () => {
-  it("hands every open ask to the sort function, sorted or not", async () => {
+  it("queues every open ask's sort, sorted or not", async () => {
     const account = newAccount();
     fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
@@ -1072,13 +1098,13 @@ describe("saving the rules again", () => {
       sort: null,
     });
 
-    const invoked = fakes.lambda.invoked.length;
+    const from = fakes.queue.sent.length;
     fakes.model.reply({ json: { hashtags: ["shop", "family"], hours: [] } });
     const response = await saveRules(account, {
       text: "#shop first, then #family.",
     });
     expect(response.status).toBe(200);
-    const handedOn = fakes.lambda.invoked.slice(invoked);
+    const handedOn = sentSince(from);
     expect(handedOn).toHaveLength(2);
     expect(handedOn).toEqual(
       expect.arrayContaining([
@@ -1151,7 +1177,7 @@ describe("saving the rules again", () => {
     });
   });
 
-  it("saves the rules when Lambda cannot take the asks, and each keeps its old sort", async () => {
+  it("saves the rules when the queue cannot take the asks, and each keeps its old sort", async () => {
     const account = newAccount();
     fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
@@ -1162,13 +1188,13 @@ describe("saving the rules again", () => {
     await runSorts();
 
     const capture = captureLogs();
-    fakes.lambda.failing = true;
+    fakes.queue.failing = true;
     let response: Response;
     try {
       fakes.model.reply({ json: { hashtags: ["shop"], hours: [] } });
       response = await saveRules(account, { text: "#shop only." });
     } finally {
-      fakes.lambda.failing = false;
+      fakes.queue.failing = false;
       capture.restore();
     }
     expect(response.status).toBe(200);
@@ -1189,49 +1215,78 @@ describe("saving the rules again", () => {
     ).toBe(true);
   });
 
-  it("does not ask again for an ask sorted with older rules while its new sort may still be running", async () => {
+  it("lists an ask still sorted with older rules with the time it turns stopped, half an hour after the save, and a poll queues nothing for it", async () => {
     const account = newAccount();
-    const id = await sortedEarlier(
-      account,
-      new Date(Date.now() - 2 * sortRetryAfterMs),
-    );
-    const invoked = fakes.lambda.invoked.length;
-    fakes.model.reply({ json: { hashtags: ["shop"], hours: [] } });
-    await saveRules(account, { text: "#shop only." });
-    expect((await sorted(account)).asks).toEqual([
-      { id, sort: { hashtags: ["work"], level: "normal" } },
-    ]);
-    expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
-    fakes.model.reply({
-      json: { hashtags: ["shop"], level: "low", reason: "Routine." },
-    });
-    await runSorts();
-  });
-
-  it("asks again for an ask still sorted with older rules a minute after they were saved", async () => {
-    const account = newAccount();
-    const id = await sortedEarlier(
-      account,
-      new Date(Date.now() - 3 * sortRetryAfterMs),
-    );
-    // Rules saved two minutes ago, whose sort of the ask failed then.
+    const id = await sortedEarlier(account, new Date(Date.now() - 50 * 60_000));
+    // Rules saved ten minutes ago, whose sort of the ask has not landed.
+    const savedAt = new Date(Date.now() - 10 * 60_000);
     await store.saveRules(
       ownerOf(account),
       { text: "#shop only.", hashtags: ["shop"] },
-      new Date(Date.now() - 2 * sortRetryAfterMs),
+      savedAt,
     );
-    const invoked = fakes.lambda.invoked.length;
-    expect((await sorted(account)).asks).toEqual([
-      { id, sort: { hashtags: ["work"], level: "normal" } },
+    const from = fakes.queue.sent.length;
+    const response = await get(pagePaths.asks, await session(account));
+    const { asks } = z
+      .object({
+        asks: z.array(
+          z.object({
+            id: z.string(),
+            sortingUntil: z.string(),
+            sort: z.object({ hashtags: z.array(z.string()) }),
+          }),
+        ),
+      })
+      .parse(await response.json());
+    expect(asks).toEqual([
+      {
+        id,
+        sortingUntil: new Date(savedAt.getTime() + sortingMs).toISOString(),
+        sort: { hashtags: ["work"] },
+      },
     ]);
-    expect(fakes.lambda.invoked.slice(invoked)).toEqual([sortOf(account, id)]);
+    expect(fakes.queue.sent.slice(from)).toEqual([]);
+  });
+
+  it("sorts again, when saved unchanged, only the asks behind the rules", async () => {
+    const account = newAccount();
+    fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
+    await saveRules(account, { text: rulesText });
+    fakes.model.reply({
+      json: { hashtags: ["work"], level: "high", reason: "It waits." },
+    });
+    const current = await post(account);
+    await runSorts();
+    // An ask no job was queued for, so it is behind the rules.
+    const behind = await postEarlier(
+      account,
+      { summary: "Behind", area: "Shop", spokenDetail: "Behind." },
+      new Date(Date.now() - 40 * 60_000),
+    );
+    const calls = fakes.model.calls.length;
+    const from = fakes.queue.sent.length;
+    const response = await saveRules(account, { text: rulesText });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      text: rulesText,
+      hashtags: [
+        { name: "work", colour: 0 },
+        { name: "shop", colour: 1 },
+      ],
+      readFailed: false,
+    });
+    expect(fakes.model.calls).toHaveLength(calls);
+    expect(sentSince(from)).toEqual([sortOf(account, behind)]);
     fakes.model.reply({
       json: { hashtags: ["shop"], level: "low", reason: "Routine." },
     });
-    await runSorts();
-    expect((await sorted(account)).asks).toEqual([
-      { id, sort: { hashtags: ["shop"], level: "low" } },
-    ]);
+    expect(await runSorts()).toBe(1);
+    expect((await sorted(account)).asks).toEqual(
+      expect.arrayContaining([
+        { id: current, sort: { hashtags: ["work"], level: "high" } },
+        { id: behind, sort: { hashtags: ["shop"], level: "low" } },
+      ]),
+    );
   });
 });
 
@@ -1261,23 +1316,14 @@ async function summaries(account: string): Promise<string[]> {
     .asks.map(({ summary }) => summary);
 }
 
-// The middle of a minute and of a UTC day, so that the day's and the
-// minute's counts filled here are the ones a press is counted against.
-const noon = new Date("2026-10-11T12:00:30.000Z");
-
-// Stops the clock at a moment, for the service and the token alike.
-const stopClockAt = (moment: Date) => {
-  vi.useFakeTimers({ toFake: ["Date"], now: moment });
-};
-
 describe("sample asks", () => {
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("are posted one from each of three areas, with no agent connected, and each is handed to the sort function", async () => {
+  it("are posted one from each of three areas, with no agent connected, and each one's sort is queued", async () => {
     const account = newAccount();
-    const invoked = fakes.lambda.invoked.length;
+    const from = fakes.queue.sent.length;
     const response = await sendSamples(account);
     expect(response.status).toBe(204);
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -1287,10 +1333,10 @@ describe("sample asks", () => {
       new Set(sampleAreas.map(({ area }) => area)),
     );
     const { asks } = await list(account);
-    expect(fakes.lambda.invoked.slice(invoked)).toEqual(
+    expect(sentSince(from)).toEqual(
       expect.arrayContaining(asks.map(({ id }) => sortOf(account, id))),
     );
-    expect(fakes.lambda.invoked.slice(invoked)).toHaveLength(3);
+    expect(sentSince(from)).toHaveLength(3);
     // The sorts run here, so no other test's reply goes to them.
     await runSorts();
   });
@@ -1387,5 +1433,30 @@ describe("sample asks", () => {
     expect(
       (await summaries(account)).filter((summary) => sampleArea.has(summary)),
     ).toEqual([]);
+  });
+});
+
+describe("the list while the cap on model calls is spent", () => {
+  const capResetsAt = async (account: string) =>
+    z
+      .object({ modelCapResetsAt: z.string().optional() })
+      .parse(await (await get(pagePaths.asks, await session(account))).json())
+      .modelCapResetsAt;
+
+  it("carries when the cap resets while that time is ahead, and drops it once it has passed", async () => {
+    const ahead = newAccount();
+    const resets = new Date(Date.now() + 60 * 60_000);
+    await store.recordModelCapReset(ownerOf(ahead), resets);
+    expect(await capResetsAt(ahead)).toBe(resets.toISOString());
+    const passed = newAccount();
+    await store.recordModelCapReset(
+      ownerOf(passed),
+      new Date(Date.now() - 60_000),
+    );
+    expect(await capResetsAt(passed)).toBeUndefined();
+  });
+
+  it("carries nothing for an account the cap never refused", async () => {
+    expect(await capResetsAt(newAccount())).toBeUndefined();
   });
 });

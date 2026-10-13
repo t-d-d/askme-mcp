@@ -26,6 +26,12 @@ How the styles are written in code is a separate decision: [ADR 14](adr/0014-sty
 | --- | --- | --- |
 | ![The rules screen](design/screens/rules.png) | ![Connect your agents](design/screens/connect.png) | ![The signed-out page](design/screens/signed-out.png) |
 
+The sorting line sits under the tabs, below the held and lapsed lines when they show. On All clear it sits at the foot, under them when they show.
+
+| While sorting | Sorting stopped | All clear, sorting stopped | All clear, limit reached |
+| --- | --- | --- | --- |
+| ![The list while asks are being sorted](design/screens/list-sorting.png) | ![The list when some asks couldn't be sorted](design/screens/list-stopped.png) | ![All clear when some held and lapsed asks couldn't be sorted](design/screens/all-clear-stopped.png) | ![All clear with no asks open and the daily sorting limit reached](design/screens/all-clear-limit.png) |
+
 At desktop width the first ask sits on the left with its spoken text, and the rest of the list on the right.
 
 ![The list at desktop width](design/screens/list-desktop.png)
@@ -49,7 +55,7 @@ With one ask waiting, the list keeps its place and says nothing else is waiting.
 | `--text-3` | `#55625B` | Small labels, ages, site names, notes |
 | `--line` | `#D3DAD2` | Hairlines between rows |
 | `--border` | `#C3CCC3` | The edge of a text box or an outlined button |
-| `--neutral-tint` | `#DDE2DC` | The Demo tag, "Not sorted yet", neutral second buttons, a disabled button |
+| `--neutral-tint` | `#DDE2DC` | "Not sorted yet", neutral second buttons, a disabled button |
 
 ### Hashtag colours
 
@@ -98,6 +104,7 @@ One family: Bricolage Grotesque, the variable font, served from the site itself.
 | Tabs, links, body | 16px | 1.45 | 400, or 600 for a control | 0 |
 | Notes, the held and lapsed lines | 15px | 1.4 | 400, or 600 for a label | 0 |
 | Pills, ages, site names | 13px to 14px | 1.3 | 400, or 600 in a pill | 0 |
+| A long site name on the top card's main button | 11px | 1.3 | 400 | 0 |
 
 Lines of running text stay under 80 characters. At desktop width the spoken text has a maximum width of 34rem.
 
@@ -123,7 +130,7 @@ There are no shadows and no gradients. Depth comes from the white card on the gr
 
 ### Header
 
-The wordmark, a "Demo" tag in `--neutral-tint`, and at the right one control that opens the rules. At desktop width the right side has two text links: Rules and Connect agents.
+The wordmark, and at the right one control that opens the rules. At desktop width the right side has two text links: Rules and Connect agents. Nothing sits beside the wordmark: a tag there looks like a hashtag or a tab. The demo notice is on the signed-out page and on Connect your agents.
 
 ### Tabs
 
@@ -150,6 +157,7 @@ An agent can say when its ask stops mattering. Once that time has passed, the as
 - When any asks have lapsed, one line sits under the held line, or directly under the tabs when nothing is held: an hourglass, "2 have lapsed", and a "Show them" control. With one, it says "1 has lapsed".
 - After "Show them" the line reads "Showing 2 lapsed asks", and the control reads "Hide them". The lapsed asks come after every other ask, longest waiting first. Each opens and dismisses like any other.
 - An ask outside its hours stays held until its time has passed. Then it counts as lapsed, not held.
+- An ask lapses by askme's clock. It moves up the list for its last hour, and goes behind the line once its time has passed, within a few seconds of each time by that clock. A device whose clock is a few minutes out moves neither.
 - When nothing has lapsed, the line is not there.
 - It also shows on the All clear screen, at the foot, under the held line.
 - At desktop width it sits beside the held line, at the right of the tabs.
@@ -162,12 +170,14 @@ Saving the rules sorts every open ask again, and an ask can be left behind. One 
 - Otherwise, while any asks are being sorted: "Sorting 40 asks with your rules".
 - Otherwise, when sorting stopped for some asks: "3 asks couldn't be sorted. Saving your rules tries again."
 - Only one of these shows, in that order. With none of them, the line is not there.
+- The line goes by askme's clock. It changes within a few seconds of the limit resetting, or of an ask's sorting stopping, by that clock, and "Save rules" wakes with it. A device whose clock is a few minutes out moves neither.
+- It also shows on the All clear screen, at the foot, under the held and lapsed lines, or alone when neither shows. The limit state shows there even when no asks are open.
 
 ### The top card
 
 The first ask in the list. White, with its hashtag pills, how long it has waited, the summary in large type, and a row of buttons.
 
-- **Main button.** Strong fill. Two lines: what the link is, then the site it leads to. It opens the action link, or the session link when there is no action link.
+- **Main button.** Strong fill. Two lines: its label, then the site it leads to. It opens the action link, or the session link when there is no action link.
 - **Listen.** Tint fill, a speaker icon.
 - **Session.** Tint fill, a speech-bubble icon. Shown only when the ask has both links.
 - Tapping the summary opens the card.
@@ -180,18 +190,26 @@ askme knows only the link's address, so the label comes from its shape.
 | --- | --- |
 | A GitHub pull request | Pull request |
 | A GitHub issue | Issue |
-| Any other action link | Go to, then the site's name |
+| Any other action link | Open |
 | The session link | Reply in the session |
 
 The second line is always the site's name, such as github.com. The list of recognised shapes can grow. It never uses words the agent supplied.
 
+On the top card, a site's name of more than 15 characters, such as dash.cloudflare.com, is set at 11px. It then stays whole on one line beside the Listen and session buttons on a 360px phone. The name is never cut short with an ellipsis. Its end matters most, since github.com.example.net is not github.com. A name too long for one line even at 11px, such as console.aws.amazon.com, breaks onto a second line just after a dot. A part between two dots is split only when it is too long for a line on its own.
+
 A recognised shape's label names what the link opens, with no verb. The button only ever opens a page, so a word such as "See" adds nothing, and the shorter label stays on one line beside the Listen and session buttons.
+
+Any other link gets "Open". It is a verb because askme has nothing to name. It cannot say what the link is, and the second line already names the site. One short word stays on one line however long the site's name is.
 
 ### List rows
 
 Every ask after the first. A summary of up to two lines, then one line with the small hashtag pill, the age and the site name at the right. Rows are separated by hairlines and sit on the ground colour.
 
 Tapping a row opens its card, the same as tapping the top card's summary. The site name says where the card's main button leads.
+
+When that line's parts do not all fit, they keep their order, and the last ones move down whole to a second line, 6px below, as wrapped pills are. The pill, the age and "Opened" stay whole, so the site's name gives way first. Beside #shopping and "50 min" on a 320px phone, console.aws.amazon.com moves down to a line of its own, still at the right. Beside a long hashtag, such as #customer-onboarding-flow, "Opened" moves down too, and starts the second line at the left.
+
+A site's name too long for a whole line breaks just after a dot, as on the top card, and each of its lines ends at the row's right edge. A part between two dots is split only when it is too long for a whole line on its own.
 
 | State | How it looks |
 | --- | --- |
@@ -212,6 +230,8 @@ A white screen. "All asks" at the top left goes back, and "Dismiss" is at the to
 5. The reason, under a hairline, in `--text-3`.
 6. At the foot, the main button, and under it an outlined "Reply in the session" button when the ask has both links.
 
+A site's name too long for its button's line, such as productionresultssa0.blob.core.windows.net on a 320px phone, breaks onto a second line just after a dot, as on the top card. A part between two dots is split only when it is too long for a line on its own.
+
 Swiping a row or the top card dismisses it. A note with "Undo" shows for a few seconds, and the dismissal is sent when it goes. If it fails, the card comes back with a note. If another dismissal is waiting at the time, its clock stops while the failure note shows. Its note with "Undo" then comes back for the full few seconds.
 
 ### All clear
@@ -220,8 +240,8 @@ Shown when nothing is waiting and the account has had at least one ask.
 
 - "All clear." at 146px. On a screen narrower than 517px, such as a phone held upright, it takes two lines. On a screen 517px wide or more, such as at desktop width, it fits on one line inside the side padding.
 - On a screen narrower than 354px, "clear." does not fit at 146px inside the 22px side padding. There the headline shrinks with the screen, so "clear." keeps 22px on each side. At 320px wide it is 130px.
-- The headline and the two lines under it sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the first line at the foot, the held line or the lapsed line. On a screen too short for that, 26px stays above them.
-- They stay where they are while a note shows at the foot of the screen. The held and lapsed lines move up out of the note's way. On a screen too short for that, they move up too, or the screen scrolls further, until 26px stays between the last line and the held line, the lapsed line or the note.
+- The headline and the two lines under it sit a third of the way down the space under the header, or under the tabs. The space above them is half the space below, down to the foot of the screen or to the first line at the foot: the held line, the lapsed line or the sorting line. On a screen too short for that, 26px stays above them.
+- They stay where they are while a note shows at the foot of the screen. The held, lapsed and sorting lines move up out of the note's way. On a screen too short for that, they move up too, or the screen scrolls further, until 26px stays between the last line and the held line, the lapsed line, the sorting line or the note.
 - The two lines under the headline balance their line breaks, so a line that wraps never leaves a word or two on their own.
 - A fixed line in ink: "Your agents are getting on with it."
 - A second line in `--text-2` that changes on each visit:
@@ -231,16 +251,18 @@ Shown when nothing is waiting and the account has had at least one ask.
   - Look out of the window.
   - Finish that cup of tea.
   - Nothing to see here. Lovely.
-- No buttons. The held line sits at the foot when asks are held, and the lapsed line under it when asks have lapsed.
+- No buttons. The held line sits at the foot when asks are held, the lapsed line under it when asks have lapsed, and the sorting line under them when it shows.
 
 ### New account
 
 Shown when the account has never had an ask. A white card says "Your agents can ask here.", explains in two sentences, and offers "Connect your agents" in ink and "Send sample asks" in `--neutral-tint`.
 
+When a press of "Send sample asks" does not go through, one short note under the button says why, in the words below. The daily cap's note goes once the cap resets at the next midnight UTC, with no reload. It goes by askme's clock, which counts the cap, so a device whose clock is a few minutes out does not move it.
+
 ### Rules
 
 - One text box, with a label above it that says what to write.
-- "Save rules" is ink when the text has changed, or when some asks couldn't be sorted and the daily limit is not reached. Otherwise it is `--neutral-tint`. Under it, one short note gives the state: "Saved.", "Reading your rules.", "Sorting your asks again." for a save of unchanged rules, or what went wrong.
+- "Save rules" is ink when the text has changed, or when some asks couldn't be sorted and the daily limit is not reached. Otherwise it is `--neutral-tint`. Under it, one short note gives the state: "Saved.", "Reading your rules.", "Sorting your asks again." for a save of unchanged rules, or what went wrong. The daily cap's note goes once the cap resets at the next midnight UTC, with no reload, as it does under "Send sample asks".
 - Below, what askme read from the rules: each hashtag's pill with its hours, or "Any time". This list changes only when a save finishes.
 - A last note names the time zone and says that saving changed rules re-sorts every open ask, and saving them unchanged sorts again any that couldn't be sorted.
 - At the foot, under a hairline: the person's email address in `--text-3`, and "Sign out" at the right in ink, underlined, like "Show them". "Sign out" stays on the address's line, and a long address wraps beside it. With no email address, "Sign out" stands alone. The screen is taller than a phone, so the foot is reached by scrolling.
@@ -249,7 +271,7 @@ Shown when the account has never had an ask. A white card says "Your agents can 
 
 ### Connect your agents
 
-The server address in a read-only box with a Copy button, steps for Claude as a numbered list, a button for Cursor, and "Send sample asks" for someone with no agent yet. The demo notice is at the foot. The header has only "All asks", which goes back. There is no Rules link.
+The server address in a read-only box with a Copy button, steps for Claude as a numbered list, a button for Cursor, and "Send sample asks" for someone with no agent yet, with its note as on the new account card. The demo notice is at the foot. The header has only "All asks", which goes back. There is no Rules link.
 
 ### Signed out
 
@@ -262,6 +284,7 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 - A button names its action: "Save rules", "Show them", "Send sample asks".
 - An action keeps its name. The tab says Everything, so nothing else calls it "All".
 - Times are short: "Just now", "4 min", "1 h", "2 d". The top card says "Waiting 4 min".
+- An ask's age counts by askme's clock. A device whose clock is a few minutes out does not change it.
 - A time of day is on the 24-hour clock, in the person's time zone, as in "It resets at 01:00".
 
 | Moment | Words |

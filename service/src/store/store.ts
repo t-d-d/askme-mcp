@@ -27,10 +27,10 @@ import { awsClientConfig } from "../aws";
 import type { AccountId } from "../identity";
 import {
   askLimit,
+  modelCallLimit,
   pollLimit,
   rulesSaveLimit,
   secondsLeft,
-  sortRetryLimit,
   windowOf,
 } from "../rate";
 import { exampleRules, hashtagWindow, type HashtagWindow } from "../rules";
@@ -194,9 +194,10 @@ const windowsOf = (hours: HashtagWindow[] | undefined) =>
 
 // The rules of an account that has never saved any: the example rules,
 // already read (PRD, "Rules"). Their hashtags are seen, so each keeps its
-// colour once the person saves their own. They are never written, so the
-// version stays at 0 until the first save, and they name no time zone, so
-// the page uses its own.
+// colour once the person saves their own. They are not stored until a save,
+// and a save of them unchanged stores them at version 0 (ADR 22), so the
+// version stays at 0 until the first save that reads rules. They name no
+// time zone until a save sends one, so the page uses its own.
 const firstRules: AccountRules = {
   text: exampleRules.text,
   hashtags: [...exampleRules.reading.hashtags],
@@ -225,18 +226,29 @@ export interface AskToSort {
   rules: AccountRules;
 }
 
+// The account marker. Once the cap on model calls refuses a call, it also
+// holds when the cap resets, the next midnight UTC (ADR 22).
 const metaSchema = z.object({
   version: z.number().int().nonnegative(),
   everAsked: z.boolean().optional(),
+  modelCapResetsAt: z.iso.datetime().optional(),
 });
 
 // What the page shows: the account's open asks, the version they were read
-// at, and whether the account has ever had an ask.
+// at, whether the account has ever had an ask, and when the cap on model
+// calls last refused one, the time it resets.
 export interface AccountAsks {
   version: number;
   everAsked: boolean;
   asks: StoredAsk[];
+  modelCapResetsAt?: string;
 }
+
+// A rate counter, as count() writes it.
+const counterSchema = z.object({
+  count: z.number().int().nonnegative(),
+  expiresAt: z.number().int(),
+});
 
 // What a poll gets when nothing changed since the version it carried.
 export interface Unchanged {
@@ -284,8 +296,27 @@ export interface Store {
     rules: NewRules,
     now: Date,
   ): Promise<AccountRules>;
+  // Records a save of the text the rules already hold, whose last reading
+  // succeeded, with no new reading (ADR 22): when it was made, and the time
+  // zone. The rules version stays where it was, so no ask sorted with them
+  // falls behind. Undefined, with nothing saved, when the rules no longer
+  // hold that text read with success, as when another save landed first.
+  resaveRules(
+    account: AccountId,
+    rules: Pick<NewRules, "text" | "timeZone">,
+    now: Date,
+  ): Promise<AccountRules | undefined>;
   // Counts a save of the rules against the account's limit for the minute.
   countRulesSave(account: AccountId, now: Date): Promise<Counted>;
+  // Counts a model call against the account's cap for the UTC day (ADR 21).
+  countModelCall(account: AccountId, now: Date): Promise<Counted>;
+  // Whether the account has made every model call its cap allows in the UTC
+  // day. It reads the count, and counts nothing.
+  modelCapSpent(account: AccountId, now: Date): Promise<boolean>;
+  // Records on META when the cap on model calls resets, raising the
+  // version, so every open page learns of it (ADR 22). False, with nothing
+  // written, when META already holds that time or a later one.
+  recordModelCapReset(account: AccountId, resetsAt: Date): Promise<boolean>;
   // An open ask and the account's rules, or undefined when the ask is not
   // open.
   askToSort(
@@ -301,9 +332,6 @@ export interface Store {
     sort: NewSort,
     now: Date,
   ): Promise<boolean>;
-  // Counts a poll's request to sort an ask again against the account's
-  // limit for the minute.
-  countSortRetry(account: AccountId, now: Date): Promise<Counted>;
   close(): void;
 }
 
@@ -362,24 +390,42 @@ export function createStore(config: {
   });
 
   // Every write to an account's items, as one transaction that also raises
-  // the account's version, so the page learns of it (ADR 13).
+  // the account's version, so the page learns of it (ADR 13). It can also
+  // mark META: that the account has had an ask, or when the cap on model
+  // calls resets, which is written only over an earlier time, so a second
+  // refusal for the same reset fails its condition.
   async function write(
     account: AccountId,
     changes: Change[],
-    marks: { everAsked?: true } = {},
+    marks: { everAsked?: true; modelCapResetsAt?: string } = {},
   ): Promise<void> {
-    const set = marks.everAsked === true ? " SET everAsked = :yes" : "";
+    const { everAsked, modelCapResetsAt } = marks;
+    const sets = [
+      ...(everAsked === true ? ["everAsked = :yes"] : []),
+      ...(modelCapResetsAt === undefined
+        ? []
+        : ["modelCapResetsAt = :resetsAt"]),
+    ];
     const items: Change[] = [
       ...changes,
       {
         Update: {
           TableName,
           Key: keys.meta(account),
-          UpdateExpression: `ADD version :one${set}`,
+          UpdateExpression: `ADD version :one${sets.length === 0 ? "" : ` SET ${sets.join(", ")}`}`,
           ExpressionAttributeValues: {
             ":one": 1,
-            ...(set === "" ? {} : { ":yes": true }),
+            ...(everAsked === true ? { ":yes": true } : {}),
+            ...(modelCapResetsAt === undefined
+              ? {}
+              : { ":resetsAt": modelCapResetsAt }),
           },
+          ...(modelCapResetsAt === undefined
+            ? {}
+            : {
+                ConditionExpression:
+                  "attribute_not_exists(modelCapResetsAt) OR modelCapResetsAt < :resetsAt",
+              }),
         },
       },
     ];
@@ -471,6 +517,27 @@ export function createStore(config: {
       }),
     );
     return Item === undefined ? firstRules : rulesSchema.parse(Item);
+  }
+
+  // Writes the rules over the ones a save read, unless another save has
+  // landed since, which the version tells. The example rules a new account
+  // starts with are not stored, so they are the ones read while there is no
+  // rules item. A save of them unchanged stores them at version 0.
+  async function replaceRules(
+    account: AccountId,
+    current: AccountRules,
+    next: AccountRules,
+  ): Promise<void> {
+    await write(account, [
+      {
+        Put: {
+          TableName,
+          Item: { ...keys.rules(account), ...next },
+          ConditionExpression: "attribute_not_exists(sk) OR version = :current",
+          ExpressionAttributeValues: { ":current": current.version },
+        },
+      },
+    ]);
   }
 
   // The item under one key, unless it is missing or has expired.
@@ -593,10 +660,15 @@ export function createStore(config: {
   async function listed(
     account: AccountId,
     now: Date,
-    { version, everAsked }: z.output<typeof metaSchema>,
+    { version, everAsked, modelCapResetsAt }: z.output<typeof metaSchema>,
   ): Promise<AccountAsks> {
     const asks = await storedAsks(account, now);
-    return { version, everAsked: everAsked ?? false, asks };
+    return {
+      version,
+      everAsked: everAsked ?? false,
+      asks,
+      ...(modelCapResetsAt === undefined ? {} : { modelCapResetsAt }),
+    };
   }
 
   return {
@@ -817,25 +889,28 @@ export function createStore(config: {
           timeZone: timeZone ?? current.timeZone,
         };
         try {
-          await write(account, [
-            {
-              Put: {
-                TableName,
-                Item: { ...keys.rules(account), ...next },
-                ConditionExpression:
-                  current.version === 0
-                    ? "attribute_not_exists(sk)"
-                    : "version = :current",
-                ...(current.version === 0
-                  ? {}
-                  : {
-                      ExpressionAttributeValues: {
-                        ":current": current.version,
-                      },
-                    }),
-              },
-            },
-          ]);
+          await replaceRules(account, current, next);
+          return next;
+        } catch (error) {
+          // Another save landed after this one read the rules.
+          if (!conditionFailed(error) || tries >= 4) throw error;
+        }
+      }
+    },
+
+    // The rules stay as they are but for when they were saved and the time
+    // zone, and are written only if no other save landed in between.
+    async resaveRules(account, { text, timeZone }, now) {
+      for (let tries = 0; ; tries += 1) {
+        const current = await readRules(account);
+        if (current.text !== text || current.readFailed) return undefined;
+        const next: AccountRules = {
+          ...current,
+          savedAt: now.toISOString(),
+          timeZone: timeZone ?? current.timeZone,
+        };
+        try {
+          await replaceRules(account, current, next);
           return next;
         } catch (error) {
           // Another save landed after this one read the rules.
@@ -853,6 +928,43 @@ export function createStore(config: {
       );
     },
 
+    async countModelCall(account, now) {
+      return countIn(
+        (window) => keys.modelCount(account, window),
+        modelCallLimit.calls,
+        modelCallLimit.windowMinutes,
+        now,
+      );
+    },
+
+    async modelCapSpent(account, now) {
+      const { name } = windowOf(now, modelCallLimit.windowMinutes);
+      const counter = await stored(
+        keys.modelCount(account, name),
+        counterSchema,
+        now,
+      );
+      return (counter?.count ?? 0) >= modelCallLimit.calls;
+    },
+
+    // META is read first, so the refusals after the first in a day each
+    // cost a read, not a refused transaction.
+    async recordModelCapReset(account, resetsAt) {
+      const at = resetsAt.toISOString();
+      const { modelCapResetsAt } = await meta(account);
+      if (modelCapResetsAt !== undefined && modelCapResetsAt >= at) {
+        return false;
+      }
+      try {
+        await write(account, [], { modelCapResetsAt: at });
+        return true;
+      } catch (error) {
+        // Another refusal recorded it after META was read.
+        if (conditionFailed(error)) return false;
+        throw error;
+      }
+    },
+
     async askToSort(account, askId, now) {
       const open = await stored(
         keys.openAsk(account, askId),
@@ -867,7 +979,11 @@ export function createStore(config: {
     },
 
     // The sort is written only onto an ask that is still open, and never
-    // over one made with newer rules.
+    // over one made with newer rules: it is refused only when the stored
+    // sort was made with a later rules version. This states the same rule
+    // as sortedWithRules in view.ts, from the side of the write. A sort with
+    // the same version may still be written, as when a second job read the
+    // ask before the first one's sort was stored.
     async recordSort(account, askId, sort, now) {
       try {
         await write(account, [
@@ -891,15 +1007,6 @@ export function createStore(config: {
         if (conditionFailed(error)) return false;
         throw error;
       }
-    },
-
-    async countSortRetry(account, now) {
-      return countIn(
-        (window) => keys.sortRetryCount(account, window),
-        sortRetryLimit.retries,
-        sortRetryLimit.windowMinutes,
-        now,
-      );
     },
 
     close() {

@@ -41,7 +41,7 @@ import {
 import { instructions } from "./instructions";
 import { createSortRequests, type SortRequests } from "./jobs";
 import { createLogger, errorClass, type Logger } from "./log";
-import { createModel, defaultModel, type Model } from "./model";
+import { createCountedModel, defaultModel, type CountedModel } from "./model";
 import { resolveTool } from "./resolve";
 import { isPageRoute, isRoute, mcpPath, routes } from "./routes";
 import { createKeyReader } from "./secrets";
@@ -80,10 +80,11 @@ interface Services {
   // Checks the page's session token.
   verifySession: (token: string) => Promise<AccountId>;
   store: Store;
-  // Hands a stored ask to the sort function.
+  // Queues a stored ask's sort.
   sorts: SortRequests;
-  // Reads the rules when they are saved.
-  model: Model;
+  // Reads the rules when they are saved, counting each call against the
+  // account's daily cap.
+  model: CountedModel;
 }
 
 // Set up on the first request, so that a test can set the environment first.
@@ -93,25 +94,27 @@ function ready(): Services {
   if (services === undefined) {
     const env = readEnv();
     const keys = keySet(env.clerkIssuer);
+    const store = createStore({
+      tableName: env.tableName,
+      endpoint: env.databaseEndpoint,
+    });
     services = {
       issuer: env.clerkIssuer,
       verifier: tokenVerifier(env.clerkIssuer, keys),
       verifySession: sessionVerifier(env.clerkIssuer, keys),
-      store: createStore({
-        tableName: env.tableName,
-        endpoint: env.databaseEndpoint,
-      }),
+      store,
       sorts: createSortRequests({
-        functionName: env.sortFunction,
-        endpoint: env.lambdaEndpoint,
+        queueUrl: env.sortQueue,
+        endpoint: env.queueEndpoint,
       }),
-      model: createModel({
+      model: createCountedModel({
         endpoint: env.modelEndpoint,
         model: defaultModel,
         key: createKeyReader({
           parameter: env.modelKeyParameter,
           endpoint: env.ssmEndpoint,
         }),
+        store,
       }),
     };
   }

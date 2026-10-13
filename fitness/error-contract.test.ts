@@ -25,15 +25,18 @@ const store: Store = {
   countAsk: unused,
   rules: unused,
   saveRules: unused,
+  resaveRules: unused,
   countRulesSave: unused,
+  countModelCall: unused,
+  modelCapSpent: unused,
+  recordModelCapReset: unused,
   askToSort: unused,
   recordSort: unused,
-  countSortRetry: unused,
   close: () => undefined,
 };
 
-// A sorter the tools never reach either.
-const sorts: SortRequests = { request: unused };
+// A queue the tools never reach either.
+const sorts: SortRequests = { queue: unused };
 
 let client: Client;
 let capture: ReturnType<typeof captureLogs>;

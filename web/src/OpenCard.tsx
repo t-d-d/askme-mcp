@@ -7,6 +7,7 @@ import styles from "./OpenCard.module.css";
 import { OutLink } from "./OutLink";
 import { askColour, tagColour, type HashtagColour } from "./palette";
 import { Pills } from "./Pills";
+import { SiteName } from "./SiteName";
 import { slide } from "./slide";
 import { listenLength } from "./speech";
 import type { Tab } from "./tab";
@@ -29,6 +30,7 @@ export function OpenCard({
   ask,
   tab,
   now,
+  serviceAhead,
   colours,
   actions,
   noted,
@@ -36,6 +38,7 @@ export function OpenCard({
   ask: PageAsk;
   tab: Tab;
   now: number;
+  serviceAhead: number;
   colours: ReadonlyMap<string, HashtagColour>;
   actions: AskActions;
   noted: boolean;
@@ -80,7 +83,9 @@ export function OpenCard({
       <main className={styles.body}>
         <div className={styles.meta}>
           <Pills sort={sort} colours={colours} />
-          <span className={styles.age}>{waiting(ask.postedAt, now)}</span>
+          <span className={styles.age}>
+            {waiting(ask.postedAt, now, serviceAhead)}
+          </span>
         </div>
         <h1 className={styles.summary}>{ask.summary}</h1>
         {speak !== undefined && (
@@ -107,7 +112,9 @@ export function OpenCard({
             onFollowed={followed}
           >
             <span className={styles.label}>{main.label}</span>
-            <span className={styles.site}>{main.site}</span>
+            <span className={styles.site}>
+              <SiteName site={main.site} />
+            </span>
           </OutLink>
           {session !== undefined && (
             <OutLink
@@ -116,7 +123,9 @@ export function OpenCard({
               onFollowed={followed}
             >
               <span className={styles.label}>{session.label}</span>
-              <span className={styles.site}>{session.site}</span>
+              <span className={styles.site}>
+                <SiteName site={session.site} />
+              </span>
             </OutLink>
           )}
         </div>

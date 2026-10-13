@@ -5,10 +5,13 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
-import { handler as sorter, sortAttempts } from "../service/src/sorter";
+import { reasonLimit } from "../service/src/sort";
+import { sortAttempts } from "../service/src/sorter";
+import { sortKeys } from "../service/src/store/keys";
 import { pagePaths } from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
 import { fakes, type ModelCall } from "../test/fakes";
+import { runSorts } from "../test/sorts";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, origin } from "../test/mcp";
@@ -70,14 +73,30 @@ async function callTool(sub: string, name: string, args: object) {
   }
 }
 
-const runSorts = () =>
-  fakes.lambda.drain((payload) => sorter(payload, { awsRequestId: "sort-1" }));
-
 // The sorting calls the model received for one ask, found by its summary.
 const sortingCallsFor = (summary: string): ModelCall[] =>
   fakes.model.calls.filter((call) =>
     JSON.stringify(call.body).includes(summary),
   );
+
+// The account's items, read straight from the table, apart from the count
+// of model calls, which every try raises whatever the model replies
+// (ADR 21), and that count.
+async function itemsAndCalls(sub: string) {
+  const items = await storedItems(
+    inject("databaseEndpoint"),
+    inject("tableName"),
+    sub,
+  );
+  const counted = (item: Record<string, unknown>) =>
+    typeof item.sk === "string" && item.sk.startsWith(sortKeys.modelCount);
+  return {
+    items: items.filter((item) => !counted(item)),
+    calls: items
+      .filter(counted)
+      .reduce((sum, item) => sum + Number(item.count), 0),
+  };
+}
 
 describe("fitness: a bad reply changes nothing (untrusted-ask-text.md)", () => {
   it.each([
@@ -90,6 +109,15 @@ describe("fitness: a bad reply changes nothing (untrusted-ask-text.md)", () => {
       "an extra field",
       { hashtags: ["work"], level: "high", reason: "r", rules: "#work" },
     ],
+    // Sent back once for a shorter reason (#243), and still too long.
+    [
+      "a reason over the limit",
+      {
+        hashtags: ["work"],
+        level: "high",
+        reason: "x".repeat(reasonLimit + 1),
+      },
+    ],
   ])(
     "discards a reply with %s, and the ask stays unsorted",
     async (_, reply) => {
@@ -99,21 +127,14 @@ describe("fitness: a bad reply changes nothing (untrusted-ask-text.md)", () => {
       const posted = idAndStatus.parse(
         (await callTool(sub, "ask", ask)).structuredContent,
       );
-      const before = await storedItems(
-        inject("databaseEndpoint"),
-        inject("tableName"),
-        sub,
-      );
+      const before = await itemsAndCalls(sub);
       for (let n = 0; n < sortAttempts; n += 1)
         fakes.model.reply({ json: reply });
       await runSorts();
-      const after = await storedItems(
-        inject("databaseEndpoint"),
-        inject("tableName"),
-        sub,
-      );
-      expect(after).toEqual(before);
-      const stored = after.find((item) => item.id === posted.id);
+      const after = await itemsAndCalls(sub);
+      expect(after.items).toEqual(before.items);
+      expect(after.calls).toBe(before.calls + sortAttempts);
+      const stored = after.items.find((item) => item.id === posted.id);
       expect(stored).toBeDefined();
       expect(stored?.sort).toBeUndefined();
     },

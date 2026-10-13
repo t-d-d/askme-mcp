@@ -129,13 +129,13 @@ describe.each([
   let view: OpenPage;
   beforeAll(async () => {
     view = await open(five, viewport);
+    await view.page.getByRole("article").waitFor();
   });
   afterAll(async () => {
     await view.close();
   });
 
-  it("asks the API for the list with the session token", async () => {
-    await view.page.getByRole("article").waitFor();
+  it("asks the API for the list with the session token", () => {
     const calls = view.apiCalls.filter((call) => call.path === pagePaths.asks);
     expect(calls.length).toBeGreaterThan(0);
     for (const call of calls) {
@@ -195,6 +195,17 @@ describe.each([
       await page.getByRole("link", { name: "All asks" }).click();
       await page.getByRole("article").waitFor();
     }
+  });
+
+  // The demo notice is on the signed-out page and on Connect your agents.
+  // A tag beside the wordmark looked like a hashtag or a tab
+  // (docs/design.md, "Header").
+  it("puts no Demo tag beside the wordmark", async () => {
+    const header = view.page.getByRole("banner");
+    expect(await header.getByText("askme", { exact: true }).isVisible()).toBe(
+      true,
+    );
+    expect(await header.getByText("Demo").count()).toBe(0);
   });
 
   it("scrolls only up and down", async () => {
@@ -287,6 +298,7 @@ describe("the top card's spoken detail", () => {
   it("shows beside the top ask at desktop width", async () => {
     const view = await open(five, desktop);
     try {
+      await view.page.getByRole("article").waitFor();
       expect(
         await view.page
           .getByText("The spoken detail of Merge the fix")
@@ -598,6 +610,10 @@ describe.each([
     await view.page.getByRole("link", { name: "Connect your agents" }).click();
     await view.page
       .getByRole("heading", { name: "Connect your agents" })
+      .waitFor();
+    // The Cursor link shows only once the connection fetch returns.
+    await view.page
+      .getByRole("link", { name: /Add askme to Cursor/u })
       .waitFor();
   });
   afterAll(async () => {

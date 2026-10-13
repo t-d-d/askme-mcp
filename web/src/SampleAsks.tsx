@@ -1,6 +1,6 @@
-import { Refusal } from "./load";
-import { resetTime } from "./resets";
+import { refusalNote } from "./refusalNote";
 import styles from "./SampleAsks.module.css";
+import { useAfter } from "./useAfter";
 import { useSamples } from "./useSamples";
 
 // "Send sample asks", for someone with no agent yet, and under it one short
@@ -8,7 +8,8 @@ import { useSamples } from "./useSamples";
 // try again, in the page's own words (docs/design.md, "Words"). The button
 // waits while a press is under way, so one press sends once. The note's
 // region stays on the page, empty and hidden, so a screen reader hears
-// each note as it comes.
+// each note as it comes. The daily cap's note goes once the cap resets,
+// with no reload, by the service's clock, which counts the cap.
 //
 // The button is a main button on the list, and a settings screen's on
 // Connect your agents.
@@ -20,6 +21,9 @@ export function SampleAsks({
   onSent?: () => void;
 }) {
   const send = useSamples(onSent);
+  const note =
+    send.error === null ? null : refusalNote(send.error, send.submittedAt);
+  useAfter(note?.goesAt, send.reset);
   return (
     <div className={styles.samples}>
       <button
@@ -33,27 +37,9 @@ export function SampleAsks({
         Send sample asks
       </button>
       <p className={styles.note} role="status">
-        {send.error !== null && (
-          <Note error={send.error} pressedAt={send.submittedAt} />
-        )}
+        {note !== null &&
+          (note.kind === "failed" ? `${note.words} Try again.` : note.words)}
       </p>
     </div>
   );
-}
-
-// The daily cap resets at the next midnight UTC after the press, given in
-// this browser's time zone.
-function Note({ error, pressedAt }: { error: Error; pressedAt: number }) {
-  if (error instanceof Refusal && error.code === "cap_reached") {
-    return (
-      <>
-        You&apos;ve reached today&apos;s limit. It resets at{" "}
-        {resetTime(pressedAt)}.
-      </>
-    );
-  }
-  if (error instanceof Refusal && error.code === "rate_limited") {
-    return <>Slow down a little. Try again in a few seconds.</>;
-  }
-  return <>That didn&apos;t go through. Try again.</>;
 }

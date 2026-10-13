@@ -16,8 +16,13 @@ import {
   allClearGaps,
   answerPoll,
   Answering,
+  datedPolls,
+  failingPolls,
+  moveDeviceClock,
   openPage,
   Status,
+  stepUntil,
+  stepUntilShown,
   underTheNote,
   type OpenPage,
 } from "../test/browser";
@@ -118,6 +123,7 @@ const summaries = async (page: Page) =>
       "Renew the shop's domain?",
       "Approve the passkey on the shop's settings page?",
       "Pick a delivery slot before it goes?",
+      "Book the boiler service?",
     ].find((summary) => text.includes(summary));
     return found ?? text;
   });
@@ -149,6 +155,91 @@ const schoolRun = "Swap Saturday's school run?";
 const domain = "Renew the shop's domain?";
 const passkey = "Approve the passkey on the shop's settings page?";
 const slot = "Pick a delivery slot before it goes?";
+const boiler = "Book the boiler service?";
+
+// Opens the list on a page whose clock stands still two minutes before a
+// moment by the service's clock, which is serviceAhead ahead of the page's,
+// and waits for the summaries on the screen to read `before`, in order. A
+// second before the moment, by the page's clock, a poll brings a new ask,
+// which goes last, and the rest still read `before`. The first poll after
+// the moment finds them reading `after`. Each poll's answer gives the
+// service's time in its Date header, as it is then, because the page's
+// clock moves only when the test moves it.
+async function orderChangesAt(
+  moment: number,
+  serviceAhead: number,
+  asks: PageAsk[],
+  before: string[],
+  after: string[],
+): Promise<Page> {
+  const here = moment - serviceAhead;
+  let pageAt = here - 2 * minute;
+  let answer = listOf(...asks);
+  view = await openPage(inject("pageUrl"), phone, {
+    session,
+    clock: { stoppedAt: new Date(pageAt) },
+    api: {
+      [pagePaths.asks]: datedPolls(
+        () => answer,
+        () => pageAt + serviceAhead,
+      ),
+    },
+  });
+  const { page } = view;
+  const reads = (order: string[]) => async () =>
+    (await summaries(page)).join("\n") === order.join("\n");
+  await stepUntil(page, reads(before), "the list to read as before");
+  answer = {
+    ...listOf(...asks, ask("z", boiler, family("low"))),
+    version: 4,
+  };
+  pageAt = here - 1000;
+  await page.clock.pauseAt(new Date(pageAt));
+  await stepUntil(page, reads([...before, boiler]), "the new ask to show");
+  pageAt = here + pollMs;
+  await page.clock.pauseAt(new Date(pageAt));
+  await stepUntil(page, reads([...after, boiler]), "the list to read as after");
+  return page;
+}
+
+// Opens the list on a page whose clock stands still two minutes before a
+// moment by the service's clock, which is serviceAhead ahead of the page's,
+// and waits for the summaries on the screen to read `before`, in order. Then
+// every poll fails from the next one on, and before it the device puts its
+// clock right, so it agrees with the service's. Once the page says it is not
+// connected, the summaries still read `before`. The first poll after the
+// moment, by the service's clock, finds them reading `after`, though it fails
+// too.
+async function orderChangesAtWhilePollsFail(
+  moment: number,
+  serviceAhead: number,
+  asks: PageAsk[],
+  before: string[],
+  after: string[],
+): Promise<Page> {
+  const pageAt = moment - serviceAhead - 2 * minute;
+  const polls = failingPolls(
+    () => listOf(...asks),
+    () => pageAt + serviceAhead,
+  );
+  view = await openPage(inject("pageUrl"), phone, {
+    session,
+    clock: { stoppedAt: new Date(pageAt) },
+    api: { [pagePaths.asks]: polls.answering },
+  });
+  const { page } = view;
+  const reads = (order: string[]) => async () =>
+    (await summaries(page)).join("\n") === order.join("\n");
+  await stepUntil(page, reads(before), "the list to read as before");
+  polls.fail();
+  await moveDeviceClock(page, serviceAhead);
+  await page.clock.pauseAt(new Date(moment - 2 * minute + pollMs + 1000));
+  await stepUntilShown(page, page.getByText("Not connected. Trying again."));
+  expect(await summaries(page)).toEqual(before);
+  await page.clock.pauseAt(new Date(moment + pollMs));
+  await stepUntil(page, reads(after), "the list to read as after");
+  return page;
+}
 
 describe("ordering by the time asks lapse", () => {
   it("puts an ask that lapses within the hour first, above every level", async () => {
@@ -176,6 +267,30 @@ describe("ordering by the time asks lapse", () => {
     await page.getByRole("article").filter({ hasText: slot }).waitFor();
     expect(await summaries(page)).toEqual([slot, schoolRun]);
   });
+
+  // The service gives the time an ask lapses by its own clock, so the ask
+  // moves up when the service's time for its last hour comes, even on a page
+  // whose clock is a few minutes out. For an ask whose last hour starts at
+  // 18:01 UTC by the service's clock, a clock three minutes fast reads 18:04
+  // then, and one three minutes slow reads 17:58.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "moves an ask to the top when the service's time for its last hour comes, on a clock a few minutes %s",
+    async (_, serviceAhead) => {
+      await orderChangesAt(
+        evening.getTime() + minute,
+        serviceAhead,
+        [
+          ask("a", schoolRun, family("high")),
+          ask("b", slot, family("low"), 61 * minute),
+        ],
+        [schoolRun, slot],
+        [slot, schoolRun],
+      );
+    },
+  );
 });
 
 describe("the lapsed line", () => {
@@ -304,6 +419,225 @@ describe("the lapsed line", () => {
     expect(await summaries(page)).toEqual([schoolRun]);
   });
 
+  // The service gives the time an ask lapses by its own clock, so the ask
+  // goes behind the line when the service's time for it comes, even on a
+  // page whose clock is a few minutes out. For an ask that lapses at 18:20
+  // UTC by the service's clock, a clock three minutes fast reads 18:23 then,
+  // and one three minutes slow reads 18:17.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "takes an ask out of the list, behind the line, when the service's time for it comes, on a clock a few minutes %s",
+    async (_, serviceAhead) => {
+      const page = await orderChangesAt(
+        evening.getTime() + 20 * minute,
+        serviceAhead,
+        [
+          ask("a", schoolRun, family("low")),
+          ask("b", passkey, shop("high"), 20 * minute),
+        ],
+        [passkey, schoolRun],
+        [schoolRun],
+      );
+      expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
+    },
+  );
+
+  // While polls fail, the page counts the service's time on from the last
+  // poll that reached askme, by the time that has passed on
+  // performance.now(), which a change to the device's clock does not move.
+  // So a clock three minutes fast or slow, put right while the page is not
+  // connected, does not make the ask lapse three minutes early or late.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "takes an ask out of the list when the service's time for it comes, though a clock a few minutes %s is put right while polls fail",
+    async (_, serviceAhead) => {
+      const page = await orderChangesAtWhilePollsFail(
+        evening.getTime() + 20 * minute,
+        serviceAhead,
+        [
+          ask("a", schoolRun, family("low")),
+          ask("b", passkey, shop("high"), 20 * minute),
+        ],
+        [passkey, schoolRun],
+        [schoolRun],
+      );
+      expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
+    },
+  );
+
+  // A phone or laptop that sleeps usually hides the page first, and on most
+  // systems performance.now() stands still while it sleeps. So the time the
+  // page was hidden counts by the device's clock, and an ask whose time passed
+  // while the device slept has lapsed when the page is shown, though the poll
+  // then fails.
+  it("takes an ask out of the list whose time passed while the page was hidden and the device slept, though the poll on waking fails", async () => {
+    const polls = failingPolls(
+      () =>
+        listOf(
+          ask("a", schoolRun, family("low")),
+          ask("b", passkey, shop("high"), 20 * minute),
+        ),
+      () => evening.getTime(),
+    );
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: { stoppedAt: evening },
+      api: { [pagePaths.asks]: polls.answering },
+    });
+    const { page } = view;
+    await stepUntil(
+      page,
+      async () =>
+        (await summaries(page)).join("\n") === `${passkey}\n${schoolRun}`,
+      "the list to show",
+    );
+    polls.fail();
+    await view.hide();
+    await moveDeviceClock(page, 60 * minute);
+    await view.show();
+    await stepUntilShown(page, page.getByText("Not connected. Trying again."));
+    expect(await summaries(page)).toEqual([schoolRun]);
+    expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
+  });
+
+  // A device can sleep without hiding the page, such as a desktop that
+  // suspends with no screen lock. Its clock moves on an hour, with
+  // performance.now() standing still, which is more than a device putting
+  // its clock right is likely to move it. So the page counts that hour by the
+  // device's clock, and an ask whose time passed while the device slept has
+  // lapsed on the first poll after it wakes, though that poll fails.
+  it("takes an ask out of the list whose time passed while the device slept with the page showing, though the poll on waking fails", async () => {
+    const polls = failingPolls(
+      () =>
+        listOf(
+          ask("a", schoolRun, family("low")),
+          ask("b", passkey, shop("high"), 20 * minute),
+        ),
+      () => evening.getTime(),
+    );
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: { stoppedAt: evening },
+      api: { [pagePaths.asks]: polls.answering },
+    });
+    const { page } = view;
+    await stepUntil(
+      page,
+      async () =>
+        (await summaries(page)).join("\n") === `${passkey}\n${schoolRun}`,
+      "the list to show",
+    );
+    polls.fail();
+    await moveDeviceClock(page, 60 * minute);
+    await page.clock.fastForward(pollMs);
+    await stepUntilShown(page, page.getByText("Not connected. Trying again."));
+    expect(await summaries(page)).toEqual([schoolRun]);
+    expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
+  });
+
+  // While polls fail, the page counts the service's time on from each poll to
+  // the next, so it judges each step by its own clocks. A device that puts a
+  // clock three minutes out right, and then sleeps an hour with the page
+  // showing, has its correction counted as no time passed, and its sleep as
+  // the hour it was. So an ask whose time passed in the sleep has lapsed on
+  // the first poll after it, though that poll fails, and an ask whose time
+  // comes two minutes after the sleep lapses then, not a few minutes early or
+  // an hour late.
+  it.each([
+    ["slow", 3 * minute, 60 * minute],
+    ["fast", -3 * minute, 61 * minute],
+  ])(
+    "takes an ask out of the list when the service's time for it comes, though a clock a few minutes %s is put right while polls fail and the device then sleeps with the page showing",
+    async (_, serviceAhead, sleep) => {
+      const serviceAtOpen = evening.getTime() + serviceAhead;
+      const lapsesAfterSleep = serviceAtOpen + sleep + 2 * minute;
+      const polls = failingPolls(
+        () =>
+          listOf(
+            ask("a", schoolRun, family("low")),
+            ask("b", passkey, shop("high"), serviceAhead + 30 * minute),
+            ask(
+              "c",
+              slot,
+              family("high"),
+              lapsesAfterSleep - evening.getTime(),
+            ),
+          ),
+        () => serviceAtOpen,
+      );
+      view = await openPage(inject("pageUrl"), phone, {
+        session,
+        clock: { stoppedAt: evening },
+        api: { [pagePaths.asks]: polls.answering },
+      });
+      const { page } = view;
+      const reads = (order: string[]) => async () =>
+        (await summaries(page)).join("\n") === order.join("\n");
+      await stepUntil(page, reads([passkey, slot, schoolRun]), "the list");
+      polls.fail();
+      await moveDeviceClock(page, serviceAhead);
+      await page.clock.fastForward(pollMs);
+      await stepUntilShown(
+        page,
+        page.getByText("Not connected. Trying again."),
+      );
+      expect(await summaries(page)).toEqual([passkey, slot, schoolRun]);
+      await moveDeviceClock(page, sleep);
+      await page.clock.fastForward(pollMs);
+      await stepUntil(
+        page,
+        reads([slot, schoolRun]),
+        "the ask whose time passed in the sleep to lapse, and no other",
+      );
+      expect(await underTheTabs(page)).toBe("1 has lapsedShow them");
+      await page.clock.pauseAt(new Date(lapsesAfterSleep + pollMs));
+      await stepUntil(page, reads([schoolRun]), "the second ask to lapse");
+      expect(await underTheTabs(page)).toBe("2 have lapsedShow them");
+    },
+  );
+
+  // Leaving the list for the rules and coming back, with the page visible
+  // throughout, is no reason to stop counting by performance.now().
+  it("takes an ask out of the list when the service's time for it comes, though a slow clock is put right while polls fail and the person goes to the rules and back", async () => {
+    const moment = evening.getTime() + 20 * minute;
+    const serviceAhead = 3 * minute;
+    const pageAt = moment - serviceAhead - 2 * minute;
+    const polls = failingPolls(
+      () =>
+        listOf(
+          ask("a", schoolRun, family("low")),
+          ask("b", passkey, shop("high"), 20 * minute),
+        ),
+      () => pageAt + serviceAhead,
+    );
+    view = await openPage(inject("pageUrl"), phone, {
+      session,
+      clock: { stoppedAt: new Date(pageAt) },
+      api: { [pagePaths.asks]: polls.answering },
+    });
+    const { page } = view;
+    const reads = (order: string[]) => async () =>
+      (await summaries(page)).join("\n") === order.join("\n");
+    await stepUntil(page, reads([passkey, schoolRun]), "the list to show");
+    polls.fail();
+    await moveDeviceClock(page, serviceAhead);
+    await page.getByRole("link", { name: "Rules" }).click();
+    await stepUntilShown(
+      page,
+      page.getByRole("heading", { name: "Your rules", exact: true }),
+    );
+    await page.goBack();
+    await page.clock.pauseAt(new Date(moment - 2 * minute + pollMs + 1000));
+    await stepUntilShown(page, page.getByText("Not connected. Trying again."));
+    expect(await summaries(page)).toEqual([passkey, schoolRun]);
+    await page.clock.pauseAt(new Date(moment + pollMs));
+    await stepUntil(page, reads([schoolRun]), "the ask to lapse");
+  });
+
   it("sits at the foot of All clear when every ask has lapsed, and Show them brings the tabs back", async () => {
     const { page } = await open(
       listOf(ask("a", passkey, shop("high"), -minute)),
@@ -373,9 +707,9 @@ describe("the lapsed line", () => {
     await page.getByRole("button", { name: "Undo" }).waitFor();
     for (const height of [844, 560]) {
       await page.setViewportSize({ width: phone.width, height });
-      const { last, held, note } = await underTheNote(page, "1 has lapsed");
+      const { last, foot, note } = await underTheNote(page, "1 has lapsed");
       expect(last).toBeLessThanOrEqual(note);
-      expect(held).toBeLessThanOrEqual(note);
+      expect(foot).toBeLessThanOrEqual(note);
     }
   });
 

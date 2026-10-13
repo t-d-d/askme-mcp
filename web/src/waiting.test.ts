@@ -23,17 +23,37 @@ describe("how long an ask has waited", () => {
     [24 * 60 * minute, "1 d"],
     [50 * 60 * minute, "2 d"],
   ])("after %i ms is %s", (elapsed, words) => {
-    expect(age(ago(elapsed), now)).toBe(words);
+    expect(age(ago(elapsed), now, 0)).toBe(words);
   });
 
   it("reads as just now when the clocks disagree a little", () => {
-    expect(age(new Date(now + 5000).toISOString(), now)).toBe("Just now");
+    expect(age(new Date(now + 5000).toISOString(), now, 0)).toBe("Just now");
   });
 
   it("says Waiting on the top card, except just now", () => {
-    expect(waiting(ago(4 * minute), now)).toBe("Waiting 4 min");
-    expect(waiting(ago(0), now)).toBe("Just now");
+    expect(waiting(ago(4 * minute), now, 0)).toBe("Waiting 4 min");
+    expect(waiting(ago(0), now, 0)).toBe("Just now");
   });
+
+  // The service gives the time an ask was posted by its own clock, so the
+  // age counts by that clock, even on a browser whose clock is a few minutes
+  // out. Three minutes fast, the browser reads 12:03 when the service reads
+  // 12:00, and three minutes slow, 11:57.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "counts by the service's clock on a clock a few minutes %s",
+    (_, serviceAhead) => {
+      const here = now - serviceAhead;
+      expect(age(ago(0), here, serviceAhead)).toBe("Just now");
+      expect(age(ago(2 * minute), here, serviceAhead)).toBe("2 min");
+      expect(waiting(ago(0), here, serviceAhead)).toBe("Just now");
+      expect(waiting(ago(4 * minute), here, serviceAhead)).toBe(
+        "Waiting 4 min",
+      );
+    },
+  );
 });
 
 describe("the order of the list", () => {
@@ -102,7 +122,7 @@ describe("the order of a sorted list", () => {
         sort: sorted("high"),
       },
     ];
-    expect(inListOrder(asks, now).map((ask) => ask.id)).toEqual([
+    expect(inListOrder(asks, now, 0).map((ask) => ask.id)).toEqual([
       "high-old",
       "high-new",
       "normal",
@@ -131,7 +151,7 @@ describe("the order of a sorted list", () => {
         sort: null,
       },
     ];
-    expect(inListOrder(asks, now).map((ask) => ask.id)).toEqual([
+    expect(inListOrder(asks, now, 0).map((ask) => ask.id)).toEqual([
       "low",
       "unsorted-old",
       "unsorted-new",
@@ -166,7 +186,7 @@ describe("the order of a sorted list", () => {
       },
       { id: "unsorted", postedAt: ago(2 * minute), opened: false, sort: null },
     ];
-    expect(inListOrder(asks, now).map((ask) => ask.id)).toEqual([
+    expect(inListOrder(asks, now, 0).map((ask) => ask.id)).toEqual([
       "high",
       "high-opened",
       "normal",
@@ -180,7 +200,10 @@ describe("the order of a sorted list", () => {
       { id: "new", postedAt: ago(1 * minute), opened: true, sort: null },
       { id: "old", postedAt: ago(9 * minute), opened: true, sort: null },
     ];
-    expect(inListOrder(asks, now).map((ask) => ask.id)).toEqual(["old", "new"]);
+    expect(inListOrder(asks, now, 0).map((ask) => ask.id)).toEqual([
+      "old",
+      "new",
+    ]);
   });
 });
 
@@ -204,8 +227,11 @@ describe("the order of the list as asks near the time they lapse", () => {
     sort,
     ...(lapse === undefined ? {} : { lapsesAt: lapsesIn(lapse) }),
   });
-  const order = (asks: Parameters<typeof inListOrder>[0], at = now) =>
-    inListOrder(asks, at).map(({ id }) => id);
+  const order = (
+    asks: Parameters<typeof inListOrder>[0],
+    at = now,
+    serviceAhead = 0,
+  ) => inListOrder(asks, at, serviceAhead).map(({ id }) => id);
 
   it("puts an ask that lapses within the hour first, whatever its level, soonest first", () => {
     const asks = [
@@ -293,6 +319,42 @@ describe("the order of the list as asks near the time they lapse", () => {
     ]);
   });
 
+  // The service gives each ask's time by its own clock, which the poll's
+  // Date header gives (load.ts). For an ask whose last hour starts at 12:10
+  // by the service's clock, and which lapses at 13:10, a clock three minutes
+  // fast reads 12:13 and 13:13 then, and one three minutes slow reads 12:07
+  // and 13:07.
+  it("moves an ask up, and then behind every other, when the service's clock reaches its times, on a clock a few minutes out", () => {
+    const asks = [
+      ask("high", 50 * minute, sorted("high")),
+      ask("unsorted", 2 * minute, null),
+      ask("low-in-70", 1 * minute, sorted("low"), 70 * minute),
+    ];
+    for (const serviceAhead of [-3 * minute, 3 * minute]) {
+      const here = (at: number) => now + at - serviceAhead;
+      expect(order(asks, here(10 * minute) - 1, serviceAhead)).toEqual([
+        "high",
+        "low-in-70",
+        "unsorted",
+      ]);
+      expect(order(asks, here(10 * minute), serviceAhead)).toEqual([
+        "low-in-70",
+        "high",
+        "unsorted",
+      ]);
+      expect(order(asks, here(70 * minute) - 1, serviceAhead)).toEqual([
+        "low-in-70",
+        "high",
+        "unsorted",
+      ]);
+      expect(order(asks, here(70 * minute), serviceAhead)).toEqual([
+        "high",
+        "unsorted",
+        "low-in-70",
+      ]);
+    }
+  });
+
   it("puts lapsed asks after every other, longest waiting first, with opened ones last", () => {
     const asks = [
       // Lapsed earlier, but has waited less.
@@ -325,12 +387,30 @@ describe("the asks that have lapsed", () => {
       ask("soon", 1),
       ask("never"),
     ];
-    expect([...lapsedAsks(asks, now)].sort()).toEqual(["now", "passed"]);
+    expect([...lapsedAsks(asks, now, 0)].sort()).toEqual(["now", "passed"]);
   });
 
   it("follows the clock", () => {
     const asks = [ask("in-an-hour", 60 * minute)];
-    expect(lapsedAsks(asks, now).size).toBe(0);
-    expect([...lapsedAsks(asks, now + 60 * minute)]).toEqual(["in-an-hour"]);
+    expect(lapsedAsks(asks, now, 0).size).toBe(0);
+    expect([...lapsedAsks(asks, now + 60 * minute, 0)]).toEqual(["in-an-hour"]);
+  });
+
+  // The service gives each ask's time by its own clock, which the poll's
+  // Date header gives (load.ts). For an ask that lapses at 13:00 by the
+  // service's clock, a clock three minutes fast reads 13:03 then, and one
+  // three minutes slow reads 12:57.
+  it("lapses an ask when the service's clock reaches its time, on a clock a few minutes out", () => {
+    const asks = [ask("in-an-hour", 60 * minute)];
+    const fast = -3 * minute;
+    expect(lapsedAsks(asks, now + 63 * minute - 1, fast).size).toBe(0);
+    expect([...lapsedAsks(asks, now + 63 * minute, fast)]).toEqual([
+      "in-an-hour",
+    ]);
+    const slow = 3 * minute;
+    expect(lapsedAsks(asks, now + 57 * minute - 1, slow).size).toBe(0);
+    expect([...lapsedAsks(asks, now + 57 * minute, slow)]).toEqual([
+      "in-an-hour",
+    ]);
   });
 });

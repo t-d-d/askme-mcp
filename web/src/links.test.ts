@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { actionLabel, destinations, sessionLabel, siteOf } from "./links";
+import {
+  actionLabel,
+  destinations,
+  longSite,
+  sessionLabel,
+  siteOf,
+  siteParts,
+} from "./links";
 
 describe("the site a link leads to", () => {
   it.each([
@@ -16,6 +23,34 @@ describe("the site a link leads to", () => {
   it("shows a host in another script as the browser spells it, so it cannot pass for another", () => {
     // A Cyrillic letter that looks like the Latin i.
     expect(siteOf("https://g\u0456thub.com/a")).toBe("xn--gthub-n2e.com");
+  });
+});
+
+describe("a long site name", () => {
+  it.each(["github.com", "claude.ai", "docs.google.com"])(
+    "is not %s, of 15 characters or fewer",
+    (site) => {
+      expect(longSite(site)).toBe(false);
+    },
+  );
+
+  it.each([
+    "admin.google.com",
+    "dash.cloudflare.com",
+    "console.aws.amazon.com",
+  ])("is %s, of more than 15 characters", (site) => {
+    expect(longSite(site)).toBe(true);
+  });
+});
+
+describe("the places a site's name may break", () => {
+  it.each([
+    ["console.aws.amazon.com", ["console.", "aws.", "amazon.", "com"]],
+    ["github.com", ["github.", "com"]],
+    ["localhost", ["localhost"]],
+    ["a.a.com", ["a.", "a.", "com"]],
+  ])("split %s just after each dot", (site, parts) => {
+    expect(siteParts(site)).toEqual(parts);
   });
 });
 
@@ -37,24 +72,24 @@ describe("what the main button says for an action link", () => {
   });
 
   it.each([
-    ["https://github.com/t-d-d/askme-mcp/pulls", "Go to github.com"],
-    ["https://github.com/t-d-d/askme-mcp/pull/new", "Go to github.com"],
-    ["https://github.com/t-d-d/askme-mcp/issues", "Go to github.com"],
-    ["https://github.com/t-d-d/pull/12", "Go to github.com"],
-    ["https://gist.github.com/a/b/pull/1", "Go to gist.github.com"],
-    [
-      "https://github.com.example.net/a/b/pull/1",
-      "Go to github.com.example.net",
-    ],
-    ["https://linear.app/team/issue/ABC-1", "Go to linear.app"],
-  ])("names the site for any other link, such as %s", (link, label) => {
-    expect(actionLabel(link)).toBe(label);
-  });
+    "https://github.com/t-d-d/askme-mcp/pulls",
+    "https://github.com/t-d-d/askme-mcp/pull/new",
+    "https://github.com/t-d-d/askme-mcp/issues",
+    "https://github.com/t-d-d/pull/12",
+    "https://gist.github.com/a/b/pull/1",
+    "https://github.com.example.net/a/b/pull/1",
+    "https://linear.app/team/issue/ABC-1",
+  ])(
+    "is Open for any other link, such as %s, since the second line names the site",
+    (link) => {
+      expect(actionLabel(link)).toBe("Open");
+    },
+  );
 
   it("never uses words from the link itself", () => {
     expect(
       actionLabel("https://example.com/Approve%20now?label=Pull+request"),
-    ).toBe("Go to example.com");
+    ).toBe("Open");
   });
 });
 

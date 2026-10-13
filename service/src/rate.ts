@@ -29,16 +29,17 @@ export const rulesSaveLimit: Readonly<{
   windowMinutes: 1,
 };
 
-// A poll asking again for an ask not yet sorted with the rules in force:
-// one sorting left unsorted, or one still sorted with older rules. Each one
-// is a model call, and a page can poll often, so the retries are limited
-// apart from the polls.
-export const sortRetryLimit: Readonly<{
-  retries: number;
+// Model calls (ADR 21): every call the service makes for an account, the
+// reading of the rules and each try of a sort, counted just before it is
+// sent. The window is one UTC day. A day of normal use is a few hundred
+// calls, so only a scripted account reaches the cap. Tuning it needs no new
+// decision.
+export const modelCallLimit: Readonly<{
+  calls: number;
   windowMinutes: number;
 }> = {
-  retries: 10,
-  windowMinutes: 1,
+  calls: 2000,
+  windowMinutes: 24 * 60,
 };
 
 export interface RateWindow {

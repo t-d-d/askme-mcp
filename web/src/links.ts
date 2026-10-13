@@ -12,6 +12,21 @@ export function siteOf(link: string): string {
   return new URL(link).hostname.replace(/^www\./u, "");
 }
 
+// Whether a site's name is long enough to take smaller type on the top
+// card's main button, so it stays whole on one line beside the Listen and
+// session buttons. Fifteen characters fit at the usual size on a narrow
+// phone.
+export function longSite(site: string): boolean {
+  return site.length > 15;
+}
+
+// A site's name in the parts it may break between, each ending in its dot.
+// A name too long for one line breaks after a dot, so its end stays whole.
+// A part is split only when it alone is longer than the line.
+export function siteParts(site: string): string[] {
+  return site.split(/(?<=\.)/u);
+}
+
 // The shapes askme recognises: a GitHub pull request or issue, by number.
 const shapes = [
   { kind: "pull", label: "Pull request" },
@@ -19,10 +34,10 @@ const shapes = [
 ] as const;
 
 // What the main button says for an action link: what it is, when askme
-// recognises its shape, and otherwise the site it goes to.
+// recognises its shape, and otherwise only "Open", since the button's
+// second line already names the site.
 export function actionLabel(link: string): string {
-  const site = siteOf(link);
-  if (site === "github.com") {
+  if (siteOf(link) === "github.com") {
     const [owner, repo, kind, number] = new URL(link).pathname
       .split("/")
       .slice(1);
@@ -39,7 +54,7 @@ export function actionLabel(link: string): string {
       return shape.label;
     }
   }
-  return `Go to ${site}`;
+  return "Open";
 }
 
 export interface Destination {

@@ -2,6 +2,7 @@
 // listening to it and dismissing it, with Clerk and the page's API faked on
 // loopback (ADR 9).
 import { afterEach, describe, expect, inject, it } from "vitest";
+import { z } from "zod";
 import {
   askChange,
   askChangePaths,
@@ -13,12 +14,19 @@ import {
   allClearGaps,
   Answering,
   answerPoll,
+  datedPolls,
+  failingPolls,
+  moveDeviceClock,
   openPage,
   Status,
+  stepUntilShown,
   underTheNote,
   type OpenPage,
   type PageOptions,
 } from "../test/browser";
+import { pollMs } from "./src/poll";
+
+type Locator = ReturnType<OpenPage["page"]["locator"]>;
 
 const phone = { width: 390, height: 844 };
 const session = "test-session-token";
@@ -28,6 +36,13 @@ const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 const pullRequest = "https://github.com/t-d-d/askme-mcp/pull/12";
 const issue = "https://github.com/t-d-d/askme-mcp/issues/7";
 const ticket = "https://linear.app/askme/issue/ASK-3";
+const googleDoc = "https://docs.google.com/document/d/1AbC/edit";
+const cloudflare = "https://dash.cloudflare.com/a1b2/example.com/dns";
+const aws = "https://console.aws.amazon.com/s3/buckets/shop";
+const longPart = "https://averyveryverylongsubdomainname.example.com/a";
+const longerPart =
+  "https://averyveryveryveryveryveryverylongsubdomainname.example.com/a";
+const azure = "https://productionresultssa0.blob.core.windows.net/results/12";
 const sessionLink = "https://claude.ai/code/session_01AbC";
 
 const ask = (
@@ -72,12 +87,41 @@ const issueOnly = ask("issue", "Close the old issue?", 15 * minute, {
   actionLink: issue,
 });
 const neither = ask("neither", "Read the newsletter draft?", 10 * minute);
+const googleDocAndSession = ask(
+  "document",
+  "Sign off the launch notes?",
+  40 * minute,
+  { actionLink: googleDoc, sessionLink },
+);
+const cloudflareAndSession = ask(
+  "domain",
+  "Renew the shop's domain?",
+  40 * minute,
+  { actionLink: cloudflare, sessionLink },
+);
+
+const awsAndSession = ask("bucket", "Empty the old bucket?", 40 * minute, {
+  actionLink: aws,
+  sessionLink,
+});
+
+const longPartAndSession = ask("part", "Check the old host?", 40 * minute, {
+  actionLink: longPart,
+  sessionLink,
+});
 
 let view: OpenPage | undefined;
 afterEach(async () => {
   await view?.close();
   view = undefined;
 });
+
+// What open takes besides the list: the page's options, the answer to a
+// change of an ask, and the screen.
+type OpenOptions = PageOptions & {
+  change?: unknown;
+  screen?: { width: number; height: number };
+};
 
 // The page with a list, on a phone unless another screen is given, and the
 // API taking every change to an ask. With the clock, time jumps a minute
@@ -86,10 +130,7 @@ afterEach(async () => {
 // so it aims further ahead than vitest.config.ts lets a browser test run.
 async function open(
   list: AsksAnswer,
-  options: PageOptions & {
-    change?: unknown;
-    screen?: { width: number; height: number };
-  } = {},
+  options: OpenOptions = {},
 ): Promise<OpenPage> {
   const { change = new Status(204), screen = phone, ...rest } = options;
   view = await openPage(inject("pageUrl"), screen, {
@@ -163,6 +204,170 @@ async function tabTo(
   throw new Error("Tab never reached the control.");
 }
 
+// The top card on a narrow phone, with Listen and the session beside the
+// main button, which leave the main button at its narrowest.
+async function narrowCard(top: PageAsk) {
+  const { page } = await open(listOf(top), {
+    screen: { width: 360, height: phone.height },
+  });
+  const card = page.getByRole("article");
+  await card.getByRole("button", { name: "Listen" }).waitFor();
+  await card
+    .getByRole("link", { name: /^Reply in the session on claude\.ai/u })
+    .waitFor();
+  return card;
+}
+
+// The one row of a list on a 320px phone, its main button leading to the
+// link. Under #shopping and waiting 50 minutes unless told otherwise, which
+// leave the site's name less room than a whole line.
+async function narrowRow(
+  actionLink: string,
+  {
+    hashtag = "shopping",
+    waited = 50 * minute,
+    opened = false,
+  }: { hashtag?: string; waited?: number; opened?: boolean } = {},
+) {
+  const row = ask("row", "Empty the old bucket?", waited, {
+    actionLink,
+    opened,
+    sort: {
+      hashtags: [hashtag],
+      level: "normal",
+      reason: "The reason for emptying the old bucket",
+    },
+  });
+  const { page } = await open(
+    {
+      ...listOf(ask("first", "Pay the deposit?", waited + 10 * minute), row),
+      hashtags: [
+        { name: "shop", colour: 1 },
+        { name: hashtag, colour: 2 },
+      ],
+    },
+    { screen: { width: 320, height: phone.height } },
+  );
+  return page.getByRole("listitem");
+}
+
+// How many lines an element's text takes, in the page's own font.
+const lineCount = (element: Locator) =>
+  element.evaluate(async (each) => {
+    await document.fonts.ready;
+    const range = document.createRange();
+    range.selectNodeContents(each);
+    const rects = [...range.getClientRects()];
+    return new Set(rects.map(({ top }) => Math.round(top))).size;
+  });
+
+// Where an element's text starts each new line after the first, as the text
+// before the break, in the page's own font.
+const lineEnds = (element: Locator) =>
+  element.evaluate(async (each) => {
+    await document.fonts.ready;
+    const walker = document.createTreeWalker(each, NodeFilter.SHOW_TEXT);
+    const ends: string[] = [];
+    let before = "";
+    let top: number | undefined;
+    const range = document.createRange();
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node.textContent ?? "";
+      for (let at = 0; at < text.length; at += 1) {
+        range.setStart(node, at);
+        range.setEnd(node, at + 1);
+        const here = Math.round(range.getBoundingClientRect().top);
+        if (top !== undefined && here !== top) ends.push(before);
+        top = here;
+        before += text.charAt(at);
+      }
+    }
+    return ends;
+  });
+
+// Whether an element's content fits its width, with nothing past its edge.
+const fitsWidth = (element: Locator) =>
+  element.evaluate((each) => each.scrollWidth <= each.clientWidth);
+
+// The right edge of each line of an element's text, in the page's own font.
+const lineRights = (element: Locator) =>
+  element.evaluate(async (each) => {
+    await document.fonts.ready;
+    const range = document.createRange();
+    range.selectNodeContents(each);
+    const rights = new Map<number, number>();
+    for (const { top, right, width } of range.getClientRects()) {
+      if (width === 0) continue;
+      const line = Math.round(top);
+      rights.set(line, Math.max(rights.get(line) ?? right, right));
+    }
+    return [...rights.values()];
+  });
+
+// Where an element's box starts and ends down the page, and where it starts
+// across it.
+const boxEdges = (element: Locator) =>
+  element.evaluate((each) => {
+    const { top, bottom, left } = each.getBoundingClientRect();
+    return { top, bottom, left };
+  });
+
+// Where a row's content starts and ends across the page, inside its padding.
+const contentEdges = (row: Locator) =>
+  row.getByRole("link").evaluate((link) => {
+    const { left, right } = link.getBoundingClientRect();
+    const style = getComputedStyle(link);
+    return {
+      left: left + parseFloat(style.paddingLeft),
+      right: right - parseFloat(style.paddingRight),
+    };
+  });
+
+// A row's meta line when its parts do not all fit on one line: the pill,
+// the age and any "Opened" each stay whole, and the site's name moves down
+// below the pill, with each of its lines ending at the row's right edge,
+// inside the row (docs/design.md).
+async function expectSiteMovedDown(
+  row: Locator,
+  { pill, kept, site }: { pill: string; kept: string[]; site: string },
+) {
+  const pillText = row.getByText(pill, { exact: true });
+  for (const part of [
+    pillText,
+    ...kept.map((each) => row.getByText(each, { exact: true })),
+  ]) {
+    expect(await lineCount(part)).toBe(1);
+  }
+  const name = row.getByText(site, { exact: true });
+  expect((await boxEdges(name)).top).toBeGreaterThanOrEqual(
+    (await boxEdges(pillText)).bottom,
+  );
+  const { right: edge } = await contentEdges(row);
+  for (const right of await lineRights(name)) {
+    expect(right).toBeCloseTo(edge, 0);
+  }
+  expect(await fitsWidth(row)).toBe(true);
+}
+
+// A site's name breaks onto another line, and only just after a dot
+// (docs/design.md).
+async function expectBreaksOnlyAfterDots(name: Locator) {
+  const ends = await lineEnds(name);
+  expect(ends.length).toBeGreaterThan(0);
+  for (const end of ends) expect(end).toMatch(/\.$/u);
+}
+
+// The name of a link whose first part is too long for a line on its own,
+// longPart unless told otherwise, stays inside its element, and is split
+// only inside that part (docs/design.md).
+async function expectOnlyLongPartSplit(name: Locator, link = longPart) {
+  const [part = ""] = new URL(link).hostname.split(".");
+  expect(await fitsWidth(name)).toBe(true);
+  const split = (await lineEnds(name)).filter((end) => !end.endsWith("."));
+  expect(split.length).toBeGreaterThan(0);
+  for (const end of split) expect(part.startsWith(end)).toBe(true);
+}
+
 const cardIsOpen = (opened: OpenPage) =>
   opened.page.evaluate(() => window.location.hash.startsWith("#ask/"));
 
@@ -200,7 +405,7 @@ describe("the top card's buttons", () => {
 
   it.each([
     [issueOnly, "Issue", "github.com"],
-    [ticketOnly, "Go to linear.app", "linear.app"],
+    [ticketOnly, "Open", "linear.app"],
   ])("say what the link is from its shape alone", async (only, label, site) => {
     const { page } = await open(listOf(only));
     const main = page
@@ -209,27 +414,64 @@ describe("the top card's buttons", () => {
     expect((await main.innerText()).split("\n")).toEqual([label, site]);
   });
 
-  // Listen and the session beside it leave the main button at its narrowest.
-  it("keep a pull request's label on one line on a narrow phone, beside both icon buttons", async () => {
-    const { page } = await open(listOf(both), {
-      screen: { width: 360, height: phone.height },
-    });
-    const card = page.getByRole("article");
-    await card.getByRole("button", { name: "Listen" }).waitFor();
-    await card
-      .getByRole("link", { name: /^Reply in the session on claude\.ai/u })
-      .waitFor();
-    const lines = await card
-      .locator(`a[href="${pullRequest}"] span`)
-      .first()
-      .evaluate(async (label) => {
-        await document.fonts.ready;
-        const range = document.createRange();
-        range.selectNodeContents(label);
-        const rects = [...range.getClientRects()];
-        return new Set(rects.map(({ top }) => Math.round(top))).size;
-      });
-    expect(lines).toBe(1);
+  it.each([
+    ["a pull request's", both, pullRequest],
+    ["any other link's", googleDocAndSession, googleDoc],
+  ])(
+    "keep %s label on one line on a narrow phone, beside both icon buttons",
+    async (_, top, link) => {
+      const card = await narrowCard(top);
+      const label = card.locator(`a[href="${link}"] span`).first();
+      expect(await lineCount(label)).toBe(1);
+    },
+  );
+
+  // A site's name of more than 15 characters is set smaller, so a name as
+  // long as dash.cloudflare.com fits whole on one line (docs/design.md).
+  it.each([
+    {
+      site: "docs.google.com",
+      top: googleDocAndSession,
+      link: googleDoc,
+      size: "13px",
+    },
+    {
+      site: "dash.cloudflare.com",
+      top: cloudflareAndSession,
+      link: cloudflare,
+      size: "11px",
+    },
+  ])(
+    "keep $site whole on one line on a narrow phone, beside both icon buttons, at $size",
+    async ({ site, top, link, size }) => {
+      const card = await narrowCard(top);
+      const name = card.locator(`a[href="${link}"] span`).nth(1);
+      expect(await name.innerText()).toBe(site);
+      expect(await lineCount(name)).toBe(1);
+      expect(
+        await name.evaluate((each) => getComputedStyle(each).fontSize),
+      ).toBe(size);
+    },
+  );
+
+  // A name too long for one line even at 11px breaks just after a dot, not
+  // inside a word (docs/design.md).
+  it("break console.aws.amazon.com only after a dot on a narrow phone, beside both icon buttons", async () => {
+    const card = await narrowCard(awsAndSession);
+    const name = card.locator(`a[href="${aws}"] span`).nth(1);
+    expect(await name.innerText()).toBe("console.aws.amazon.com");
+    expect(await name.evaluate((each) => getComputedStyle(each).fontSize)).toBe(
+      "11px",
+    );
+    await expectBreaksOnlyAfterDots(name);
+  });
+
+  // A part too long for a line on its own is split, so the name stays inside
+  // the button, and the rest still breaks after a dot (docs/design.md).
+  it("split only a part too long for a line on its own, and keep the name inside the button", async () => {
+    const card = await narrowCard(longPartAndSession);
+    const name = card.locator(`a[href="${longPart}"] span`).nth(1);
+    await expectOnlyLongPartSplit(name);
   });
 
   it("say in each link's name that it opens a new tab, and show nothing new", async () => {
@@ -329,6 +571,100 @@ describe("the rows", () => {
     expect(sentTo(opened, askChangePaths.opened)).toEqual([]);
   });
 
+  // A site's name that fits beside the pill and the age stays on their line
+  // (docs/design.md).
+  it("keep github.com on the line of #shopping and the age on a 320px phone", async () => {
+    const row = await narrowRow(issue);
+    const name = row.getByText("github.com", { exact: true });
+    expect(await lineCount(name)).toBe(1);
+    expect((await boxEdges(name)).top).toBeLessThan(
+      (await boxEdges(row.getByText("#shopping", { exact: true }))).bottom,
+    );
+    expect(await fitsWidth(row)).toBe(true);
+  });
+
+  // When the site's name does not fit beside them, it gives way, and the
+  // pill and the age stay whole (docs/design.md).
+  it("move console.aws.amazon.com to a line of its own at the right on a 320px phone, and keep #shopping and the age whole", async () => {
+    const row = await narrowRow(aws);
+    await expectSiteMovedDown(row, {
+      pill: "#shopping",
+      kept: ["50 min"],
+      site: "console.aws.amazon.com",
+    });
+  });
+
+  // The longest hashtag a rule may name, with hyphens to break at and with
+  // none, on an opened row that has waited 23 hours (docs/design.md).
+  it.each([
+    {
+      hashtag: "customer-onboarding-flow",
+      link: aws,
+      site: "console.aws.amazon.com",
+    },
+    {
+      hashtag: "internationalshippingops",
+      link: aws,
+      site: "console.aws.amazon.com",
+    },
+    { hashtag: "internationalshippingops", link: issue, site: "github.com" },
+  ])(
+    "keep #$hashtag, 23 h and Opened whole on a 320px phone, and move $site below them, at the right",
+    async ({ hashtag, link, site }) => {
+      const row = await narrowRow(link, {
+        hashtag,
+        waited: 23 * 60 * minute,
+        opened: true,
+      });
+      await expectSiteMovedDown(row, {
+        pill: `#${hashtag}`,
+        kept: ["23 h", "Opened"],
+        site,
+      });
+    },
+  );
+
+  // Beside a long hashtag, "Opened" moves down too, and starts the second
+  // line at the left (docs/design.md).
+  it("move Opened down to start the second line at the left, beside #customer-onboarding-flow on a 320px phone", async () => {
+    const row = await narrowRow(aws, {
+      hashtag: "customer-onboarding-flow",
+      waited: 23 * 60 * minute,
+      opened: true,
+    });
+    const pill = row.getByText("#customer-onboarding-flow", { exact: true });
+    const opened = row.getByText("Opened", { exact: true });
+    expect((await boxEdges(opened)).top).toBeGreaterThanOrEqual(
+      (await boxEdges(pill)).bottom,
+    );
+    expect((await boxEdges(opened)).left).toBeCloseTo(
+      (await contentEdges(row)).left,
+      0,
+    );
+  });
+
+  // A site's name too long for a whole line breaks just after a dot, and
+  // each of its lines ends at the right (docs/design.md).
+  it("break a name too long for a whole line only after a dot, on a line of its own at the right", async () => {
+    const row = await narrowRow(longPart);
+    const site = new URL(longPart).hostname;
+    await expectSiteMovedDown(row, {
+      pill: "#shopping",
+      kept: ["50 min"],
+      site,
+    });
+    await expectBreaksOnlyAfterDots(row.getByText(site, { exact: true }));
+  });
+
+  // A part too long for a whole line on its own is split, so the name stays
+  // inside the row (docs/design.md).
+  it("split only a part too long for a whole line on its own, and keep the name inside the row", async () => {
+    const row = await narrowRow(longerPart);
+    const name = row.getByText(new URL(longerPart).hostname, { exact: true });
+    await expectOnlyLongPartSplit(name, longerPart);
+    expect(await fitsWidth(row)).toBe(true);
+  });
+
   it("open the card of a row with neither link", async () => {
     const { page } = await open(listOf(both, neither));
     const link = page.getByRole("listitem").getByRole("link");
@@ -417,7 +753,7 @@ describe("following a link", () => {
 });
 
 describe("the open card", () => {
-  const openCard = async (asks: PageAsk[], options: PageOptions = {}) => {
+  const openCard = async (asks: PageAsk[], options: OpenOptions = {}) => {
     const opened = await open(listOf(...asks), options);
     await opened.page
       .getByRole("article")
@@ -472,6 +808,45 @@ describe("the open card", () => {
     expect(await page.locator("body").innerText()).not.toContain("new tab");
   });
 
+  // A site's name too long for its button's line breaks just after a dot,
+  // not inside a word, on both buttons (docs/design.md).
+  it("breaks productionresultssa0.blob.core.windows.net only after a dot on both buttons on a 320px phone", async () => {
+    const { page } = await openCard(
+      [
+        ask("results", "Publish the test results?", 40 * minute, {
+          actionLink: azure,
+          sessionLink: `${azure}/session`,
+        }),
+      ],
+      { screen: { width: 320, height: phone.height } },
+    );
+    for (const name of [/^Open/u, /^Reply in the session/u]) {
+      const button = page.getByRole("link", { name });
+      const site = button.getByText(new URL(azure).hostname, { exact: true });
+      await expectBreaksOnlyAfterDots(site);
+      expect(await fitsWidth(button)).toBe(true);
+    }
+  });
+
+  // A part too long for the line on its own is split, so the name stays
+  // inside the button (docs/design.md).
+  it("splits only a part too long for the line on its own, and keeps the name inside the button", async () => {
+    const { page } = await openCard(
+      [
+        ask("part", "Check the old host?", 40 * minute, {
+          actionLink: longerPart,
+        }),
+      ],
+      { screen: { width: 320, height: phone.height } },
+    );
+    const button = page.getByRole("link", { name: /^Open/u });
+    const site = button.getByText(new URL(longerPart).hostname, {
+      exact: true,
+    });
+    await expectOnlyLongPartSplit(site, longerPart);
+    expect(await fitsWidth(button)).toBe(true);
+  });
+
   it("marks the ask as opened when a link at its foot is followed", async () => {
     const opened = await openCard([both]);
     await opened.page
@@ -520,6 +895,90 @@ describe("the open card", () => {
     });
     await view.page.getByRole("article").waitFor();
   });
+});
+
+describe("how long an ask has waited", () => {
+  // Monday 12 October 2026, 6pm UTC, by the service's clock.
+  const serviceNow = Date.parse("2026-10-12T18:00:00Z");
+  const posted = (id: string, summary: string, waited: number) =>
+    ask(id, summary, 0, {
+      postedAt: new Date(serviceNow - waited).toISOString(),
+    });
+  const oldest = "Choose the colour for the new labels?";
+
+  // The service gives the time an ask was posted by its own clock, so the
+  // top card, the rows and the open card count its age by that clock, even
+  // on a page whose clock is a few minutes out. At 18:00 UTC by the
+  // service's clock, a clock three minutes fast reads 18:03, and one three
+  // minutes slow reads 17:57. The page's clock stands still, and each poll's
+  // answer gives the service's time in its Date header.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "counts by the service's clock, on a clock a few minutes %s",
+    async (_, serviceAhead) => {
+      view = await openPage(inject("pageUrl"), phone, {
+        session,
+        clock: { stoppedAt: new Date(serviceNow - serviceAhead) },
+        api: {
+          [pagePaths.asks]: datedPolls(
+            () =>
+              listOf(
+                posted("a", oldest, 4 * minute),
+                posted("b", "Keep the old supplier on?", 2 * minute),
+                posted("c", "Reply to the courier?", 0),
+              ),
+            () => serviceNow,
+          ),
+        },
+      });
+      const { page } = view;
+      const card = page.getByRole("article");
+      await stepUntilShown(page, card);
+      expect(await card.innerText()).toContain("Waiting 4 min");
+      const rows = await page.getByRole("listitem").allInnerTexts();
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toContain("2 min");
+      expect(rows[1]).toContain("Just now");
+      await card.getByRole("link", { name: oldest }).click();
+      await stepUntilShown(page, page.getByRole("link", { name: "All asks" }));
+      expect(await page.locator("body").innerText()).toContain("Waiting 4 min");
+    },
+  );
+
+  // An ask's age is counted to the time the list was last read, by the
+  // service's clock as that poll found it. So the device putting its clock
+  // right while polls fail leaves it as it was.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "stays as the last poll that reached askme found it, though a clock a few minutes %s is put right while polls fail",
+    async (_, serviceAhead) => {
+      const polls = failingPolls(
+        () => listOf(posted("a", oldest, 4 * minute)),
+        () => serviceNow,
+      );
+      view = await openPage(inject("pageUrl"), phone, {
+        session,
+        clock: { stoppedAt: new Date(serviceNow - serviceAhead) },
+        api: { [pagePaths.asks]: polls.answering },
+      });
+      const { page } = view;
+      const card = page.getByRole("article");
+      await stepUntilShown(page, card);
+      expect(await card.innerText()).toContain("Waiting 4 min");
+      polls.fail();
+      await moveDeviceClock(page, serviceAhead);
+      await page.clock.pauseAt(new Date(serviceNow + pollMs + 1000));
+      await stepUntilShown(
+        page,
+        page.getByText("Not connected. Trying again."),
+      );
+      expect(await card.innerText()).toContain("Waiting 4 min");
+    },
+  );
 });
 
 describe("Listen", () => {
@@ -822,6 +1281,90 @@ describe("dismissing", () => {
     expect(await page.getByRole("article").innerText()).toContain(both.summary);
   });
 
+  // Dismisses the top card and leaves the list for the rules while the note
+  // with Undo shows, which sends the dismissal at once.
+  async function dismissAndLeave(opened: OpenPage) {
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await page.getByRole("link", { name: "Rules" }).click();
+    await page
+      .getByRole("heading", { name: "Your rules", exact: true })
+      .waitFor();
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both"]);
+  }
+  const noRules = { text: "", hashtags: [], readFailed: false };
+
+  it("brings the card back with a note when a dismissal sent as the list was left fails, once the list shows again, for the note's full time", async () => {
+    const opened = await open(listOf(both, neither), {
+      clock: true,
+      change: unavailable,
+      api: { [pagePaths.rules]: noRules },
+    });
+    const { page } = opened;
+    await dismissAndLeave(opened);
+    await page.clock.runFor(undoMs * 2);
+    await page.goBack();
+    await page.getByRole("article").waitFor();
+    const note = page.getByRole("status");
+    await expect.poll(() => note.innerText()).toBe(failed);
+    expect(await page.getByRole("article").innerText()).toContain(both.summary);
+    await page.clock.runFor(undoMs - 500);
+    expect(await note.innerText()).toBe(failed);
+    await page.clock.runFor(1000);
+    await expect.poll(() => note.count()).toBe(0);
+  });
+
+  it("brings the card back with a note when a dismissal sent as the list was left fails after the list shows again", async () => {
+    // The failure, held back until the test lets it go.
+    let fail: () => void = () => undefined;
+    const failing = new Promise<void>((resolve) => {
+      fail = resolve;
+    });
+    const opened = await open(listOf(both, neither), {
+      clock: true,
+      change: new Answering(async () => {
+        await failing;
+        return unavailable;
+      }),
+      api: { [pagePaths.rules]: noRules },
+    });
+    const { page } = opened;
+    await dismissAndLeave(opened);
+    await page.goBack();
+    await page.getByRole("article").waitFor();
+    fail();
+    await expect.poll(() => page.getByRole("status").innerText()).toBe(failed);
+    expect(await page.getByRole("article").innerText()).toContain(both.summary);
+  });
+
+  it("stops the note that a dismissal failed when the list is left, and gives it its full time when the list shows again", async () => {
+    const opened = await open(listOf(both, neither), {
+      clock: true,
+      change: unavailable,
+      api: { [pagePaths.rules]: noRules },
+    });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.clock.runFor(undoMs + 500);
+    const note = page.getByRole("status");
+    await expect.poll(() => note.innerText()).toBe(failed);
+    await page.getByRole("link", { name: "Rules" }).click();
+    await page
+      .getByRole("heading", { name: "Your rules", exact: true })
+      .waitFor();
+    await page.clock.runFor(undoMs * 2);
+    await page.goBack();
+    await page.getByRole("article").waitFor();
+    await expect.poll(() => note.innerText()).toBe(failed);
+    await page.clock.runFor(undoMs - 500);
+    expect(await note.innerText()).toBe(failed);
+    await page.clock.runFor(1000);
+    await expect.poll(() => note.count()).toBe(0);
+  });
+
   it("still lets a waiting dismissal be undone when an earlier one fails, once the note that says so goes", async () => {
     const opened = await open(listOf(both, sessionOnly, neither), {
       clock: true,
@@ -927,6 +1470,107 @@ describe("dismissing", () => {
       .toEqual(["both"]);
     expect(await page.getByText(both.summary).count()).toBe(0);
     expect(await page.getByRole("status").count()).toBe(0);
+  });
+
+  it("sends a waiting dismissal once when the list is left for Connect your agents", async () => {
+    const opened = await open(listOf(both, neither), {
+      clock: true,
+      screen: { width: 1280, height: 800 },
+    });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await page.getByRole("link", { name: "Connect agents" }).click();
+    await page
+      .getByRole("heading", { name: "Connect your agents", exact: true })
+      .waitFor();
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both"]);
+    await page.clock.runFor(undoMs * 2);
+    await page.goBack();
+    await page.getByRole("article").waitFor();
+    await page.clock.runFor(undoMs * 2);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual(["both"]);
+    expect(await page.getByRole("status").count()).toBe(0);
+  });
+
+  it("sends a waiting dismissal once when the person signs out", async () => {
+    const opened = await open(listOf(both, neither), { clock: true });
+    const { page } = opened;
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await opened.signInAs(null);
+    await page.getByRole("button", { name: "Sign in" }).waitFor();
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both"]);
+    await page.clock.runFor(undoMs * 2);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual(["both"]);
+  });
+
+  it("keeps alive only the dismissal sent as the page closes", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither), {
+      clock: true,
+    });
+    const { page } = opened;
+    // Whether each dismissal the page sends asks to be kept alive.
+    await page.evaluate((path) => {
+      const kept: boolean[] = [];
+      Reflect.set(window, "keptAlive", kept);
+      const fetching = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        if (input === path) kept.push(init?.keepalive === true);
+        return fetching(input, init);
+      };
+    }, askChangePaths.dismissed);
+    const keptAlive = () =>
+      page
+        .evaluate((): unknown => Reflect.get(window, "keptAlive"))
+        .then((kept) => z.array(z.boolean()).parse(kept));
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await swipe(opened, page.getByRole("article"));
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent("pagehide")),
+    );
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both", "session"]);
+    expect(await keptAlive()).toEqual([false, true]);
+  });
+
+  it("sends a held dismissal at once when the list is left over the note that an earlier one failed, and that note gets its full time on the list, with no Undo after", async () => {
+    const opened = await open(listOf(both, sessionOnly, neither), {
+      clock: true,
+      change: failingFor("both"),
+      api: { [pagePaths.rules]: noRules },
+    });
+    const { page } = opened;
+    await failWhileAnotherWaits(opened);
+    await page.getByRole("link", { name: "Rules" }).click();
+    await page
+      .getByRole("heading", { name: "Your rules", exact: true })
+      .waitFor();
+    await expect
+      .poll(() => sentTo(opened, askChangePaths.dismissed))
+      .toEqual(["both", "session"]);
+    await page.clock.runFor(undoMs * 2);
+    await page.goBack();
+    await page.getByRole("article").waitFor();
+    const note = page.getByRole("status");
+    await expect.poll(() => note.innerText()).toBe(failed);
+    await page.clock.runFor(undoMs - 500);
+    expect(await note.innerText()).toBe(failed);
+    await page.clock.runFor(1000);
+    await expect.poll(() => note.count()).toBe(0);
+    await page.clock.runFor(undoMs * 2);
+    expect(sentTo(opened, askChangePaths.dismissed)).toEqual([
+      "both",
+      "session",
+    ]);
+    expect(await page.getByText(sessionOnly.summary).count()).toBe(0);
   });
 });
 

@@ -2,13 +2,13 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
-import { storedItems } from "../test/dynamodb";
+import { putItem, storedItems } from "../test/dynamodb";
 import { callerOf, type AccountId } from "./src/identity";
 import {
   askLimit,
+  modelCallLimit,
   pollLimit,
   rulesSaveLimit,
-  sortRetryLimit,
 } from "./src/rate";
 import { exampleRules, type HashtagWindow } from "./src/rules";
 import { keys } from "./src/store/keys";
@@ -740,6 +740,133 @@ describe("the poll's rate counter", () => {
   });
 });
 
+describe("the daily count of model calls", () => {
+  const morning = new Date("2026-10-11T09:30:10.000Z");
+  const day = "2026-10-11T00:00";
+
+  // Sets the day's count straight in the table, as thousands of calls would.
+  const countAt = (owner: AccountId, count: number) =>
+    putItem(endpoint, tableName, {
+      ...keys.modelCount(owner, day),
+      count,
+      expiresAt: Date.parse("2026-10-12T01:00:00.000Z") / 1000,
+    });
+
+  it(`counts ${String(modelCallLimit.calls)} calls in a UTC day, refuses the next, and counts afresh the next day`, async () => {
+    const owner = account();
+    await countAt(owner, modelCallLimit.calls - 1);
+    expect(await store.countModelCall(owner, morning)).toEqual({
+      counted: true,
+    });
+    expect(await store.countModelCall(owner, morning)).toEqual({
+      counted: false,
+      secondsLeft: 52_190,
+    });
+    const tomorrow = new Date("2026-10-12T00:00:00.000Z");
+    expect(await store.countModelCall(owner, tomorrow)).toEqual({
+      counted: true,
+    });
+  });
+
+  it("keeps one item a day under its own prefix, which expires an hour after its day ends, and leaves the version alone", async () => {
+    const owner = account();
+    await store.countModelCall(owner, morning);
+    await store.countModelCall(owner, new Date("2026-10-11T23:59:00.000Z"));
+    expect(await storedItems(endpoint, tableName, owner)).toEqual([
+      {
+        ...keys.modelCount(owner, day),
+        count: 2,
+        expiresAt: Date.parse("2026-10-12T01:00:00.000Z") / 1000,
+      },
+    ]);
+    expect(await versionOf(owner)).toBe(0);
+  });
+
+  it("says the cap is spent once every call is made, and counts nothing to say so", async () => {
+    const owner = account();
+    expect(await store.modelCapSpent(owner, morning)).toBe(false);
+    await countAt(owner, modelCallLimit.calls - 1);
+    expect(await store.modelCapSpent(owner, morning)).toBe(false);
+    await countAt(owner, modelCallLimit.calls);
+    expect(await store.modelCapSpent(owner, morning)).toBe(true);
+    expect(
+      await store.modelCapSpent(owner, new Date("2026-10-12T00:00:00.000Z")),
+    ).toBe(false);
+    expect(await countsOf(owner)).toEqual([
+      expect.objectContaining({ count: modelCallLimit.calls }),
+    ]);
+  });
+});
+
+describe("the time the cap on model calls resets", () => {
+  const resets = new Date("2026-10-12T00:00:00.000Z");
+  const metaOf = async (owner: AccountId) =>
+    (await storedItems(endpoint, tableName, owner)).find(
+      (item) => item.sk === keys.meta(owner).sk,
+    );
+
+  it("is recorded on META, and raises the version, once for each reset", async () => {
+    const owner = account();
+    expect(await store.recordModelCapReset(owner, resets)).toBe(true);
+    expect(await metaOf(owner)).toEqual(
+      expect.objectContaining({
+        version: 1,
+        modelCapResetsAt: resets.toISOString(),
+      }),
+    );
+    expect(await store.recordModelCapReset(owner, resets)).toBe(false);
+    expect(await versionOf(owner)).toBe(1);
+    const next = new Date("2026-10-13T00:00:00.000Z");
+    expect(await store.recordModelCapReset(owner, next)).toBe(true);
+    expect(await metaOf(owner)).toEqual(
+      expect.objectContaining({
+        version: 2,
+        modelCapResetsAt: next.toISOString(),
+      }),
+    );
+  });
+
+  it("raises the version once when two refusals record it together", async () => {
+    const owner = account();
+    const recorded = await Promise.all([
+      store.recordModelCapReset(owner, resets),
+      store.recordModelCapReset(owner, resets),
+    ]);
+    expect(recorded.filter(Boolean)).toHaveLength(1);
+    expect(await versionOf(owner)).toBe(1);
+  });
+
+  it("never moves back to an earlier reset", async () => {
+    const owner = account();
+    const next = new Date("2026-10-13T00:00:00.000Z");
+    await store.recordModelCapReset(owner, next);
+    expect(await store.recordModelCapReset(owner, resets)).toBe(false);
+    expect(await metaOf(owner)).toEqual(
+      expect.objectContaining({
+        version: 1,
+        modelCapResetsAt: next.toISOString(),
+      }),
+    );
+  });
+
+  it("comes with the open asks, and keeps what else META holds", async () => {
+    const owner = account();
+    await postNew(owner, ask, new Date());
+    await store.recordModelCapReset(owner, resets);
+    const listed = await store.openAsks(owner, new Date());
+    expect(listed).toEqual(
+      expect.objectContaining({
+        version: 2,
+        everAsked: true,
+        modelCapResetsAt: resets.toISOString(),
+      }),
+    );
+    expect(await store.asksSince(owner, 1, new Date())).toEqual(
+      expect.objectContaining({ modelCapResetsAt: resets.toISOString() }),
+    );
+  });
+});
+
 describe("the asks since a version", () => {
   it("says nothing changed when the version is the one given", async () => {
     const owner = account();
@@ -973,6 +1100,90 @@ describe("the rules", () => {
   });
 });
 
+describe("a save of unchanged rules", () => {
+  const before = new Date("2026-10-11T09:30:00.000Z");
+  const now = new Date("2026-10-11T10:00:00.000Z");
+
+  it("records when it was made and the time zone, and leaves the rules version alone", async () => {
+    const owner = account();
+    const saved = await store.saveRules(
+      owner,
+      { text: "#work first.", timeZone: "Asia/Tokyo", hashtags: ["work"] },
+      before,
+    );
+    const resaved = await store.resaveRules(
+      owner,
+      { text: "#work first.", timeZone: "Europe/London" },
+      now,
+    );
+    expect(resaved).toEqual({
+      ...saved,
+      savedAt: now.toISOString(),
+      timeZone: "Europe/London",
+    });
+    expect(await store.rules(owner)).toEqual(resaved);
+    // The account's version still rises, so the page learns of the save.
+    expect(await versionOf(owner)).toBe(2);
+  });
+
+  it("keeps the time zone saved before when it gives none", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      { text: "#work first.", timeZone: "Asia/Tokyo", hashtags: ["work"] },
+      before,
+    );
+    const resaved = await store.resaveRules(
+      owner,
+      { text: "#work first." },
+      now,
+    );
+    expect(resaved?.timeZone).toBe("Asia/Tokyo");
+  });
+
+  it("records a save of the example rules for an account that never saved any, and a later save still lands", async () => {
+    const owner = account();
+    const resaved = await store.resaveRules(
+      owner,
+      { text: exampleRules.text },
+      now,
+    );
+    expect(resaved).toMatchObject({
+      text: exampleRules.text,
+      version: 0,
+      savedAt: now.toISOString(),
+    });
+    expect(await store.rules(owner)).toEqual(resaved);
+    const saved = await store.saveRules(
+      owner,
+      { text: "#home first.", hashtags: ["home"] },
+      now,
+    );
+    expect(saved.version).toBe(1);
+    expect(saved.seen).toEqual(["work", "shop", "family", "home"]);
+  });
+
+  it("saves nothing when the rules no longer hold that text, or their last reading failed", async () => {
+    const owner = account();
+    await store.saveRules(
+      owner,
+      { text: "#work first.", hashtags: ["work"] },
+      before,
+    );
+    const items = await storedItems(endpoint, tableName, owner);
+    expect(
+      await store.resaveRules(owner, { text: "#home first." }, now),
+    ).toBeUndefined();
+    await store.saveRules(owner, { text: "#work first." }, before);
+    const failed = await storedItems(endpoint, tableName, owner);
+    expect(failed).not.toEqual(items);
+    expect(
+      await store.resaveRules(owner, { text: "#work first." }, now),
+    ).toBeUndefined();
+    expect(await storedItems(endpoint, tableName, owner)).toEqual(failed);
+  });
+});
+
 describe("a sort result", () => {
   const now = new Date("2026-10-11T09:30:00.000Z");
   const sort = {
@@ -1067,12 +1278,6 @@ describe.each([
     rulesSaveLimit.saves,
     "countRulesSave",
     "rulesSaveCount",
-  ],
-  [
-    "retrying a sort",
-    sortRetryLimit.retries,
-    "countSortRetry",
-    "sortRetryCount",
   ],
 ] as const)("the rate counter for %s", (_, limit, method, key) => {
   const minute = new Date("2026-10-11T09:30:10.000Z");

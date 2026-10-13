@@ -8,8 +8,8 @@
 // visibility is replaced before it loads, and a test hides and shows it.
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { chromium, type Page } from "playwright";
-import { inject } from "vitest";
+import { chromium, type Locator, type Page } from "playwright";
+import { expect, inject } from "vitest";
 import { z } from "zod";
 import { sinceParam, type AsksAnswer } from "../shared/page-api";
 import {
@@ -59,7 +59,9 @@ export interface PageOptions {
   api?: Record<string, unknown>;
   // Give the page Playwright's clock, which runs as usual until a test
   // moves it on with page.clock. Given a time, the clock starts there.
-  clock?: boolean | Date;
+  // "stopped", it stands still from before the page loads, and moves only
+  // when a test moves it on. Stopped at a time, it stands still there.
+  clock?: boolean | Date | "stopped" | { stoppedAt: Date };
   // The browser's time zone, such as Europe/London. Without one it is the
   // machine's.
   timeZone?: string;
@@ -74,11 +76,13 @@ export interface PageOptions {
 }
 
 // An answer that is a status, such as a failure, with a JSON body when one
-// is given, such as a refusal.
+// is given, such as a refusal, and any headers given, such as the Date the
+// service's clock gave it.
 export class Status {
   constructor(
     readonly code: number,
     readonly body?: unknown,
+    readonly headers?: Record<string, string>,
   ) {}
 }
 
@@ -104,12 +108,79 @@ export async function builtFiles(): Promise<string[]> {
     .map((entry) => join(entry.parentPath, entry.name));
 }
 
+// Moves a page's stopped clock on a millisecond at a time until a check
+// holds, so the page's own timers run as they fall due, such as the one
+// React Query waits on before it draws an answer. The page's requests take
+// real time, which the stopped clock does not count. Steps are at least
+// 10ms of real time apart, so in the wait's 10 seconds the clock moves on a
+// second at most. An error thrown by one of the page's timers as the clock
+// moves fails the test.
+export async function stepUntil(
+  page: Page,
+  holds: () => Promise<boolean>,
+  what: string,
+): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (!(await holds())) {
+    expect(Date.now(), `${what} within 10 seconds`).toBeLessThan(deadline);
+    await page.clock.runFor(1);
+    await new Promise((waited) => setTimeout(waited, 10));
+  }
+}
+
+// Steps a page's stopped clock, as above, until a part of the page shows.
+export const stepUntilShown = (page: Page, part: Locator): Promise<void> =>
+  stepUntil(page, async () => (await part.count()) > 0, "the part to show");
+
 // Answers a poll for the list as the service does: with nothing new when it
 // carries the list's version, and with the whole list otherwise.
 export function answerPoll(url: URL, list: AsksAnswer): unknown {
   return url.searchParams.get(sinceParam) === String(list.version)
     ? { version: list.version, unchanged: true }
     : list;
+}
+
+// Answers each poll for the list as answerPoll does, with a Date header that
+// gives the service's time as it is when the poll arrives. Both the list and
+// the service's time are read afresh for each poll, so a test can change
+// them between polls.
+export const datedPolls = (
+  list: () => AsksAnswer,
+  serviceNow: () => number,
+): Answering =>
+  new Answering(
+    (url) =>
+      new Status(200, answerPoll(url, list()), {
+        date: new Date(serviceNow()).toUTCString(),
+      }),
+  );
+
+// Answers each poll for the list as datedPolls does until the test calls
+// fail, and with a failure from then on, as when the page loses its
+// connection or askme is down.
+export function failingPolls(
+  list: () => AsksAnswer,
+  serviceNow: () => number,
+): { answering: Answering; fail: () => void } {
+  const dated = datedPolls(list, serviceNow);
+  let failing = false;
+  return {
+    answering: new Answering((url, authorization, sent) =>
+      failing ? new Status(503) : dated.answer(url, authorization, sent),
+    ),
+    fail: () => {
+      failing = true;
+    },
+  };
+}
+
+// Moves the device's clock on a page with Playwright's clock, as a device
+// does when it puts its clock right. That moves Date.now() and leaves
+// performance.now() as it was. On most systems a device that sleeps moves
+// them in the same way.
+export async function moveDeviceClock(page: Page, by: number): Promise<void> {
+  const now = await page.evaluate(() => Date.now());
+  await page.clock.setSystemTime(now + by);
 }
 
 // A colour, or a custom property that holds one, as the page's browser
@@ -130,8 +201,9 @@ export async function computedColour(
 }
 
 // The space between whatever sits above All clear, the header or the tabs,
-// and its headline, and between its last line and the foot: the held line
-// with the given words, or else the foot of the screen. A missing part
+// and its headline, and between its last line and the foot: the line at
+// the foot with the given words, held, lapsed or sorting, or else the foot of
+// the screen. A missing part
 // throws, so a test never measures from 0.
 export async function allClearGaps(
   page: Page,
@@ -158,19 +230,19 @@ export async function allClearGaps(
             [...document.querySelectorAll("span")].find(
               (span) => span.textContent === footText,
             )?.parentElement,
-            "held line",
+            "line at the foot",
           ).top;
     return { above: headline.top - above.bottom, below: foot - last.bottom };
   }, footText);
 }
 
 // With the page scrolled to its foot, where the note at the foot of the
-// screen starts, and where All clear's last line ends, and the held line
-// with the given words. A missing part throws.
+// screen starts, and where All clear's last line ends, and the line at the
+// foot with the given words. A missing part throws.
 export async function underTheNote(
   page: Page,
   footText?: string,
-): Promise<{ note: number; last: number; held: number | undefined }> {
+): Promise<{ note: number; last: number; foot: number | undefined }> {
   return page.evaluate(async (footText) => {
     await document.fonts.ready;
     window.scrollTo(0, document.documentElement.scrollHeight);
@@ -183,16 +255,16 @@ export async function underTheNote(
     const note = box(document.querySelector('div[role="status"]'), "note");
     if (note.height === 0) throw new Error("The note is not showing");
     const last = box([...document.querySelectorAll("main p")].at(-1), "line");
-    const held =
+    const foot =
       footText === undefined
         ? undefined
         : box(
             [...document.querySelectorAll("span")].find(
               (span) => span.textContent === footText,
             )?.parentElement,
-            "held line",
+            "line at the foot",
           ).bottom;
-    return { note: note.top, last: last.bottom, held };
+    return { note: note.top, last: last.bottom, foot };
   }, footText);
 }
 
@@ -261,11 +333,11 @@ export async function openPage(
       if (answer === undefined) {
         await route.fulfill({ status: 404 });
       } else if (answer instanceof Status) {
-        await route.fulfill(
-          answer.body === undefined
-            ? { status: answer.code }
-            : { status: answer.code, json: answer.body },
-        );
+        await route.fulfill({
+          status: answer.code,
+          ...(answer.body === undefined ? {} : { json: answer.body }),
+          ...(answer.headers === undefined ? {} : { headers: answer.headers }),
+        });
       } else {
         await route.fulfill({ json: answer });
       }
@@ -286,6 +358,14 @@ export async function openPage(
     await context.clock.install({ time: options.clock });
   } else if (options.clock === true) {
     await context.clock.install();
+  } else if (options.clock !== undefined && options.clock !== false) {
+    // Paused before there is a page, so it stops at this time exactly. A
+    // page's clock is running by the time a test could pause it, and a
+    // pause at a time already gone is refused.
+    const start =
+      options.clock === "stopped" ? new Date() : options.clock.stoppedAt;
+    await context.clock.install({ time: start });
+    await context.clock.pauseAt(start);
   }
   if (options.speech === "absent") {
     await context.addInitScript(() => {

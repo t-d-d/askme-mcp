@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createModel, ModelFailed, type ModelRequest } from "./model";
+import { callerOf, type AccountId } from "./identity";
+import {
+  CapReached,
+  createCountedModel,
+  createModel,
+  ModelFailed,
+  type CallCounter,
+  type ModelRequest,
+} from "./model";
 
 interface Sent {
   url: string;
@@ -98,6 +106,27 @@ describe("a call to the model", () => {
       },
       reasoning: { enabled: false },
       max_tokens: 200,
+    });
+  });
+
+  // The second try of a sort whose only fault was a long reason (#243).
+  it("sends a follow-up after the same system and user messages, with the model's earlier reply as its own message, and changes nothing else", async () => {
+    const plain = fakeFetch(() => completion('{"level":"high"}'));
+    await model(plain.fetch).reply(request);
+    const fake = fakeFetch(() => completion('{"level":"high"}'));
+    await model(fake.fetch).reply({
+      ...request,
+      followUp: { reply: '{"level":"low"}', user: "Shorter, please." },
+    });
+    expect(fake.sent).toHaveLength(1);
+    expect(fake.sent[0]?.body).toEqual({
+      ...z.record(z.string(), z.unknown()).parse(plain.sent[0]?.body),
+      messages: [
+        { role: "system", content: "Sort it." },
+        { role: "user", content: "<rules>\n#work\n</rules>" },
+        { role: "assistant", content: '{"level":"low"}' },
+        { role: "user", content: "Shorter, please." },
+      ],
     });
   });
 
@@ -233,5 +262,109 @@ describe("the model's key, read for a call", () => {
     );
     expect(failure).toBe(unreadable);
     expect(fake.sent).toEqual([]);
+  });
+});
+
+const accountId = (sub: string): AccountId =>
+  callerOf({
+    token: "test",
+    clientId: "test",
+    scopes: [],
+    extra: { accountId: sub, requestId: "r" },
+  }).accountId;
+
+const owner = accountId("user_owner");
+
+// A counter in memory with so many calls left today. It notes each count
+// and each reset it records in one list with the calls the fetch sends, so
+// a test can see their order.
+function memoryCounter(left: number, events: string[]) {
+  let calls = left;
+  const counter: CallCounter = {
+    countModelCall: (account) => {
+      events.push(`count ${account}`);
+      if (calls <= 0) {
+        return Promise.resolve({ counted: false, secondsLeft: 3600 });
+      }
+      calls -= 1;
+      return Promise.resolve({ counted: true });
+    },
+    modelCapSpent: () => Promise.resolve(calls <= 0),
+    recordModelCapReset: (account, resetsAt) => {
+      events.push(`record ${account} ${resetsAt.toISOString()}`);
+      return Promise.resolve(true);
+    },
+  };
+  return counter;
+}
+
+// The model as the service builds it, at 11pm UTC on 12 October 2026.
+function counted(left: number) {
+  const events: string[] = [];
+  const fake = fakeFetch(() => {
+    events.push("send");
+    return completion('{"level":"high"}');
+  });
+  const service = createCountedModel({
+    endpoint: "http://127.0.0.1:9/api/v1",
+    model: "anthropic/claude-haiku-5.5",
+    key: () => Promise.resolve("test-model-key"),
+    fetch: fake.fetch,
+    store: memoryCounter(left, events),
+    now: () => new Date("2026-10-12T23:00:00.000Z"),
+  });
+  return { service, events, sent: fake.sent };
+}
+
+const midnight = "2026-10-13T00:00:00.000Z";
+
+describe("a call counted against the account's daily cap", () => {
+  it("is counted against the account it is made for, just before it is sent, each time", async () => {
+    const { service, events } = counted(5);
+    const model = service.forAccount(owner);
+    expect(await model.reply(request)).toEqual({ level: "high" });
+    await model.reply(request);
+    expect(events).toEqual([
+      `count ${owner}`,
+      "send",
+      `count ${owner}`,
+      "send",
+    ]);
+  });
+
+  it("sends nothing over the cap, records when the cap resets, and says so", async () => {
+    const { service, events, sent } = counted(0);
+    const failure = await service
+      .forAccount(owner)
+      .reply(request)
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(CapReached);
+    expect(failure).toHaveProperty("resetsAt", new Date(midnight));
+    expect(sent).toEqual([]);
+    expect(events).toEqual([`count ${owner}`, `record ${owner} ${midnight}`]);
+  });
+
+  it("is not a failure of the model, which a sort would try again", async () => {
+    const { service } = counted(0);
+    const failure = await service
+      .forAccount(owner)
+      .reply(request)
+      .catch((error: unknown) => error);
+    expect(failure).not.toBeInstanceOf(ModelFailed);
+  });
+});
+
+describe("whether the account's daily cap is spent", () => {
+  it("is nothing to say while calls are left, and counts nothing", async () => {
+    const { service, events } = counted(1);
+    expect(await service.spent(owner)).toBeUndefined();
+    expect(events).toEqual([]);
+  });
+
+  it("gives when the cap resets once it is spent, records it as a refusal does, and counts nothing", async () => {
+    const { service, events, sent } = counted(0);
+    expect(await service.spent(owner)).toEqual(new Date(midnight));
+    expect(events).toEqual([`record ${owner} ${midnight}`]);
+    expect(sent).toEqual([]);
   });
 });
