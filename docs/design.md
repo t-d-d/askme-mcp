@@ -114,7 +114,7 @@ Lines of running text stay under 80 characters. At desktop width the spoken text
 | --- | --- |
 | Corner of a card or a sheet | 28px |
 | Corner of a button or a text box | 18px |
-| Corner of a pill | 10px, or 8px for the small pill in a list row |
+| Corner of a pill | 10px, or 8px for the small pills in a list row |
 | Smallest thing you can tap | 44px by 44px |
 | Main button height | 56px, or 52px on a settings screen |
 | Side padding | 20px for text, 16px outside a card, 22px inside one |
@@ -203,11 +203,13 @@ Any other link gets "Open". It is a verb because askme has nothing to name. It c
 
 ### List rows
 
-Every ask after the first. A summary of up to two lines, then one line with the small hashtag pill, the age and the site name at the right. Rows are separated by hairlines and sit on the ground colour.
+Every ask after the first. A summary of up to two lines, then one line with a small pill for each of its hashtags, the age and the site name at the right. Rows are separated by hairlines and sit on the ground colour.
+
+A row shows all of its ask's hashtags, as the top card does, on Everything and on a hashtag's tab. They are in the order the rules give them, and each pill is in its own hashtag's colour.
 
 Tapping a row opens its card, the same as tapping the top card's summary. The site name says where the card's main button leads.
 
-When that line's parts do not all fit, they keep their order, and the last ones move down whole to a second line, 6px below, as wrapped pills are. The pill, the age and "Opened" stay whole, so the site's name gives way first. Beside #shopping and "50 min" on a 320px phone, console.aws.amazon.com moves down to a line of its own, still at the right. Beside a long hashtag, such as #customer-onboarding-flow, "Opened" moves down too, and starts the second line at the left.
+When that line's parts do not all fit, they keep their order, and the last ones move down whole to a second line, 6px below, as wrapped pills are. Each pill, the age and "Opened" stay whole, so the site's name gives way first. Beside #shopping and "50 min" on a 320px phone, console.aws.amazon.com moves down to a line of its own, still at the right. Beside a long hashtag, such as #customer-onboarding-flow, "Opened" moves down too, and starts the second line at the left.
 
 A site's name too long for a whole line breaks just after a dot, as on the top card, and each of its lines ends at the row's right edge. A part between two dots is split only when it is too long for a whole line on its own.
 
@@ -215,7 +217,7 @@ A site's name too long for a whole line breaks just after a dot, as on the top c
 | --- | --- |
 | Open | As above |
 | Opened | The whole row at 55% opacity, with "Opened" after the age. It sinks below unopened asks at its level. |
-| Not sorted yet | A "Not sorted yet" pill in `--neutral-tint` where the hashtag would be |
+| Not sorted yet | A "Not sorted yet" pill in `--neutral-tint` where the hashtags would be |
 
 Above the rows, one small heading counts them: "4 more waiting". When the top ask is the only one, the heading says "Nothing else waiting" and has no rows under it, on a phone and at desktop width. On a hashtag's tab it counts that tab's asks.
 
