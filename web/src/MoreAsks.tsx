@@ -19,12 +19,14 @@ export function MoreAsks({
   asks,
   tab,
   now,
+  serviceAhead,
   colours,
   actions,
 }: {
   asks: PageAsk[];
   tab: Tab;
   now: number;
+  serviceAhead: number;
   colours: ReadonlyMap<string, HashtagColour>;
   actions: AskActions;
 }) {
@@ -44,6 +46,7 @@ export function MoreAsks({
               ask={ask}
               tab={tab}
               now={now}
+              serviceAhead={serviceAhead}
               colours={colours}
               dismiss={actions.dismiss}
             />
@@ -62,12 +65,14 @@ function Row({
   ask,
   tab,
   now,
+  serviceAhead,
   colours,
   dismiss,
 }: {
   ask: PageAsk;
   tab: Tab;
   now: number;
+  serviceAhead: number;
   colours: ReadonlyMap<string, HashtagColour>;
   dismiss: AskActions["dismiss"];
 }) {
@@ -94,7 +99,7 @@ function Row({
           ) : (
             shown !== undefined && <span className={styles.pill}>#{shown}</span>
           )}
-          <span>{age(postedAt, now)}</span>
+          <span>{age(postedAt, now, serviceAhead)}</span>
           {opened && <span>Opened</span>}
           {main !== undefined && (
             <span className={styles.site}>

@@ -280,6 +280,7 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 - A button names its action: "Save rules", "Show them", "Send sample asks".
 - An action keeps its name. The tab says Everything, so nothing else calls it "All".
 - Times are short: "Just now", "4 min", "1 h", "2 d". The top card says "Waiting 4 min".
+- An ask's age counts by askme's clock. A device whose clock is a few minutes out does not change it.
 - A time of day is on the 24-hour clock, in the person's time zone, as in "It resets at 01:00".
 
 | Moment | Words |
