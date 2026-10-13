@@ -37,15 +37,18 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("a call the provider refuses for rate", () => {
   it("is sent again after the first wait, and its reply comes back", async () => {
     const { model, sentAt } = fakeModel([refused(), { level: "high" }]);
     const reply = retryingOnRate(model).reply(request);
-    await vi.advanceTimersByTimeAsync((rateWaits[0] ?? 0) - 1);
+    await vi.advanceTimersByTimeAsync((rateWaits[0]?.least ?? 0) - 1);
     expect(sentAt).toHaveLength(1);
-    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(
+      (rateWaits[0]?.most ?? 0) - (rateWaits[0]?.least ?? 0) + 1,
+    );
     await expect(reply).resolves.toEqual({ level: "high" });
     expect(sentAt).toHaveLength(2);
   });
@@ -60,8 +63,62 @@ describe("a call the provider refuses for rate", () => {
     });
     await vi.advanceTimersByTimeAsync(rateWaitMs);
     await failure;
+    expect(sentAt).toHaveLength(rateWaits.length + 1);
+    sentAt.slice(1).forEach((at, n) => {
+      const waited = at - (sentAt[n] ?? 0);
+      expect(waited).toBeGreaterThanOrEqual(rateWaits[n]?.least ?? 0);
+      expect(waited).toBeLessThanOrEqual(rateWaits[n]?.most ?? 0);
+    });
+  });
+});
+
+describe("calls the provider refuses for rate at the same moment", () => {
+  it("are not all sent again at the same moment", async () => {
+    const randoms = [0, 0.25, 0.5, 0.75, 1 - Number.EPSILON];
+    vi.spyOn(Math, "random").mockImplementation(() => randoms.shift() ?? 0);
+    const calls = Array.from({ length: 5 }, () =>
+      fakeModel([refused(), { level: "high" }]),
+    );
+    const replies = calls.map(({ model }) =>
+      retryingOnRate(model).reply(request),
+    );
+    await vi.advanceTimersByTimeAsync(rateWaits[0]?.most ?? 0);
+    await Promise.all(replies);
+    const sentAgainAt = new Set(calls.map(({ sentAt }) => sentAt[1]));
+    expect(sentAgainAt.size).toBeGreaterThan(1);
+  });
+});
+
+describe("each wait before a new try", () => {
+  it("is at its most when the random part is at its top, and rateWaitMs covers every wait at its most", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(1 - Number.EPSILON);
+    const { model, sentAt } = fakeModel(
+      Array.from({ length: rateWaits.length + 1 }, refused),
+    );
+    const reply = retryingOnRate(model).reply(request);
+    const failure = expect(reply).rejects.toMatchObject({
+      reason: "status-429",
+    });
+    await vi.advanceTimersByTimeAsync(rateWaitMs);
+    await failure;
     expect(sentAt.slice(1).map((at, n) => at - (sentAt[n] ?? 0))).toEqual(
-      rateWaits,
+      rateWaits.map(({ most }) => most),
+    );
+  });
+
+  it("is at its least when the random part is nothing", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { model, sentAt } = fakeModel(
+      Array.from({ length: rateWaits.length + 1 }, refused),
+    );
+    const reply = retryingOnRate(model).reply(request);
+    const failure = expect(reply).rejects.toMatchObject({
+      reason: "status-429",
+    });
+    await vi.advanceTimersByTimeAsync(rateWaitMs);
+    await failure;
+    expect(sentAt.slice(1).map((at, n) => at - (sentAt[n] ?? 0))).toEqual(
+      rateWaits.map(({ least }) => least),
     );
   });
 });
