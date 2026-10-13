@@ -12,7 +12,7 @@ A person who runs several agents gets asked for input by each of them, in each a
 
 - An agent calls the MCP server's `ask` tool with a summary, the area of work, a version written to be heard, and up to two links, one to where the person should act and one back to its own session.
 - The service sorts the ask against the person's rules into their hashtags and one of three levels.
-- The page shows the list on a phone, first ask large. A card can be read aloud. Tapping it opens the place to act, such as a pull request or the agent's session.
+- The page shows the list on a phone, with the first ask shown large. A card can be read aloud. Its main button opens the place to act, such as a pull request or the agent's session.
 - The agent calls `resolve` when its wait is over, and the card clears. The person can also swipe it away.
 
 Agents can post and resolve asks, and read nothing. They never see the rules, the hashtags or even their own asks ([ADR 2](docs/adr/0002-agents-write-only.md)).
@@ -42,9 +42,9 @@ The service makes two kinds of model call. Both go through OpenRouter, ask for a
 1. **Reading the rules.** When the person saves their rules, one call lists the hashtags and any hours each one is limited to. The page shows them back.
 2. **Sorting an ask.** One call per ask reads the person's rules and that ask, and replies with hashtags from the person's own list, one of three levels, and a reason of at most 140 characters.
 
-The sorting call treats the ask as hostile text ([ADR 12](docs/adr/0012-untrusted-ask-text.md)). It declares no tools. The agent's fields sit in one delimited section, with any delimiter inside them escaped. A reply that fails the schema is thrown away whole, and the ask stays unsorted. Nothing the model says goes back to an agent, and the page shows the reason as plain text.
+The sorting call treats the ask as hostile text ([ADR 12](docs/adr/0012-untrusted-ask-text.md)). It declares no tools. The agent's fields sit in one delimited section, with any delimiter inside them escaped. The service throws away a reply that fails the schema, and the ask stays unsorted. Nothing the model says goes back to an agent, and the page shows the reason as plain text.
 
-Posting never waits on the model. The service stores the ask, answers the agent, and puts a sort job on the queue, which retries a failed sort ([ADR 22](docs/adr/0022-sort-queue.md)). Hours and the time an ask stops mattering are applied in code, because models are unreliable at date arithmetic.
+Posting never waits on the model. The service stores the ask, puts a sort job on the queue and answers the agent, and the queue retries a failed sort ([ADR 22](docs/adr/0022-sort-queue.md)). The service applies hours, and the time an ask stops mattering, in code, because models are unreliable at date arithmetic.
 
 Each account may post 100 asks a day and cause 2,000 model calls a day ([ADR 21](docs/adr/0021-model-call-cap.md)). Every model call shares one key, so the cap stops one scripted account from spending the key's limit for everyone.
 
@@ -64,7 +64,7 @@ Each account may post 100 asks a day and cause 2,000 model calls a day ([ADR 21]
 
 A score counts the asks whose hashtags and level were both right. The core group holds asks from three areas of one person's life. The timing group copies a few core asks with only the time changed, and expects the same level. The hostile group holds asks that try to steer their own sorting, and "Gave in" counts the ones that moved the sort the way they pushed. The scores were saved on 13 October 2026. There is no pass mark.
 
-Most of Haiku's misses rank a saving passed up, such as a cheaper courier or a supplier's price rise, as normal where the eval expects high. Its timing score shows the level still moves with the time in half of those copies.
+Most of Haiku's misses rank a saving passed up, such as a cheaper courier or a supplier's price rise, as normal where the eval expects high. Its four timing misses are the same mistake. Each copy got the level its core twin got, so the time did not move the level.
 
 ## Agents wrote the code
 
@@ -74,7 +74,7 @@ The agents work to rules kept in the repo, so each session starts from the same 
 
 - [CLAUDE.md](CLAUDE.md) says how to work: one branch per issue, tests first, the gate before every push, and the owner merges.
 - [.claude/skills/](.claude/skills/) holds the steps for picking up an issue, checking the constraints, reviewing a branch before it is pushed, and writing a pull request.
-- [docs/constraints/](docs/constraints/README.md) holds the rules each decision record puts in force. Each rule that code can check is a fitness function in the gate, and a test fails if a decision record names a check that has no test.
+- Each decision record lists its checks, and each check is a fitness function named after it. Most run in the gate. A few run after each deploy, every day, or with the eval. A static test fails when a record names a check that has no test.
 - `npm run gate` runs format, lint, types, and the static, unit, integration and browser tests. It runs offline and holds no secrets. A pull request merges only when it passes.
 
 Anything only the owner can do, such as making accounts, setting secrets or connecting a real agent, is an issue labelled `mode: human`. Its closing comment records the result.
@@ -83,7 +83,7 @@ Anything only the owner can do, such as making accounts, setting secrets or conn
 
 ### On a laptop
 
-You need Node.js 22 (the version in [.node-version](.node-version)) and Docker. The integration tests run DynamoDB Local in Docker.
+You need Node.js 22.18 or later (see [.node-version](.node-version)) and Docker. The integration tests run DynamoDB Local in Docker.
 
 ```
 npm ci
@@ -97,17 +97,16 @@ npm run gate
 
 These are made once, by hand. The repo refers to each by the name given here, and holds no values.
 
-1. **AWS.** Use an AWS account that holds askme and nothing else, in `us-east-1`. CloudWatch's billing metric and CloudFront's certificates exist only there. A new account may allow only 10 concurrent Lambda executions where AWS's default is 1,000, so ask AWS to raise it.
+1. **AWS.** Use an AWS account that holds askme and nothing else, in `us-east-1`. CloudWatch's billing metric and CloudFront's certificates exist only there. Switch on the account's billing alerts, or AWS publishes no billing metric and the spend alarm never fires ([ADR 17](docs/adr/0017-spend-reads-the-bill.md)). A new account may allow only 10 concurrent Lambda executions where AWS's default is 1,000, so ask AWS to raise it.
 2. **Parameters.** In Parameter Store, Standard tier, in `us-east-1`:
    - `/askme/alerts/email`, a String, for the address alerts go to.
    - `/askme/alerts/monthly-spend`, a String, for the monthly spend in US dollars that sets off the spend alarm.
-   - `/askme/clerk/secret-key`, a SecureString.
    - `/askme/openrouter/api-key`, a SecureString, for the service's model key, which has a spending limit.
-3. **The deploy role.** Apply [infra/github-oidc.cfn.yml](infra/github-oidc.cfn.yml) once by hand, as the stack `askme` in `us-east-1`. It makes GitHub's OIDC provider and the role `askme-github-deploy`, which only a job on main can assume. Each deploy applies it again after that.
+3. **The deploy role.** Apply [infra/github-oidc.cfn.yml](infra/github-oidc.cfn.yml) once by hand, as the stack `askme` in `us-east-1`, with the capability `CAPABILITY_NAMED_IAM`. Give it the parameters `GitHubOwnerId` and `GitHubRepoId`, the numeric ids any Actions run shows as `github.repository_owner_id` and `github.repository_id`. It makes GitHub's OIDC provider and the role `askme-github-deploy`, which only a job on main can assume. Each deploy applies it again after that.
 4. **GitHub.** Set the repo variables `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `CLERK_PUBLISHABLE_KEY` and `CLERK_ISSUER`, and the repo secret `SERVERLESS_ACCESS_KEY`. Give main a ruleset that requires a pull request and the `gate` check. A daily conformance check reads the ruleset back.
-5. **Clerk.** A development instance, set up as in the next section.
+5. **Clerk.** Make a development instance, and set it up as the next section says.
 6. **OpenRouter.** Two keys in a workspace of askme's own: the service's key above, and an eval key with a small limit. In a Claude cloud environment, add the eval key as a network secret for `openrouter.ai`, with the header `Authorization` and the prefix `Bearer`.
-7. **The first deploy.** Merge to main. The deploy run's summary gives the page's address and the MCP endpoint, which is the service's address with `/mcp` on the end. Then confirm the alert email, as below.
+7. **The first deploy.** Merge to main. The deploy run's summary gives both addresses. Then confirm the alert email, as below.
 
 ### Clerk dashboard settings
 
@@ -124,7 +123,7 @@ These are under Configure, then Developers, then OAuth applications.
 
 Under User & authentication, people sign in with email, Google or GitHub. A development instance uses Clerk's shared Google and GitHub credentials. A production instance needs askme's own.
 
-The live check after each deploy signs up its one test account the first time it runs. For that, Clerk's access mode is Open and test mode is on.
+The live check after each deploy signs up its one test account the first time it runs. For that, set Clerk's access mode to Open and turn test mode on.
 
 ### Confirming the alert email
 
@@ -143,7 +142,7 @@ An email titled `ALARM: "askme-error-lines" in US East (N. Virginia)` arrives. T
 
 ## Checklist for connecting a real agent
 
-No test can connect a real agent, so this is checked by hand after a deploy that changes sign-in or the MCP server. The Connect your agents screen gives the same steps.
+No test can connect a real agent, so the owner runs this checklist by hand after a deploy that changes sign-in or the MCP server. The Connect your agents screen gives the steps for Claude and Cursor.
 
 Connect each agent:
 
@@ -155,21 +154,21 @@ Then, for each agent:
 
 - [ ] The agent lists two tools, `ask` and `resolve`, and no others.
 - [ ] It posts an ask, and the card appears on the page within a few seconds, on a phone.
-- [ ] Tapping the card opens the agent's session, or the ask's detail when it sent no session link.
+- [ ] The card's main button opens the agent's session. A card with no link has no main button, and tapping it opens the ask's detail.
 - [ ] You reply in the session, the agent resolves the ask, and the card clears.
 
 On 12 October 2026 the whole checklist passed for a Claude cloud session and a local Cursor agent. On 11 October, Claude Code on a laptop and in the Claude desktop app connected and called `ask`.
 
 ## What is untested
 
-- **Real agents connecting.** Checked by hand with the checklist above. A change can pass every test and still break a real client.
+- **Real agents connecting.** The owner runs the checklist above by hand. A change can pass every test and still break a real client.
 - **A Cursor cloud agent's session link.** Cursor cloud agents need a paid plan, which the owner does not have. The demo works without it, because a card with no link opens its detail.
 - **Speech on a phone.** Listen uses the browser's own speech. No test hears it.
 - **Whether the page matches the design.** Each change to the page is compared with the mockup by eye at phone width. No test sees it.
 - **Sorting quality.** The eval scores above have no pass mark, and the eval runs on demand, outside the gate. The model may sort the same ask differently from one call to the next.
 - **The alert email and billing.** Confirming the subscription and switching on billing alerts are done by hand. No check can see either, or that the AWS account holds nothing else.
 - **Main's ruleset.** It lives in GitHub's settings, which no pull request can see. The daily conformance check reads it, so a change shows up the next day.
-- **Load.** Nothing has been tested with more than a handful of people. The account allowed 10 concurrent Lambda executions when it was made.
+- **Load.** Nothing has been tested with more than a handful of people, and the Lambda limit in step 1 caps how many requests run at once.
 - **A Clerk production instance.** askme has only run on a development instance.
 
 ## Trade-offs
@@ -183,13 +182,3 @@ On 12 October 2026 the whole checklist passed for a Claude cloud session and a l
 - **One table, with no index and no scan.** Every read is one account's. A question across accounts needs a new decision ([ADR 13](docs/adr/0013-table-design.md)).
 - **The sort queue costs a little when idle.** Lambda polls the SQS queue whether or not it holds jobs, and AWS bills those requests. Everything else scales to zero ([ADR 22](docs/adr/0022-sort-queue.md)).
 - **Daily caps.** An account that reaches 2,000 model calls in a day stops being sorted until the next UTC day, and its asks that were left out wait until the rules are saved again ([ADR 21](docs/adr/0021-model-call-cap.md)).
-- **Asks last a month.** Every ask is deleted a month after it is posted, so the demo holds nobody's data for long.
-
-## In this repo
-
-- [PRD.md](PRD.md): what version 1 does, what it leaves out, and the roadmap.
-- [docs/adr/](docs/adr/README.md): the technical decisions, one record each.
-- [docs/constraints/](docs/constraints/README.md): the rules those decisions put in force.
-- [docs/design.md](docs/design.md): how the page looks, behaves and speaks, with pictures of every screen.
-- [evals/](evals/): the eval set and its saved scores.
-- [CLAUDE.md](CLAUDE.md) and [.claude/](.claude/): how the agents that write the code are told to work.

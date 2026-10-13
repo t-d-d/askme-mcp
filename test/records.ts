@@ -6,30 +6,56 @@ import { tiers } from "./tiers";
 const recordPath = /^docs\/adr\/(\d{4})-[a-z0-9-]+\.md$/u;
 const constraintPath = /^docs\/constraints\/([a-z0-9-]+)\.md$/u;
 
-// Every decision record, by number, in order.
+// Every decision record, by number, in order. Any Markdown file in
+// docs/adr/ but the index is a record, so one named against the pattern
+// throws instead of being left out.
 export function records(): { record: number; path: string }[] {
   return repoFiles()
-    .flatMap((path) => {
+    .filter(
+      (path) =>
+        path.startsWith("docs/adr/") &&
+        path.endsWith(".md") &&
+        path !== "docs/adr/README.md",
+    )
+    .map((path) => {
       const number = recordPath.exec(path)?.[1];
-      return number === undefined ? [] : [{ record: Number(number), path }];
+      if (number === undefined) {
+        throw new Error(`${path} is not named as a record is, NNNN-name.md.`);
+      }
+      return { record: Number(number), path };
     })
     .sort((a, b) => a.record - b.record);
 }
 
-// The checks in a record's "Fitness functions" table, in order: the first
-// cell of each row below the header.
+// The checks in a record's "Fitness functions" table, in order. The table
+// opens with a header row whose first cell is Check, then a divider row.
+// Each row after those is one check, named in its first cell. A section or
+// a row laid out any other way throws, so no check is lost without a
+// failure.
 export function checksIn(text: string): string[] {
   const start = text.indexOf("\n## Fitness functions\n");
-  if (start === -1) return [];
+  if (start === -1) throw new Error("It has no Fitness functions section.");
   const rest = text.slice(start + 1);
   const end = rest.indexOf("\n## ");
-  const section = end === -1 ? rest : rest.slice(0, end);
-  return section
+  const lines = (end === -1 ? rest : rest.slice(0, end))
     .split("\n")
-    .filter((line) => line.startsWith("|"))
-    .slice(2)
-    .map((row) => row.split("|")[1]?.trim() ?? "")
-    .filter((name) => name !== "");
+    .filter((line) => line.includes("|"));
+  const [header, divider, ...rows] = lines;
+  if (
+    header?.startsWith("| Check |") !== true ||
+    divider?.startsWith("| --- |") !== true
+  ) {
+    throw new Error(
+      "Its table does not open with a Check header and a divider.",
+    );
+  }
+  return rows.map((row) => {
+    const name = row.startsWith("|") ? row.split("|")[1]?.trim() : undefined;
+    if (name === undefined || name === "") {
+      throw new Error(`This row names no check: ${row}`);
+    }
+    return name;
+  });
 }
 
 // Each constraint file, without its .md, and the records its History line
@@ -51,8 +77,13 @@ export function constraintHistory(): Map<string, number[]> {
   return history;
 }
 
-// Every fitness test in a test file of any tier, as CLAUDE.md names one:
-// `fitness: <what it asserts> (<file>.md)`.
+// Every fitness test in a test file of any tier, named as CLAUDE.md says,
+// `fitness: <check> (<file>.md)`. Only a describe's first argument counts,
+// either `describe(` or the second call of `describe.each(...)(`. A string
+// that only quotes a describe, as a static test may, does not.
+const fitnessDescribe =
+  /(?:(?<![\w"'`.])describe\(|\)\()\s*["'`]fitness: (.+?) \(([a-z0-9-]+)\.md\)/gu;
+
 export function fitnessTests(): {
   name: string;
   constraint: string;
@@ -61,11 +92,7 @@ export function fitnessTests(): {
   return repoFiles()
     .filter((path) => tiers.some((tier) => path.endsWith(tier.suffix)))
     .flatMap((path) =>
-      [
-        ...readRepoFile(path).matchAll(
-          /["'`]fitness: (.+?) \(([a-z0-9-]+)\.md\)/gu,
-        ),
-      ].map((match) => ({
+      [...readRepoFile(path).matchAll(fitnessDescribe)].map((match) => ({
         name: match[1] ?? "",
         constraint: match[2] ?? "",
         path,
@@ -73,7 +100,9 @@ export function fitnessTests(): {
     );
 }
 
-// A check's name as a test gives it: in lower case, and with or without a
-// leading article, as a sentence needs one.
+// A check's name as a test may give it. A record's table names a check
+// without its article ("Idle poll is cheap"), and a describe name reads as
+// a sentence ("an idle poll is cheap"), so both drop a leading article and
+// compare in lower case.
 export const asNamed = (name: string): string =>
   name.toLowerCase().replace(/^(?:the|an|a) /u, "");

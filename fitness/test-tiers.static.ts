@@ -452,21 +452,38 @@ describe("fitness: the live tier presses only controls that read (test-tiers.md)
   });
 });
 
-// Checks that no test answers, each with why. A record is not edited once
-// merged (docs/adr/README.md), so a check a later record replaces stays in
-// its own table, and is listed here.
+// Checks that no test answers, each with the reason. A record is not edited
+// once merged (docs/adr/README.md), so a check that a later record replaces
+// stays in its own table, and is listed here.
 const unanswered = [
   {
     record: 6,
     check: "Real clients connect",
-    why: "Checked by hand after a deploy, as the record's table says. The README's checklist for connecting a real agent is the step.",
+    reason:
+      "The record's table says it runs by hand, after a deploy. The README's checklist for connecting a real agent is how.",
   },
   {
     record: 21,
     check: "A capped sort leaves the version alone",
-    why: "ADR 22 replaces it: the first call the cap refuses in a day records the reset through the write function, which raises the version.",
+    reason:
+      "ADR 22 replaces it. The first call the cap refuses in a day records the reset through the write function, which raises the version.",
   },
 ];
+
+// Checks a record repeats from an earlier record, which a test answers under
+// the earlier record's constraint file.
+const carried = [
+  {
+    record: 20,
+    check: "An idle poll is one read",
+    from: 18,
+    reason:
+      "ADR 20 says its third check is ADR 18's, in the integration tier, and stands.",
+  },
+];
+
+const describeName = (check: string, file: string): string =>
+  `"fitness: ${check.charAt(0).toLowerCase()}${check.slice(1)} (${file}.md)"`;
 
 describe("fitness: every ADR check exists (test-tiers.md)", () => {
   const history = constraintHistory();
@@ -475,13 +492,28 @@ describe("fitness: every ADR check exists (test-tiers.md)", () => {
     [...history]
       .filter(([, cited]) => cited.includes(record))
       .map(([name]) => name);
+  const checksOf = (record: number): string[] => {
+    const path = records().find((entry) => entry.record === record)?.path;
+    return path === undefined ? [] : checksIn(readRepoFile(path));
+  };
+  const answered = (check: string): string[] =>
+    tests
+      .filter(({ name }) => asNamed(name) === asNamed(check))
+      .map(({ path }) => path);
 
   it("reads a fitness table with at least one check from every record", () => {
     expect(records().length).toBeGreaterThan(0);
-    const empty = records().filter(
-      ({ path }) => checksIn(readRepoFile(path)).length === 0,
-    );
-    expect(empty.map(({ path }) => path)).toEqual([]);
+    const unread: string[] = [];
+    for (const { path } of records()) {
+      try {
+        if (checksIn(readRepoFile(path)).length === 0) {
+          unread.push(`${path}: its table holds no check.`);
+        }
+      } catch (error) {
+        unread.push(`${path}: ${String(error)}`);
+      }
+    }
+    expect(unread).toEqual([]);
   });
 
   it("finds every constraint file named by at least one test", () => {
@@ -489,40 +521,50 @@ describe("fitness: every ADR check exists (test-tiers.md)", () => {
     expect([...history.keys()].filter((name) => !named.has(name))).toEqual([]);
   });
 
-  // A check that a later record repeats stays the first record's, and is
-  // answered under that record's constraint file.
   it("finds each check as a test naming a constraint file behind its record", () => {
-    const first = new Map<string, number>();
     const missing: string[] = [];
     for (const { record, path } of records()) {
       for (const check of checksIn(readRepoFile(path))) {
-        const owner = first.get(asNamed(check)) ?? record;
-        first.set(asNamed(check), owner);
-        if (unanswered.some((u) => u.record === record && u.check === check))
-          continue;
+        const listed = (entry: { record: number; check: string }) =>
+          entry.record === record && entry.check === check;
+        if (unanswered.some(listed)) continue;
+        const owner = carried.find(listed)?.from ?? record;
         const files = behind(owner);
         const found = tests.some(
           ({ name, constraint }) =>
             asNamed(name) === asNamed(check) && files.includes(constraint),
         );
-        if (!found) {
-          missing.push(
-            `ADR ${String(record)}: "${check}" (${files.map((file) => `${file}.md`).join(" or ")})`,
-          );
-        }
+        if (found) continue;
+        missing.push(
+          files.length === 0
+            ? `ADR ${String(record)}, "${check}": no constraint file names ADR ${String(owner)} in its History line.`
+            : `ADR ${String(record)}, "${check}": add a test named ${files.map((file) => describeName(check, file)).join(" or ")}, or list the check in unanswered with the reason no test can answer it.`,
+        );
       }
     }
     expect(missing).toEqual([]);
   });
 
-  it("lists as unanswered only checks that are in their record and have no test", () => {
+  it("lists only checks that are in their records, and that no test answers", () => {
     for (const { record, check } of unanswered) {
-      const path = records().find((entry) => entry.record === record)?.path;
-      expect(path).toBeDefined();
-      expect(checksIn(readRepoFile(path ?? ""))).toContain(check);
       expect(
-        tests.filter(({ name }) => asNamed(name) === asNamed(check)),
+        checksOf(record),
+        `ADR ${String(record)} has no check "${check}". Take it out of unanswered.`,
+      ).toContain(check);
+      expect(
+        answered(check),
+        `A test answers "${check}". Take it out of unanswered.`,
       ).toEqual([]);
+    }
+    for (const { record, check, from } of carried) {
+      expect(
+        checksOf(record),
+        `ADR ${String(record)} has no check "${check}". Take it out of carried.`,
+      ).toContain(check);
+      expect(
+        checksOf(from),
+        `ADR ${String(from)} has no check "${check}" to carry. Take it out of carried.`,
+      ).toContain(check);
     }
   });
 });
