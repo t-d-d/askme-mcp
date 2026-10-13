@@ -32,11 +32,12 @@ export const suites: Record<string, Suite> = {
   },
   sorter: {
     about:
-      "How a job sorts one ask: whether it is already sorted with the rules in force, the tries, the daily cap and what goes back to the queue, against its unit tests.",
+      "How a job sorts one ask: whether it is already sorted with the rules in force, the tries, the daily cap and what goes back to the queue, against its unit tests and the sort queue's fitness test, which runs the handler.",
     mutate: ["service/src/sorter.ts"],
     tests: [
       "service/src/sorter.test.ts",
       "service/src/sorter-up-to-date.test.ts",
+      "fitness/sort-queue.int.ts",
     ],
   },
   refusalNote: {
