@@ -78,9 +78,14 @@ function useScreen(): {
 }
 
 // A failed load shows at once, and the page's own timers try again, so
-// nothing is retried behind its back.
+// nothing is retried behind its back. Offline, a load is sent and fails,
+// rather than waiting for the browser to come back online, so the page
+// says it is not connected and the poll's time keeps moving. Polls still
+// run only while the page is visible (polling.md).
 const newQueries = () =>
-  new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  new QueryClient({
+    defaultOptions: { queries: { retry: false, networkMode: "always" } },
+  });
 
 // A new cache for each sign-in, so nothing one account loaded can show to
 // the next, and the next one's first poll carries no version.
