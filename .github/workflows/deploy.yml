@@ -100,6 +100,9 @@ jobs:
   # live-ok names the last commit that passed its live check (ADR 25).
   mark-live-ok:
     needs: live
+    # A re-run after a rollback checks the build the rollback put back, not
+    # this run's commit, so only the first attempt moves the tag.
+    if: ${{ success() && github.run_attempt == '1' }}
     runs-on: ubuntu-24.04
     # A tag left behind only means a rollback goes one build further back. It
     # is no reason to fail a deploy that passed its live check.
@@ -140,14 +143,14 @@ jobs:
       - name: Find the last build that passed its live check
         id: tag
         run: |
-          found=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/live-ok" \
-            --jq '.[] | select(.ref == "refs/tags/live-ok") | .ref')
-          if [ -z "$found" ]; then
-            echo "There is no live-ok tag yet, so nothing is rolled back." \
+          # mark-live-ok makes a lightweight tag, so it names the commit itself.
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/live-ok" \
+            --jq '.[] | select(.ref == "refs/tags/live-ok" and .object.type == "commit") | .object.sha')
+          if [ -z "$sha" ]; then
+            echo "There is no live-ok tag naming a commit, so nothing is rolled back." \
               >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/tags/live-ok" --jq .sha)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "The live check failed. Redeploying live-ok, commit $sha." \
             >> "$GITHUB_STEP_SUMMARY"

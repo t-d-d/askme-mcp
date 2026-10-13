@@ -108,6 +108,8 @@ const stepSchema = z.object({
   run: z.string().optional(),
   with: z.record(z.string(), z.unknown()).optional(),
   env: z.record(z.string(), z.unknown()).optional(),
+  // A boolean, or an expression that gives one.
+  "continue-on-error": z.union([z.boolean(), z.string()]).optional(),
 });
 
 const jobSchema = z.object({

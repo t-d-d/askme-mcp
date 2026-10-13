@@ -445,8 +445,9 @@ describe("fitness: a failed live check redeploys the last good build (repo-and-d
   it("moves live-ok only after the live check passes", () => {
     const mark = job("mark-live-ok");
     expect(needs("mark-live-ok")).toEqual(["live"]);
-    // With no if, a job runs only when every job before it passed.
-    expect(mark.if).toBeUndefined();
+    // A re-run after a rollback checks the build the rollback put back, not
+    // the commit the run is for, so only the first attempt moves the tag.
+    expect(mark.if).toBe("${{ success() && github.run_attempt == '1' }}");
     expect(runsIn(mark).join("\n")).toMatch(
       /refs\/tags\/live-ok[\s\S]*\$GITHUB_SHA/u,
     );
@@ -530,10 +531,15 @@ describe("fitness: a failed live check redeploys the last good build (repo-and-d
   });
 
   // The live job's failure fails the run. Nothing after it may hide that.
+  // A step's continue-on-error hides its failure from the job, as the job's
+  // own hides it from the run.
   it("leaves the run failed after a rollback", () => {
-    expect(job("live")["continue-on-error"]).toBeUndefined();
-    for (const id of ["find-live-ok", "rollback", "rollback-live"]) {
+    for (const id of ["live", "find-live-ok", "rollback", "rollback-live"]) {
       expect(job(id)["continue-on-error"], id).toBeUndefined();
+      const hiding = (job(id).steps ?? []).filter(
+        (step) => step["continue-on-error"] !== undefined,
+      );
+      expect(hiding, id).toEqual([]);
     }
   });
 });

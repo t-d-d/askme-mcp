@@ -19,7 +19,7 @@ Parent PRD: [PRD](../../PRD.md)
 
 The deploy run puts the last good build back by itself, then fails, and the owner reverts the pull request as before.
 
-1. **The tag.** `live-ok` names the last commit whose live check passed. A job that runs only when the live check passes moves it to the commit the run deployed. It is the one job in any workflow with `contents: write`.
+1. **The tag.** `live-ok` names the last commit whose live check passed. A job that runs only when the live check passes, on the run's first attempt, moves it to the commit the run deployed. A re-run after a rollback would check the build the rollback put back, not the run's own commit, so a re-run never moves the tag. It is the one job in any workflow with `contents: write`.
 2. **Moving it cannot fail the run.** If the tag does not move, the run summary says so, and the run still passes. The cost is that a later rollback goes one build further back.
 3. **The rollback.** When the live check fails, a job looks for `live-ok`. If it finds it, a rollback job checks out that commit, builds its page, deploys its stack with `serverless deploy` and publishes the page, with the same steps as the deploy. A last job runs that commit's own live tier against what the rollback put back.
 4. **Not the deploy role's stack.** The rollback does not apply `infra/github-oidc.cfn.yml`. An older template must not undo a change to the role that runs it.
@@ -41,7 +41,7 @@ The deploy run puts the last good build back by itself, then fails, and the owne
 
 | Check | What it asserts | Where it runs | What it catches |
 | --- | --- | --- | --- |
-| A failed live check redeploys the last good build | Read as YAML, the deploy workflow moves `live-ok` only in a job that needs the live check and has no condition of its own, and that job alone writes contents and cannot fail the run. The rollback runs only when the live check failed and `live-ok` names a commit. It checks out that commit, repeats the deploy's steps but the role's stack, then runs the live job's steps against what it put back. Nothing after the live check hides its failure. | CI | A tag moved after a failed check, a rollback after a passing one, a rollback that drifts from the deploy, the role's stack rolled back, or a run that ends green after a rollback. |
+| A failed live check redeploys the last good build | Read as YAML, the deploy workflow moves `live-ok` only in a job that needs the live check to pass and runs on the first attempt, and that job alone writes contents and cannot fail the run. The rollback runs only when the live check failed and `live-ok` names a commit. It checks out that commit, repeats the deploy's steps but the role's stack, then runs the live job's steps against what it put back. Nothing after the live check hides its failure. | CI | A tag moved after a failed check, a rollback after a passing one, a rollback that drifts from the deploy, the role's stack rolled back, or a run that ends green after a rollback. |
 
 The check lands with this record.
 
@@ -57,6 +57,8 @@ The check lands with this record.
 
 - Until the revert merges, what is live is behind main. Reading main no longer says what is live during that window.
 - A rollback can meet items a newer build wrote, which the older code may not parse. Each change to a stored item's shape has to keep the previous build able to read it, or say why it cannot.
+- `live-ok` can be more than one build back: a re-run, a tag that did not move, or a commit that lands before a revert all leave it further behind. A rollback then crosses more than one change.
+- A rollback deploys an older template, so CloudFormation removes any resource the failed build added, unless that resource is retained. A new queue or table loses what it held.
 - A rollback does not touch the deploy role's stack, so a broken change to the role is not undone by it.
 - The run takes longer when it fails: one more build, deploy and live tier.
 - The tag move uses the workflow's own token. No ruleset covers tags today, so it can move the tag. A ruleset on tags added later would stop it, and the run summary would say the tag did not move.
