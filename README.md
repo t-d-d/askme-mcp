@@ -2,7 +2,11 @@
 
 One place where all of a person's AI agents ask for their input, sorted by rules the person writes in plain English.
 
-> **This is a fully functional demo.** Every ask is deleted a month after it is posted. The service runs on a Clerk development instance, which holds at most 100 accounts, so sign-up stops at the hundredth.
+> **This is a fully functional demo.** Every ask is deleted a month after it is posted. It differs from a production service in a few ways:
+>
+> - There is one deploy environment. A green merge to main deploys straight to the live site, with no staging before it.
+> - Clerk runs as a development instance. It holds at most 100 accounts, so sign-up stops at the hundredth, and it signs people in with Clerk's shared Google and GitHub credentials.
+> - The page sends CloudFront's standard security headers, but no Content-Security-Policy.
 
 The page is live at https://d1dqzjjllemayb.cloudfront.net. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps.
 
