@@ -5,6 +5,7 @@ import {
   CapReached,
   createCountedModel,
   createModel,
+  modelFaultIsOurs,
   ModelFailed,
   type CallCounter,
   type ModelRequest,
@@ -148,6 +149,48 @@ describe("a call to the model", () => {
       () => new Response("no", { status: 401 }),
       "status-401",
     ],
+    [
+      "a refusal for want of credit",
+      () => new Response("no", { status: 402 }),
+      "status-402",
+    ],
+    [
+      "a refusal of the input",
+      () =>
+        Response.json(
+          { error: { code: 403, metadata: { reasons: ["violence"] } } },
+          { status: 403 },
+        ),
+      "status-403",
+    ],
+    [
+      "a refusal as a budget is spent",
+      () =>
+        Response.json(
+          {
+            error: {
+              code: 403,
+              metadata: { limit_source: "openrouter_key_limit" },
+            },
+          },
+          { status: 403 },
+        ),
+      "status-403-budget",
+    ],
+    [
+      "a 404 for a withdrawn model",
+      () =>
+        Response.json(
+          { error: { code: 404, message: "No endpoints found." } },
+          { status: 404 },
+        ),
+      "status-404",
+    ],
+    [
+      "a 403 whose body is not JSON",
+      () => new Response("no", { status: 403 }),
+      "status-403",
+    ],
     ["a reply that is not JSON", () => completion("high"), "reply-not-json"],
     ["a reply with no content", () => completion(null), "reply-unreadable"],
     [
@@ -165,6 +208,36 @@ describe("a call to the model", () => {
       );
     expect(failure).toBeInstanceOf(ModelFailed);
     expect(z.object({ reason: z.string() }).parse(failure).reason).toBe(reason);
+  });
+
+  it("fails with a timeout when a 403's body takes too long", async () => {
+    const stalled = (_: string | URL | Request, init?: RequestInit) =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              init?.signal?.addEventListener("abort", () => {
+                controller.error(init.signal?.reason);
+              });
+            },
+          }),
+          { status: 403 },
+        ),
+      );
+    const failure = await createModel({
+      endpoint: "http://127.0.0.1:9/api/v1",
+      model: "anthropic/claude-haiku-5.5",
+      key: () => Promise.resolve("k"),
+      fetch: stalled,
+    })
+      .reply({ ...request, timeoutMs: 10 })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(z.object({ reason: z.string() }).parse(failure).reason).toBe(
+      "timeout",
+    );
   });
 
   it("fails with a reason when the model takes too long", async () => {
@@ -190,6 +263,32 @@ describe("a call to the model", () => {
     expect(z.object({ reason: z.string() }).parse(failure).reason).toBe(
       "timeout",
     );
+  });
+});
+
+describe("whose fault a failed call is", () => {
+  it.each(["status-401", "status-402", "status-403-budget", "status-404"])(
+    "is askme's own on %s, which a retry cannot fix",
+    (reason) => {
+      expect(modelFaultIsOurs(reason)).toBe(true);
+    },
+  );
+
+  it.each([
+    "status-400",
+    "status-403",
+    "status-408",
+    "status-429",
+    "status-500",
+    "status-502",
+    "status-503",
+    "timeout",
+    "unreachable",
+    "reply-unreadable",
+    "reply-not-json",
+    "reply-rejected",
+  ])("is not askme's own on %s", (reason) => {
+    expect(modelFaultIsOurs(reason)).toBe(false);
   });
 });
 
