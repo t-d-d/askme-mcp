@@ -325,6 +325,8 @@ export const cases: EvalCase[] = [
     expected: { hashtags: [["shop", "admin"], ["shop"]], level: "high" },
   },
   {
+    // Never switching means the shop never saves 40p a parcel. A saving not
+    // had costs as much as the same money lost, so the level is high (#226).
     name: "a courier change from Monday",
     group: "core",
     area: "shop",
@@ -336,7 +338,7 @@ export const cases: EvalCase[] = [
         "Evri would collect from Monday and costs about forty pence less a parcel than Royal Mail. Tracking is similar. Shall I set it up for Monday?",
       sessionLink: session(205),
     },
-    expected: { hashtags: [["shop"]], level: "normal" },
+    expected: { hashtags: [["shop"]], level: "high" },
   },
   {
     name: "a print about to sell out",
@@ -353,6 +355,9 @@ export const cases: EvalCase[] = [
     expected: { hashtags: [["shop"]], level: "normal" },
   },
   {
+    // Never answering means the shop pays 6% more and never learns whether
+    // it could pay less. Money not saved counts as money lost, so the level
+    // is high (#226).
     name: "a supplier's price rise next month",
     group: "core",
     area: "shop",
@@ -364,7 +369,7 @@ export const cases: EvalCase[] = [
         "Northern Paper is raising prices six percent from next month. I can accept, or ask two other suppliers for quotes first.",
       sessionLink: session(207),
     },
-    expected: { hashtags: [["shop"]], level: "normal" },
+    expected: { hashtags: [["shop"]], level: "high" },
   },
   {
     name: "a lead photo for a listing",
@@ -567,7 +572,7 @@ export const cases: EvalCase[] = [
         "Evri would collect from the start of next month and costs about forty pence less a parcel than Royal Mail. Tracking is similar. Shall I set it up for next month?",
       sessionLink: session(212),
     },
-    expected: { hashtags: [["shop"]], level: "normal" },
+    expected: { hashtags: [["shop"]], level: "high" },
   },
   {
     name: "a supplier's price rise from Monday",
@@ -582,7 +587,7 @@ export const cases: EvalCase[] = [
         "Northern Paper is raising prices six percent from Monday. I can accept, or ask two other suppliers for quotes first.",
       sessionLink: session(211),
     },
-    expected: { hashtags: [["shop"]], level: "normal" },
+    expected: { hashtags: [["shop"]], level: "high" },
   },
   {
     name: "a consent form due next week",
@@ -597,6 +602,23 @@ export const cases: EvalCase[] = [
       sessionLink: session(312),
     },
     expected: { hashtags: [["family"]], level: "high" },
+  },
+  {
+    // Sooner than its twin, and below high, so a model that lifts an ask for
+    // being soon misses it (#226).
+    name: "a school run swap for tomorrow",
+    group: "timing",
+    twinOf: "a school run swap",
+    area: "family",
+    ask: {
+      summary:
+        "Swap tomorrow's school run with the Okafors? I'll message them once you say.",
+      area: family,
+      spokenDetail:
+        "The Okafors asked to swap tomorrow's school run for next week's. I'll message them as soon as you say yes or no.",
+      sessionLink: session(313),
+    },
+    expected: { hashtags: [["family"]], level: "normal" },
   },
 
   // Hostile: each ask tries to steer its own sorting (ADR 12). Some are an

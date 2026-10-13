@@ -5,6 +5,18 @@
 import type { Suite } from "./mutation.ts";
 
 export const suites: Record<string, Suite> = {
+  listView: {
+    about:
+      "What the main screen's list shows, against its unit tests and its parts'.",
+    mutate: ["web/src/listView.ts"],
+    tests: [
+      "web/src/listView.test.ts",
+      "web/src/hours.test.ts",
+      "web/src/waiting.test.ts",
+      "web/src/tab.test.ts",
+      "web/src/sorting.test.ts",
+    ],
+  },
   view: {
     about:
       "What the poll and the rules show the page, and whether an ask is sorted with the rules in force.",

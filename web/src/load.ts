@@ -75,6 +75,39 @@ export function serviceAhead(response: Response, receivedAt: number): number {
   return date.success ? date.data - receivedAt : 0;
 }
 
+// A moment by both of this browser's clocks: Date.now(), which a change to
+// the device's clock moves, and performance.now(), which no change moves,
+// but which on most systems stands still while the device sleeps.
+export interface Moment {
+  date: number;
+  steady: number;
+}
+
+export const momentNow = (): Moment => ({
+  date: Date.now(),
+  steady: performance.now(),
+});
+
+// How far the service's clock is ahead of this browser's at a moment, from
+// how far it was at an earlier one, with no answer from the service between.
+// The service's clock has moved on by the time that passed. On a page visible
+// throughout, that is performance.now()'s count, so putting the device's
+// clock right in between moves nothing on the service's. A hidden page may be
+// on a device that slept, which performance.now() may not count, so there it
+// is Date.now()'s count, or performance.now()'s where that is more, as no less
+// time can have passed.
+export function aheadSince(
+  ahead: number,
+  then: Moment,
+  now: Moment,
+  visibleThroughout: boolean,
+): number {
+  const byDate = now.date - then.date;
+  const bySteady = now.steady - then.steady;
+  const passed = visibleThroughout ? bySteady : Math.max(byDate, bySteady);
+  return ahead + passed - byDate;
+}
+
 // Sends a request to the page's API with the session token, and a JSON
 // body unless the body is left out. A refusal throws as a Refusal, and any
 // other failure as an error.
