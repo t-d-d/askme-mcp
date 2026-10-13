@@ -53,4 +53,27 @@ export const suites: Record<string, Suite> = {
     mutate: ["service/src/rate.ts"],
     tests: ["service/src/rate.test.ts"],
   },
+  rateLimits: {
+    about:
+      "The four rate limits and the words of a refusal that names one, against the tests of the counters and the refusals that use them (#224).",
+    mutate: ["service/src/rate.ts", "service/src/wording.ts"],
+    tests: [
+      "service/src/rate.test.ts",
+      "service/src/wording.test.ts",
+      "service/src/limit-refusals.test.ts",
+      "service/src/limit-refusals-long.test.ts",
+      "service/src/ask.test.ts",
+      "service/src/samples.test.ts",
+      "service/src/model.test.ts",
+      "service/src/tools.test.ts",
+      "fitness/error-contract.test.ts",
+      "service/store.int.ts",
+      "service/api.int.ts",
+      "service/mcp.int.ts",
+      "fitness/error-contract-codes.int.ts",
+      "fitness/error-contract.int.ts",
+      "fitness/polling.int.ts",
+      "fitness/model-call-cap.int.ts",
+    ],
+  },
 };

@@ -16,7 +16,7 @@
 // before its reply, or partway through it.
 import { z } from "zod";
 import type { AccountId } from "./identity";
-import { modelCallLimit, windowOf } from "./rate";
+import { rateLimits, windowOf } from "./rate";
 import type { Store } from "./store/store";
 
 // The model that sorts, chosen with the eval set: the best of the
@@ -170,7 +170,7 @@ export function createModel(config: {
 // The parts of the store that keep the count of model calls.
 export type CallCounter = Pick<
   Store,
-  "countModelCall" | "modelCapSpent" | "recordModelCapReset"
+  "countCall" | "modelCapSpent" | "recordModelCapReset"
 >;
 
 // The model as the service reaches it: every call is made for one account,
@@ -198,7 +198,7 @@ export function createCountedModel(
   // day, raising the version so every open page learns of it (ADR 22).
   async function refuse(account: AccountId, at: Date): Promise<Date> {
     const resetsAt = new Date(
-      windowOf(at, modelCallLimit.windowMinutes).endsAt,
+      windowOf(at, rateLimits.modelCall.windowMinutes).endsAt,
     );
     await store.recordModelCapReset(account, resetsAt);
     return resetsAt;
@@ -207,7 +207,7 @@ export function createCountedModel(
     forAccount: (account) => ({
       async reply(request) {
         const at = now();
-        const counted = await store.countModelCall(account, at);
+        const counted = await store.countCall(account, "modelCall", at);
         if (!counted.counted) throw new CapReached(await refuse(account, at));
         return client.reply(request);
       },
