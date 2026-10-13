@@ -139,6 +139,18 @@ const atStart = (page: Page) =>
     await new Promise((resolve) => requestAnimationFrame(resolve));
   });
 
+// At the end, before the browser clears the slide away. A phone can draw a
+// frame there.
+const atEnd = (page: Page) =>
+  page.evaluate(async () => {
+    for (const animation of document.getAnimations()) {
+      animation.pause();
+      animation.currentTime =
+        animation.effect?.getComputedTiming().endTime ?? 0;
+    }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  });
+
 // The browser's picture of a screen can shade the edge of a letter a step or
 // so off the screen itself, so each pixel need only be within a few steps.
 const alike = (page: Page, one: Buffer, other: Buffer) =>
@@ -248,6 +260,28 @@ describe("the rules and Connect your agents", () => {
     await heading(page, name);
     await slides(page, click(page, "All asks"), slidesOut);
     await theList(page);
+  });
+
+  // A picture that slid out and then fell back into place would cover the
+  // list again for a frame.
+  it("keep the rules off the screen at the end of their slide out", async () => {
+    const page = await open("#rules");
+    await heading(page, "Your rules");
+    const rules = await page.screenshot();
+    await click(page, "All asks")();
+    expect(await moving(page)).toEqual(slidesOut);
+    await atEnd(page);
+    const ending = await page.screenshot();
+    await finish(page);
+    await theList(page);
+    expect(
+      await alike(page, ending, rules),
+      "the last frame of the slide is unlike the rules",
+    ).toBe(false);
+    expect(
+      await alike(page, ending, await page.screenshot()),
+      "the last frame of the slide shows the list",
+    ).toBe(true);
   });
 
   it("slide out on Back, Connect your agents to show the rules, and the rules to show the list", async () => {

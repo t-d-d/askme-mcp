@@ -41,9 +41,11 @@ html[data-slide="in"]::view-transition-new(root) {
   animation: slide-in var(--duration-screen) ease-out;
 }
 
+/* forwards keeps the picture off the screen until the browser clears the
+   slide away, which can be a frame after it ends. */
 html[data-slide="out"]::view-transition-old(root) {
   z-index: 1;
-  animation: slide-out var(--duration-screen) ease-out;
+  animation: slide-out var(--duration-screen) ease-out forwards;
 }
 
 @keyframes slide-in {
