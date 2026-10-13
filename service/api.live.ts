@@ -14,3 +14,13 @@ describe("live: the API answers a signed-out call with a 401", () => {
     },
   );
 });
+
+describe("live: the API's answers carry the service's clock", () => {
+  // The page goes by the service's clock where a limit is counted by it,
+  // and learns it from a refusal's Date header (web/src/load.ts).
+  it("gives the time in a Date header, within a minute of this clock", async () => {
+    const response = await fetch(new URL(pagePaths.asks, pageUrl()));
+    const date = Date.parse(response.headers.get("date") ?? "");
+    expect(Math.abs(date - Date.now())).toBeLessThan(60_000);
+  });
+});

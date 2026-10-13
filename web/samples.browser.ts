@@ -69,8 +69,8 @@ const withSamples: AsksAnswer = {
   ],
 };
 
-const refusal = (code: string) =>
-  new Status(429, { code, class: "retry", message: "Refused." });
+const refusal = (code: string, headers?: Record<string, string>) =>
+  new Status(429, { code, class: "retry", message: "Refused." }, headers);
 
 // A new account's page, whose list gains the samples once they are sent,
 // and whose samples route answers as given.
@@ -172,10 +172,29 @@ const capNote = (page: OpenPage["page"]) =>
     .getByRole("status")
     .filter({ hasText: "You've reached today's limit. It resets at 01:00." });
 
-// Moves the clock to a second before the cap resets, where the note still
-// shows, then two seconds on, past the reset, where it has gone.
-async function dropsCapNoteAtReset({ page }: OpenPage): Promise<void> {
-  await page.clock.pauseAt(new Date("2026-10-12T23:59:59Z"));
+// Presses "Send sample asks" into the daily cap on a page whose clock
+// stands still at a time, and gives the note once it shows. The service
+// refuses the press at 23:58 UTC on 12 October by its own clock, which its
+// answer's Date header gives, two minutes before the cap resets.
+async function pressIntoCapAt(pageClock: Date): Promise<OpenPage> {
+  const opened = await openNewAccount(
+    refusal("cap_reached", { date: "Mon, 12 Oct 2026 23:58:00 GMT" }),
+    { clock: { stoppedAt: pageClock }, timeZone: "Europe/London" },
+  );
+  await firstPoll(opened);
+  await samplesButton(opened.page).click();
+  await stepUntilShown(opened, capNote(opened.page));
+  return opened;
+}
+
+// Moves the clock to a second before the cap resets, by the page's clock,
+// where the note still shows, then two seconds on, past the reset, where it
+// has gone.
+async function dropsCapNoteAt(
+  { page }: OpenPage,
+  reset = new Date("2026-10-13T00:00:00Z"),
+): Promise<void> {
+  await page.clock.pauseAt(new Date(reset.getTime() - 1000));
   expect(await capNote(page).count()).toBe(1);
   await page.clock.runFor(2000);
   await expect.poll(() => capNote(page).count()).toBe(0);
@@ -313,8 +332,23 @@ describe("a new account", () => {
 
   it("drops the cap note once the cap resets, with no reload", async () => {
     view = await pressIntoCap();
-    await dropsCapNoteAtReset(view);
+    await dropsCapNoteAt(view);
   });
+
+  // The service counts the cap by its own clock, so the note goes when the
+  // service's day ends, even on a page whose clock is a few minutes out. A
+  // clock three minutes fast reads 00:03 then, and one three minutes slow
+  // reads 23:57.
+  it.each([
+    ["fast", "2026-10-13T00:01:00Z", "2026-10-13T00:03:00Z"],
+    ["slow", "2026-10-12T23:55:00Z", "2026-10-12T23:57:00Z"],
+  ])(
+    "drops the cap note when the service's day ends, on a clock a few minutes %s",
+    async (_, pressed, reset) => {
+      view = await pressIntoCapAt(new Date(pressed));
+      await dropsCapNoteAt(view, new Date(reset));
+    },
+  );
 
   // A limit reached part way keeps the asks posted before it, so the list
   // is asked for again even when the press is refused.
@@ -401,6 +435,6 @@ describe("Connect your agents, for someone with no agent yet", () => {
   // Connect your agents does not poll the list, so nothing else redraws it.
   it("drops the cap note once the cap resets, with no reload", async () => {
     view = await pressIntoCap("#connect");
-    await dropsCapNoteAtReset(view);
+    await dropsCapNoteAt(view);
   });
 });

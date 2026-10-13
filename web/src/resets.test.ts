@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resetsAt, resetTime } from "./resets";
+import { resetsAt, resetsHere, resetTime } from "./resets";
 
 // 12 October 2026. London is on summer time, an hour ahead of UTC, until
 // 1am UTC on 25 October. New York is four hours behind UTC.
@@ -61,6 +61,35 @@ describe("the moment a daily cap resets", () => {
   it("is a day on, at midnight UTC itself", () => {
     expect(resetsAt(at("2026-10-13T00:00:00Z"))).toBe(
       at("2026-10-14T00:00:00Z"),
+    );
+  });
+});
+
+// The service counts every daily cap by its own clock. Here the true time
+// is 23:58 UTC on 12 October, two minutes before the cap resets.
+describe("the moment a daily cap resets, on this browser's clock", () => {
+  const minutes = (count: number) => count * 60 * 1000;
+
+  it("is the next midnight UTC when the two clocks agree", () => {
+    expect(resetsHere(at("2026-10-12T23:58:00Z"), 0)).toBe(
+      at("2026-10-13T00:00:00Z"),
+    );
+  });
+
+  // This browser's clock reads 00:01 on 13 October. Its own next midnight
+  // is a day away, but the service's is two minutes away, which this
+  // clock reads as 00:03.
+  it("is the service's next midnight on a clock a few minutes fast", () => {
+    expect(resetsHere(at("2026-10-13T00:01:00Z"), -minutes(3))).toBe(
+      at("2026-10-13T00:03:00Z"),
+    );
+  });
+
+  // This browser's clock reads 23:55, and the service's midnight is two
+  // minutes away, which this clock reads as 23:57.
+  it("is the service's next midnight on a clock a few minutes slow", () => {
+    expect(resetsHere(at("2026-10-12T23:55:00Z"), minutes(3))).toBe(
+      at("2026-10-12T23:57:00Z"),
     );
   });
 });
