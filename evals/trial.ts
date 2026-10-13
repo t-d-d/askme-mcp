@@ -199,6 +199,9 @@ export interface TrialSort {
   ask: string;
   group: EvalCase["group"];
   expected: EvalCase["expected"];
+  // The issue in which the owner kept the ask's level though the default
+  // model misses it, when there is one.
+  knownMiss?: number;
   hashtags?: string[];
   level?: Level;
   reason?: string;
@@ -241,6 +244,7 @@ export function trialRecord(
         ask: one.name,
         group: one.group,
         expected: one.expected,
+        ...(one.knownMiss === undefined ? {} : { knownMiss: one.knownMiss }),
         ...(sort === undefined
           ? {}
           : {
