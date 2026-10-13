@@ -246,7 +246,7 @@ describe("fitness: two functions write (table-design.md)", () => {
   // What lint reports for the store module as it stands. Linting the whole
   // module takes longer than one test may when the gate keeps the machine
   // busy, so it runs once here, and loads the project for the tests below.
-  let storeReported: string[] | undefined;
+  let storeReported: string[];
 
   beforeAll(async () => {
     storeReported = await reported(readRepoFile(storePath), storePath);
@@ -302,7 +302,6 @@ describe("fitness: two functions write (table-design.md)", () => {
   });
 
   it("finds the store's own writes in those two functions", () => {
-    expect(storeReported).toBeDefined();
     expect(storeReported).not.toContain("askme/write-functions");
   });
 });
