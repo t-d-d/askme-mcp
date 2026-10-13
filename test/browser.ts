@@ -151,6 +151,34 @@ export const datedPolls = (
       }),
   );
 
+// Answers each poll for the list as datedPolls does until the test calls
+// fail, and with a failure from then on, as when the page loses its
+// connection or askme is down.
+export function failingPolls(
+  list: () => AsksAnswer,
+  serviceNow: () => number,
+): { answering: Answering; fail: () => void } {
+  const dated = datedPolls(list, serviceNow);
+  let failing = false;
+  return {
+    answering: new Answering((url, authorization, sent) =>
+      failing ? new Status(503) : dated.answer(url, authorization, sent),
+    ),
+    fail: () => {
+      failing = true;
+    },
+  };
+}
+
+// Moves the device's clock on a page with Playwright's clock, as a device
+// does when it puts its clock right. That moves Date.now() and leaves
+// performance.now() as it was. On most systems a device that sleeps moves
+// them in the same way.
+export async function moveDeviceClock(page: Page, by: number): Promise<void> {
+  const now = await page.evaluate(() => Date.now());
+  await page.clock.setSystemTime(now + by);
+}
+
 // A colour, or a custom property that holds one, as the page's browser
 // computes it. A test compares an element's colour with this, so no colour
 // is written in a test of the page (styling.md).
