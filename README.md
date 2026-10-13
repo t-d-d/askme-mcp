@@ -68,108 +68,46 @@ Most of Haiku's misses rank a saving passed up, such as a cheaper courier or a s
 
 ## Agents wrote the code
 
-Coding agents wrote every line of code in this repo, in Claude Code sessions. The owner and Claude wrote the PRD, the decision records and the issues, and the owner approved each one. Each change arrived as a pull request that the owner merged. By 13 October 2026, 133 pull requests had merged.
+Coding agents wrote every line of code in this repo, in Claude Code sessions. The owner and Claude wrote the PRD, the decision records and the issues, and the owner approved each one. Each change arrived as a pull request that the owner merged. By 13 October 2026, 146 pull requests had merged.
 
 The agents work to rules kept in the repo, so each session starts from the same instructions.
 
 - [CLAUDE.md](CLAUDE.md) says how to work: one branch per issue, tests first, the gate before every push, and the owner merges.
 - [.claude/skills/](.claude/skills/) holds the steps for picking up an issue, checking the constraints, reviewing a branch before it is pushed, and writing a pull request.
-- Each decision record lists its checks, and each check is a fitness function named after it. Most run in the gate. A few run after each deploy, every day, or with the eval. `npm run checks` lists any check a record names that has no test. It runs by hand, because a record may name checks that land with a later issue.
-- `npm run gate` runs format, lint, types, and the static, unit, integration and browser tests. It runs offline and holds no secrets. A pull request merges only when it passes.
 
-Anything only the owner can do, such as making accounts, setting secrets or connecting a real agent, is an issue labelled `mode: human`. Its closing comment records the result.
+Changes start as GitHub issues, in a simple workflow. An issue describes one change, with a label for its type, such as `type: enhancement` or `type: bug`, and one for its mode. An agent takes a `mode: afk` issue from its text to a pull request on a branch of its own, and the pull request closes the issue. Anything only the owner can do, such as making accounts, setting secrets or connecting a real agent, is a `mode: human` issue, and its closing comment records the result. All but two of the merged pull requests close or refer to an issue, so a change can be traced to the issue that asked for it.
 
-## Setup
+## How it is tested
 
-### On a laptop
+With agents writing the code, the gate is the reviewer. `npm run gate` runs format, lint, types, and the static, unit, integration and browser tests. It runs offline, holds no secrets, and is the same command on a laptop and in CI. A pull request merges only when it passes.
 
-You need Node.js 22.18 or later (see [.node-version](.node-version)) and Docker. The integration tests run DynamoDB Local in Docker.
+A test's file name sets its tier, and its tier sets what it may touch ([ADR 9](docs/adr/0009-test-pyramid.md)).
 
-```
-npm ci
-npx playwright install chromium
-npm run gate
-```
-
-`npm run eval` runs the eval set against the real model. On a laptop it reads the eval key from `OPENROUTER_API_KEY`. In a Claude cloud session the key is a network secret on the environment, and the command sends none of its own.
-
-### Accounts and settings
-
-These are made once, by hand. The repo refers to each by the name given here, and holds no values.
-
-1. **AWS.** Use an AWS account that holds askme and nothing else, in `us-east-1`. CloudWatch's billing metric and CloudFront's certificates exist only there. Switch on the account's billing alerts, or AWS publishes no billing metric and the spend alarm never fires ([ADR 17](docs/adr/0017-spend-reads-the-bill.md)). A new account may allow only 10 concurrent Lambda executions where AWS's default is 1,000, so ask AWS to raise it.
-2. **Parameters.** In Parameter Store, Standard tier, in `us-east-1`:
-   - `/askme/alerts/email`, a String, for the address alerts go to.
-   - `/askme/alerts/monthly-spend`, a String, for the monthly spend in US dollars that sets off the spend alarm.
-   - `/askme/openrouter/api-key`, a SecureString, for the service's model key, which has a spending limit.
-3. **The deploy role.** Apply [infra/github-oidc.cfn.yml](infra/github-oidc.cfn.yml) once by hand, as the stack `askme` in `us-east-1`, with the capability `CAPABILITY_NAMED_IAM`. Give it the parameters `GitHubOwnerId` and `GitHubRepoId`, the numeric ids any Actions run shows as `github.repository_owner_id` and `github.repository_id`. It makes GitHub's OIDC provider and the role `askme-github-deploy`, which only a job on main can assume. Each deploy applies it again after that.
-4. **GitHub.** Set the repo variables `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `CLERK_PUBLISHABLE_KEY` and `CLERK_ISSUER`, and the repo secret `SERVERLESS_ACCESS_KEY`. Give main a ruleset that requires a pull request and the `gate` check. A daily conformance check reads the ruleset back.
-5. **Clerk.** Make a development instance, and set it up as the next section says.
-6. **OpenRouter.** Two keys in a workspace of askme's own: the service's key above, and an eval key with a small limit. In a Claude cloud environment, add the eval key as a network secret for `openrouter.ai`, with the header `Authorization` and the prefix `Bearer`.
-7. **The first deploy.** Merge to main. The deploy run's summary gives both addresses. Then confirm the alert email, as below.
-
-### Clerk dashboard settings
-
-These are under Configure, then Developers, then OAuth applications.
-
-| Tab | Setting | Value |
+| Tier | What it checks | Runs |
 | --- | --- | --- |
-| Settings | Publish CIMD support | On, with "Allow any client" |
-| Settings | Publish DCR support | On |
-| Settings | Require PKCE | On, Clerk's default |
-| Settings | Access token format | JWT access tokens, Clerk's default |
-| Settings | Include Audience | Off, Clerk's default |
-| Scopes | Custom scope | `asks:create`, published in discovery |
+| Static | Types, lint, and fitness functions that read the repo's own files | In the gate |
+| Unit | Logic in memory, such as time windows, ordering and schemas | In the gate |
+| Integration | The API and the MCP tools from end to end, against a local DynamoDB, a fake model and test-key tokens | In the gate |
+| Browser | The built page in headless Chromium, with the API faked | In the gate |
+| Live | The deployed page, API and MCP endpoint. One check signs in as the one test account. | After each deploy |
+| Conformance | Setup held outside the repo, such as main's ruleset in GitHub | Every day |
 
-Under User & authentication, people sign in with email, Google or GitHub. A development instance uses Clerk's shared Google and GitHub credentials. A production instance needs askme's own.
+Each decision record names checks for the rules it puts in force, and each check is a test named after it, called a fitness function. `npm run checks` lists any check a record names that has no test.
 
-The live check after each deploy signs up its one test account the first time it runs. For that, set Clerk's access mode to Open and turn test mode on.
+Mutation testing measures how well the tests guard the code. `npm run mutate -- <suite>` runs StrykerJS over one of eight suites. It makes small changes to the code and lists the ones no test catches. It runs by hand, outside the gate. Each pull request in the refactoring train ([#225](https://github.com/t-d-d/askme-mcp/issues/225)) ran it before and after its move. When the dismissal rules moved out of a component into a pure function, for example, the tests went from catching none of 100 changes to catching all 145.
 
-### Confirming the alert email
+The eval set measures how well the model sorts, against the real model, on demand. Its scores are above. They have no pass mark, and the model may sort the same ask differently from one call to the next.
 
-The first deploy makes the alert topic, and AWS emails a confirmation link to the address in `/askme/alerts/email`, from `no-reply@sns.amazonaws.com`. No alarm reaches anyone until the link is clicked. It lasts three days. If it runs out, open SNS in `us-east-1`, then Topics, `askme-alerts`, Subscriptions, select the pending subscription and choose Request confirmation.
+[docs/testing.md](docs/testing.md) says what stands in for each outside service in the gate and where the real one is checked, and gives the mutation figures for each refactor.
 
-To check that an alarm reaches you, run this in CloudShell in `us-east-1`:
+### Manual checks
 
-```
-aws cloudwatch set-alarm-state \
-  --alarm-name askme-error-lines \
-  --state-value ALARM \
-  --state-reason "Checking the alert email arrives"
-```
+Some things only a person, or an agent looking at a screenshot, can check.
 
-An email titled `ALARM: "askme-error-lines" in US East (N. Virginia)` arrives. The command changes only the alarm's state, and the alarm returns to OK at its next one-minute check without sending another email. Use `askme-error-lines` for this. `askme-spend` checks only every six hours, so it would stay in ALARM for hours.
-
-## Checklist for connecting a real agent
-
-No test can connect a real agent, so the owner runs this checklist by hand after a deploy that changes sign-in or the MCP server. The Connect your agents screen gives the steps for Claude and Cursor.
-
-Connect each agent:
-
-- **Claude** (the app, and Claude cloud sessions). Add a custom connector, paste the server address from the Connect screen, and approve askme when Claude asks you to sign in.
-- **Claude Code on its own.** Run `claude mcp add --transport http --scope user askme <MCP endpoint>`, then choose Authenticate under `/mcp`.
-- **Cursor.** On the computer where Cursor is installed, open the Connect screen and click "Add askme to Cursor". Cursor offers to add a server named askme. Sign in to approve it.
-
-Then, for each agent:
-
-- [ ] The agent lists two tools, `ask` and `resolve`, and no others.
-- [ ] It posts an ask, and the card appears on the page within a few seconds, on a phone.
-- [ ] The card's main button opens the agent's session. A card with no link has no main button, and tapping it opens the ask's detail.
-- [ ] You reply in the session, the agent resolves the ask, and the card clears.
-
-On 12 October 2026 the whole checklist passed for a Claude cloud session and a local Cursor agent. On 11 October, Claude Code on a laptop and in the Claude desktop app connected and called `ask`.
-
-## What is untested
-
-- **Real agents connecting.** The owner runs the checklist above by hand. A change can pass every test and still break a real client.
-- **A Cursor cloud agent's session link.** Cursor cloud agents need a paid plan, which the owner does not have. The demo works without it, because a card with no link opens its detail.
-- **Speech on a phone.** Listen uses the browser's own speech. No test hears it.
-- **Whether the page matches the design.** Each change to the page is compared with the mockup by eye at phone width. No test sees it.
-- **Sorting quality.** The eval scores above have no pass mark, and the eval runs on demand, outside the gate. The model may sort the same ask differently from one call to the next.
-- **The alert email and billing.** Confirming the subscription and switching on billing alerts are done by hand. No check can see either, or that the AWS account holds nothing else.
-- **Main's ruleset.** It lives in GitHub's settings, which no pull request can see. The daily conformance check reads it, so a change shows up the next day.
-- **Load.** Nothing has been tested with more than a handful of people, and the Lambda limit in step 1 caps how many requests run at once.
-- **A Clerk production instance.** askme has only run on a development instance.
+- **Real agents connecting.** The owner runs the [checklist for connecting a real agent](docs/agent-checklist.md) after a deploy that changes sign-in or the MCP server. It last passed on 12 October 2026, for a Claude cloud session and a local Cursor agent.
+- **Speech on a phone.** Listen uses the browser's own speech. The owner has checked on a phone that a card is read aloud.
+- **The page against the design.** Before pushing a change to the page, the coding agent opens it at phone width in headless Chromium and compares it with the mockup by eye. The gate checks parts of the design: colours and sizes come from the design's tokens, text is readable against its background, and everything can be tapped. No test compares the layout with the mockup.
+- **The AWS account and the alert email.** While [bootstrapping](docs/bootstrap.md), the owner keeps the AWS account to askme alone, switches on billing alerts and confirms the alert email. A test alarm shows that the email arrives.
 
 ## Trade-offs
 
@@ -177,8 +115,13 @@ On 12 October 2026 the whole checklist passed for a Claude cloud session and a l
 - **Agents read nothing.** An agent never learns whether its ask was opened or dismissed, and cannot list its own asks. It must keep the ids it was given, and always asks in its own session as well ([ADR 2](docs/adr/0002-agents-write-only.md), [ADR 11](docs/adr/0011-error-contract.md)).
 - **Rules are plain English, read by a model.** There is no compile step, and no fixed rule sits behind a sort. The eval set and the reason on each card are the checks on it.
 - **One environment.** There is no staging, so nothing deployed is tested before it merges. A live check signs in on the deployed page after each deploy ([ADR 4](docs/adr/0004-repo-and-delivery.md), [ADR 16](docs/adr/0016-live-sign-in.md)).
-- **A Clerk development instance.** It needs no domain, but it holds 100 accounts and uses Clerk's shared Google and GitHub credentials. DCR is on, though Clerk marks it deprecated, because MCP clients still use it. That opens a public registration endpoint and puts Clerk's consent screen on every agent sign-in. Clerk's tokens carry no audience, so the service does not check one. The instance issues tokens for askme alone ([ADR 6](docs/adr/0006-identity.md)).
+- **A Clerk development instance.** It needs no domain, but it holds 100 accounts and uses Clerk's shared Google and GitHub credentials. DCR is on, though Clerk marks it deprecated, because MCP clients still use it. That opens a public registration endpoint and puts Clerk's consent screen on every agent sign-in. Clerk's tokens carry no audience, so the service does not check one. The instance issues tokens for askme alone ([ADR 6](docs/adr/0006-identity.md)). askme has not run on a production instance.
 - **The deploy role is an administrator.** The AWS account holds only askme, and a role that must create roles for its functions could make itself an administrator anyway. The guards are that only main can assume it, only the owner merges, and every merge needs the gate.
 - **One table, with no index and no scan.** Every read is one account's. A question across accounts needs a new decision ([ADR 13](docs/adr/0013-table-design.md)).
 - **The sort queue costs a little when idle.** Lambda polls the SQS queue whether or not it holds jobs, and AWS bills those requests. Everything else scales to zero ([ADR 22](docs/adr/0022-sort-queue.md)).
 - **Daily caps.** An account that reaches 2,000 model calls in a day stops being sorted until the next UTC day, and its asks that were left out wait until the rules are saved again ([ADR 21](docs/adr/0021-model-call-cap.md)).
+- **Not tried at scale.** askme has run with no more than a handful of people. The AWS account's Lambda limit caps how many requests run at once, and a new account may start at 10 ([bootstrapping](docs/bootstrap.md), step 1).
+
+## Setup
+
+[docs/setup.md](docs/setup.md) says how to run the gate and the eval set on a laptop. [docs/bootstrap.md](docs/bootstrap.md) lists the accounts and settings a new deployment needs, made once by hand.

@@ -23,5 +23,5 @@ an OAuth server is more work than the rest of the product.
 - Read an account id from a body, a query string or a header.
 
 Judgment: Whether real clients complete the sign-in can only be
-checked by hand against the live environment. See the README checklist.
+checked by hand against the live environment. See docs/agent-checklist.md.
 History: [ADR 6](../adr/0006-identity.md)
