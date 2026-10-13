@@ -8,32 +8,15 @@ import { servePage } from "../service/src/api";
 import { callerOf } from "../service/src/identity";
 import type { Logger } from "../service/src/log";
 import type { PageRoute } from "../service/src/routes";
-import type { Store } from "../service/src/store/store";
+import { fakeStore } from "./fake-store";
 
 const unused = () => Promise.reject(new Error("Not used here."));
 
 // Every count is refused with this many seconds left in its window.
-const refusingStore = (secondsLeft: number): Store => {
-  const refused = () =>
-    Promise.resolve({ counted: false as const, secondsLeft });
-  return {
-    postAsk: unused,
-    resolveAsk: unused,
-    markOpened: unused,
-    dismissAsk: unused,
-    openAsks: unused,
-    asksSince: unused,
-    countCall: refused,
-    rules: unused,
-    saveRules: unused,
-    resaveRules: unused,
-    modelCapSpent: unused,
-    recordModelCapReset: unused,
-    askToSort: unused,
-    recordSort: unused,
-    close: () => undefined,
-  };
-};
+const refusingStore = (secondsLeft: number) =>
+  fakeStore({
+    countCall: () => Promise.resolve({ counted: false as const, secondsLeft }),
+  });
 
 const caller = callerOf({
   token: "test",
