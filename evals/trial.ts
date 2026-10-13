@@ -13,6 +13,8 @@ import {
   bothRight,
   gaveIn,
   hashtagsRight,
+  knownMissMark,
+  knownMissNote,
   percent,
   type Outcome,
 } from "./score";
@@ -147,8 +149,9 @@ function levelsGiven(sorts: readonly Outcome[]): string {
   ].join(", ");
 }
 
-// What a trial prints: a line for each ask, then each group's score, both as
-// a share of its sorts and as the score one run of the set would expect.
+// What a trial prints: a line for each ask, with the known misses (#262)
+// marked whatever levels they got, then each group's score, both as a share
+// of its sorts and as the score one run of the set would expect.
 export function trialReport(
   outcomes: readonly Outcome[],
   about: { model: string; sorts: number; draft: string | undefined },
@@ -157,8 +160,10 @@ export function trialReport(
   const askRows = asks.map((one) => {
     const sorts = outcomes.filter((outcome) => outcome.one === one);
     const right = sorts.filter(bothRight).length;
-    return `| ${one.name} | ${one.group} | ${one.expected.level} | ${String(right)}/${String(sorts.length)} | ${levelsGiven(sorts)} |`;
+    const mark = one.knownMiss === undefined ? "" : knownMissMark(one);
+    return `| ${one.name}${mark} | ${one.group} | ${one.expected.level} | ${String(right)}/${String(sorts.length)} | ${levelsGiven(sorts)} |`;
   });
+  const known = asks.some(({ knownMiss }) => knownMiss !== undefined);
   const groups = [...new Set(asks.map(({ group }) => group))];
   const groupRows = groups.map((group) => {
     const sorts = outcomes.filter(({ one }) => one.group === group);
@@ -175,6 +180,7 @@ export function trialReport(
     "| Ask | Group | Expected | Right | Levels |",
     "| --- | --- | --- | --- | --- |",
     ...askRows,
+    ...(known ? ["", knownMissNote] : []),
     "",
     "| Group | Both right | A run of the set |",
     "| --- | --- | --- |",
