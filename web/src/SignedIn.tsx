@@ -38,17 +38,17 @@ function useScreen(): {
     // The address a traversal of the history has reached, when the browser
     // drew its own movement on the way, as a phone's browser may when the
     // person swipes Back. The page does not move the screen a second time.
-    let drawn: string | null = null;
+    let browserDrew: string | null = null;
     const traverse = (event: PopStateEvent) => {
-      drawn = event.hasUAVisualTransition ? window.location.href : null;
+      browserDrew = event.hasUAVisualTransition ? window.location.href : null;
     };
     // A link, Back or a typed address has changed the fragment before the
     // page hears of it. If the person stays, the page goes back to the
     // entry they were on, so the history is left as it was. A browser that
     // cannot say where that entry is gets the old address as a new entry.
     const follow = (event: HashChangeEvent) => {
-      const browserMoved = drawn === event.newURL;
-      drawn = null;
+      const browserMoved = browserDrew === event.newURL;
+      browserDrew = null;
       if (returning) {
         returning = false;
         return;
