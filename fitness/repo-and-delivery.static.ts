@@ -410,4 +410,45 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
       "node_modules/.bin/serverless deploy",
     );
   });
+
+  // The installer package fetches a launcher, and the launcher fetches the
+  // framework. Serverless publishes no checksum for either (#344).
+  const frameworkVersion = () =>
+    readYaml("serverless.yml", z.looseObject({ frameworkVersion: z.string() }))
+      .frameworkVersion;
+  const checkName = "Check the Serverless launcher and framework";
+  const deploySteps = () => readWorkflow(deployPath).jobs.deploy?.steps ?? [];
+
+  it("names one exact framework version", () => {
+    expect(frameworkVersion()).toMatch(/^\d+\.\d+\.\d+$/u);
+  });
+
+  it("checks the launcher and that version's archive against committed sums", () => {
+    const check = deploySteps().find((step) => step.name === checkName);
+    const run = check?.run ?? "";
+    expect(run).toContain(`version=${frameworkVersion()}\n`);
+    expect(run).toContain("sha256sum --check --strict <<EOF\n");
+    expect(
+      [...run.matchAll(/^[0-9a-f]{64} {2}(\S+)$/gmu)].map((sum) => sum[1]),
+    ).toEqual([
+      "node_modules/serverless/node_modules/.bin/serverless-linux-amd64-0.0.2",
+      "$archive",
+    ]);
+  });
+
+  it("checks them before the job holds credentials, and so before the deploy", () => {
+    const steps = deploySteps();
+    const check = steps.findIndex((step) => step.name === checkName);
+    const credentials = steps.findIndex(
+      (step) =>
+        step.uses?.startsWith("aws-actions/configure-aws-credentials@") ??
+        false,
+    );
+    const deploy = steps.findIndex(
+      (step) => step.run === "node_modules/.bin/serverless deploy",
+    );
+    expect(check).toBeGreaterThan(-1);
+    expect(check).toBeLessThan(credentials);
+    expect(check).toBeLessThan(deploy);
+  });
 });
