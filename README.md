@@ -4,7 +4,7 @@ One place where all of a person's AI agents ask for their input, sorted by rules
 
 > **This is a demo.** Every ask is deleted a month after it is posted. The service runs on a Clerk development instance, which holds at most 100 accounts, so sign-up stops at the hundredth.
 
-The summary of the latest [deploy run](https://github.com/t-d-d/askme-mcp/actions/workflows/deploy.yml) gives the live page's address and the MCP endpoint's.
+The page is live at https://d1dqzjjllemayb.cloudfront.net. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps. The [deploy runs on main](https://github.com/t-d-d/askme-mcp/actions/workflows/deploy.yml?query=branch%3Amain+is%3Asuccess) are listed newest first, and each run's summary gives both addresses.
 
 ## What it is
 
