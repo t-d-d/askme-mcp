@@ -626,7 +626,8 @@ describe("the rules screen", () => {
     await expect
       .poll(() => asked)
       .toEqual(["Leave without saving your rules?"]);
-    expect(new URL(page.url()).hash).toBe("#rules");
+    // The page puts #rules back only once the dismissal reaches it.
+    await expect.poll(() => new URL(page.url()).hash).toBe("#rules");
     expect(await box.inputValue()).toBe("#work only.");
     page.once("dialog", (dialog) => {
       void dialog.accept();
@@ -649,7 +650,8 @@ describe("the rules screen", () => {
     await expect
       .poll(() => asked)
       .toEqual(["Leave without saving your rules?"]);
-    expect(new URL(page.url()).hash).toBe("#rules");
+    // The page puts #rules back only once the dismissal reaches it.
+    await expect.poll(() => new URL(page.url()).hash).toBe("#rules");
     expect(await box.inputValue()).toBe("#work only.");
   });
 
