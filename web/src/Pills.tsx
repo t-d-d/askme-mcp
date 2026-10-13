@@ -15,15 +15,32 @@ export function Pills({
   }
   return (
     <span className={styles.pills}>
-      {sort.hashtags.map((name) => (
-        <span
-          className={styles.pill}
-          key={name}
-          style={tagColour(colours.get(name) ?? neutral)}
-        >
-          #{name}
-        </span>
-      ))}
+      <HashtagPills
+        hashtags={sort.hashtags}
+        colours={colours}
+        className={styles.pill}
+      />
     </span>
   );
+}
+
+// One pill per hashtag, each in its own colour. The caller lays them out.
+export function HashtagPills({
+  hashtags,
+  colours,
+  className,
+}: {
+  hashtags: readonly string[];
+  colours: ReadonlyMap<string, HashtagColour>;
+  className: string | undefined;
+}) {
+  return hashtags.map((name) => (
+    <span
+      className={className}
+      key={name}
+      style={tagColour(colours.get(name) ?? neutral)}
+    >
+      #{name}
+    </span>
+  ));
 }
