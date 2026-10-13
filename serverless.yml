@@ -68,6 +68,7 @@ functions:
       - httpApi: "GET /mcp"
       - httpApi: "DELETE /mcp"
       - httpApi: "GET /.well-known/oauth-protected-resource/mcp"
+      - httpApi: "OPTIONS /.well-known/oauth-protected-resource/mcp"
       - httpApi: "GET /api/asks"
       - httpApi: "GET /api/connection"
       - httpApi: "GET /api/rules"

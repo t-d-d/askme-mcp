@@ -14,26 +14,35 @@ export const storedMarks = (storage: () => Marks): Marks => ({
 
 export const sessionMarks = storedMarks(() => window.sessionStorage);
 
-const reloadedKey = "askme-reloaded";
+// Holds the path of the answer that reloaded the page.
+const reloadedKey = "askme-reloaded-for";
 
-// After a deploy changes the poll's answer, the page left open cannot read
-// it, and a reload fetches the new page (index.html is served no-cache).
-// The mark lets that happen once, so a page whose own schema is wrong does
-// not reload for ever. Where the mark cannot be kept, it does not reload.
-export function reloadOnce(marks: Marks, reload: () => void): void {
+// After a deploy changes one of the page's answers, the page left open
+// cannot read it, and a reload fetches the new page (index.html is served
+// no-cache). The mark lets that happen once, for any answer, so a page whose
+// own schema is wrong does not reload for ever. Where the mark cannot be
+// kept, it does not reload.
+export function reloadOnce(
+  marks: Marks,
+  reload: () => void,
+  answer: string,
+): void {
   try {
     if (marks.getItem(reloadedKey) !== null) return;
-    marks.setItem(reloadedKey, "true");
+    marks.setItem(reloadedKey, answer);
   } catch {
     return;
   }
   reload();
 }
 
-// An answer read, so a later deploy may reload the page again.
-export function answerRead(marks: Marks): void {
+// The answer that reloaded the page has been read, so a later deploy may
+// reload it again. Reading another answer does not clear the mark: the
+// rules may still read while the poll does not, and the page would reload
+// each time it loaded.
+export function answerRead(marks: Marks, answer: string): void {
   try {
-    marks.removeItem(reloadedKey);
+    if (marks.getItem(reloadedKey) === answer) marks.removeItem(reloadedKey);
   } catch {
     // Kept or not, the page carries on.
   }
