@@ -94,11 +94,19 @@ functions:
 resources:
   Resources:
     # No secondary index (ADR 13). DynamoDB removes expired items late, so
-    # every read checks expiresAt itself.
+    # every read checks expiresAt itself. Each account's rules never expire,
+    # so the table outlives the stack and a replacement. The README's setup
+    # says how to restore it.
     Table:
       Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      UpdateReplacePolicy: Retain
       Properties:
         BillingMode: PAY_PER_REQUEST
+        DeletionProtectionEnabled: true
+        # Billed per GB stored, so its cost follows the data (hosting.md).
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
         AttributeDefinitions:
           - AttributeName: pk
             AttributeType: S
