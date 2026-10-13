@@ -397,7 +397,11 @@ describe("a request the handler cannot use", () => {
       .parse(await handler({ hello: "world" }));
     expect(result.statusCode).toBe(503);
     const refusal = z
-      .object({ code: z.string(), class: z.string() })
+      .strictObject({
+        code: z.string(),
+        class: z.string(),
+        message: z.string(),
+      })
       .parse(JSON.parse(result.body));
     expect(refusal.code).toBe("service_unavailable");
     expect(refusal.class).toBe("retry");

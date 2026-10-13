@@ -140,6 +140,6 @@ describe("fitness: unknown failures are contained (error-contract.md)", () => {
       (line) =>
         line.method === "error" && lineText(line).includes("request-failed"),
     );
-    expect(failures.length).toBeGreaterThanOrEqual(3);
+    expect(failures.length).toBeGreaterThanOrEqual(4);
   });
 });

@@ -12,9 +12,10 @@ import {
   type McpRequestContext,
   type OAuthTokenVerifier,
 } from "@modelcontextprotocol/server";
-import { servePage, unavailable } from "./api";
+import { servePage } from "./api";
 import { askTool } from "./ask";
 import { readEnv } from "./env";
+import { unavailable } from "./errors";
 import {
   authorizationOf,
   incoming,
