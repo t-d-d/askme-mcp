@@ -20,5 +20,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - run: npm ci
+      # Only the deploy runs the Serverless launcher, and checks it. Its download
+      # is the one install script on a Linux runner, so the other jobs skip it.
+      - run: npm ci --ignore-scripts
       - run: npm run conformance

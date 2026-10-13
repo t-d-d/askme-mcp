@@ -466,6 +466,61 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
     expect(check).toBeLessThan(credentials);
     expect(check).toBeLessThan(deploy);
   });
+
+  // The installer's own install script downloads the launcher. A job that
+  // never runs the framework skips install scripts, so it fetches nothing
+  // unchecked (#349).
+  const runsFramework = (job: Job): boolean =>
+    runsIn(job).includes("node_modules/.bin/serverless deploy");
+  const installs = (job: Job): string[] =>
+    runsIn(job).filter((run) => /^npm (?:ci|install)\b/u.test(run));
+
+  it("skips install scripts in every job that never runs the framework", () => {
+    const jobs = allJobs().filter(([, job]) => !runsFramework(job));
+    const fetching = jobs.flatMap(([id, job]) =>
+      installs(job)
+        .filter((run) => run !== "npm ci --ignore-scripts")
+        .map((run) => `${id}: ${run}`),
+    );
+    expect(jobs.filter(([, job]) => installs(job).length > 0).length).toBe(4);
+    expect(fetching).toEqual([]);
+  });
+
+  it("installs the launcher where it is checked, in the jobs that deploy", () => {
+    const deploying = allJobs().filter(([, job]) => runsFramework(job));
+    expect(deploying.map(([id]) => id)).toEqual([
+      `${deployPath} deploy`,
+      `${deployPath} rollback`,
+    ]);
+    for (const [, job] of deploying) {
+      const steps = job.steps ?? [];
+      expect(installs(job)).toEqual(["npm ci"]);
+      expect(steps.findIndex((step) => step.run === "npm ci")).toBeLessThan(
+        steps.findIndex((step) => step.name === checkName),
+      );
+    }
+  });
+
+  // Skipping install scripts is safe only while the installer is the one
+  // package on a Linux runner that has one.
+  it("has no install script but the installer's on a Linux runner", () => {
+    const lock = z
+      .object({
+        packages: z.record(
+          z.string(),
+          z.looseObject({
+            hasInstallScript: z.boolean().optional(),
+            os: z.array(z.string()).optional(),
+          }),
+        ),
+      })
+      .parse(JSON.parse(readRepoFile("package-lock.json")));
+    const scripted = Object.entries(lock.packages)
+      .filter(([, entry]) => entry.hasInstallScript === true)
+      .filter(([, entry]) => entry.os?.includes("linux") ?? true)
+      .map(([path]) => path);
+    expect(scripted).toEqual(["node_modules/serverless"]);
+  });
 });
 
 // When the live check fails, the same run puts back the last build that
