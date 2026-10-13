@@ -70,6 +70,7 @@ describe("the metadata", () => {
   it("names Clerk as the authorisation server, and the one scope", async () => {
     const response = await invoke(handler, new Request(metadataUrl));
     expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
     expect(await response.json()).toEqual({
       resource: mcpUrl,
       authorization_servers: [issuer.issuer],
@@ -407,17 +408,19 @@ describe("a request the handler cannot use", () => {
     expect(refusal.class).toBe("retry");
   });
 
-  // Each route builds its answer with Response.json, so making the first call
-  // throw makes serving the route fail.
+  // The handler reads every route's answer out with Response's text, so making
+  // the first read throw makes the handler's own failure path answer.
   async function failingOnce(request: Request): Promise<Response> {
     const capture = captureLogs();
-    const json = vi.spyOn(Response, "json").mockImplementationOnce(() => {
-      throw new Error("Could not answer");
-    });
+    const text = vi
+      .spyOn(Response.prototype, "text")
+      .mockImplementationOnce(() => {
+        throw new Error("Could not answer");
+      });
     try {
       return await invoke(handler, request);
     } finally {
-      json.mockRestore();
+      text.mockRestore();
       capture.restore();
     }
   }
@@ -440,9 +443,7 @@ describe("a request the handler cannot use", () => {
 
   it("answers a page route's failure with a 503 that allows no other origin", async () => {
     const response = await failingOnce(
-      new Request(`${new URL(mcpUrl).origin}/api/asks`, {
-        headers: { authorization: `Bearer ${await issuer.sessionToken()}` },
-      }),
+      new Request(`${new URL(mcpUrl).origin}/api/asks`),
     );
     expect(response.status).toBe(503);
     expect(response.headers.get("access-control-allow-origin")).toBeNull();
