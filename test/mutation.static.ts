@@ -6,10 +6,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { testCommand } from "./mutation";
+import { targetFile, testCommand } from "./mutation";
 import { suites } from "./mutation-suites";
 import { root, scripts } from "./repo";
-import { tiers } from "./tiers";
+import { tierPattern, tiers } from "./tiers";
 
 const isTest = (path: string) =>
   tiers.some((tier) => path.endsWith(tier.suffix));
@@ -31,17 +31,27 @@ describe("fitness: measuring the tests stays out of the gate (test-tiers.md)", (
     }
   });
 
-  it("writes the coverage report outside the repo", async () => {
-    const config = z
+  const coverage = async () =>
+    z
       .object({
         test: z.object({
-          coverage: z.object({ reportsDirectory: z.string() }),
+          coverage: z.object({
+            reportsDirectory: z.string(),
+            exclude: z.array(z.string()),
+          }),
         }),
       })
-      .parse((await import("../vitest.config")).default);
-    expect(config.test.coverage.reportsDirectory.startsWith(tmpdir())).toBe(
-      true,
-    );
+      .parse((await import("../vitest.config")).default).test.coverage;
+
+  it("writes the coverage report outside the repo", async () => {
+    expect((await coverage()).reportsDirectory.startsWith(tmpdir())).toBe(true);
+  });
+
+  it("leaves every tier's test files, the evals and their config out of the coverage report", async () => {
+    const { exclude } = await coverage();
+    for (const tier of tiers) expect(exclude).toContain(tierPattern(tier));
+    expect(exclude).toContain("**/*.eval.ts");
+    expect(exclude).toContain("**/vitest.config.ts");
   });
 });
 
@@ -55,7 +65,7 @@ describe("the mutation suites", () => {
   it.each(all)("%s mutates source files that exist", (_, suite) => {
     expect(suite.mutate.length).toBeGreaterThan(0);
     for (const target of suite.mutate) {
-      const path = target.replace(/:\d+-\d+$/u, "");
+      const path = targetFile(target);
       expect(existsSync(join(root, path)), target).toBe(true);
       expect(isTest(path), target).toBe(false);
     }

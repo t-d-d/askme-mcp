@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { tmpdir } from "node:os";
 import {
   counts,
+  scratch,
   strykerOptions,
   survivorsTsv,
+  targetFile,
   testCommand,
   verdict,
   type Mutant,
@@ -45,6 +48,15 @@ describe("the command a mutant's tests run with", () => {
     );
   });
 
+  it("refuses a path the shell would split or read as code", () => {
+    expect(() => testCommand(["service/src/my rate.test.ts"])).toThrow(
+      "service/src/my rate.test.ts",
+    );
+    expect(() => testCommand(["service/src/$(rm).test.ts"])).toThrow(
+      "service/src/$(rm).test.ts",
+    );
+  });
+
   it("refuses a suite with no test files", () => {
     expect(() => testCommand([])).toThrow();
   });
@@ -80,6 +92,18 @@ describe("Stryker's options for a suite", () => {
 
   it("reports to the terminal only, so no report is written into the repo", () => {
     expect(options.reporters).toEqual(["clear-text"]);
+  });
+
+  // A crowded machine slows each run past Stryker's time limit, and Stryker
+  // counts a mutant that timed out as killed, which would hide a survivor.
+  it("runs at most three mutants at once, and leaves a core free", () => {
+    const at = (cores: number) =>
+      strykerOptions(suite, "/tmp/sandboxes", cores).concurrency;
+    expect(at(16)).toBe(3);
+    expect(at(4)).toBe(3);
+    expect(at(3)).toBe(2);
+    expect(at(2)).toBe(1);
+    expect(at(1)).toBe(1);
   });
 });
 
@@ -146,7 +170,46 @@ describe("the verdict on a run", () => {
   });
 });
 
+describe("the file a suite's target names", () => {
+  it("is the path without its range of lines, or of lines and columns", () => {
+    expect(targetFile("service/src/rate.ts")).toBe("service/src/rate.ts");
+    expect(targetFile("service/src/api.ts:74-130")).toBe("service/src/api.ts");
+    expect(targetFile("service/src/api.ts:74:3-130:5")).toBe(
+      "service/src/api.ts",
+    );
+  });
+});
+
+describe("the folder a run keeps its files in", () => {
+  it("is in the system's temp folder, and apart for each checkout", () => {
+    const one = scratch("/home/a/askme-mcp", "askme-mutation");
+    const other = scratch("/home/b/askme-mcp", "askme-mutation");
+    expect(one.startsWith(tmpdir())).toBe(true);
+    expect(one).not.toBe(other);
+    expect(scratch("/home/a/askme-mcp", "askme-mutation")).toBe(one);
+  });
+});
+
 describe("the list of survivors", () => {
+  it("orders two survivors at one place by mutator and replacement, whatever order the run finished them in", () => {
+    const first = {
+      ...mutant("/repo/service/src/rate.ts", "Survived", 3, "true"),
+      mutatorName: "BooleanLiteral",
+    };
+    const second = mutant("/repo/service/src/rate.ts", "Survived", 3, "false");
+    const third = mutant("/repo/service/src/rate.ts", "Survived", 3, "true");
+    expect(survivorsTsv([third, second, first], "/repo")).toBe(
+      survivorsTsv([first, second, third], "/repo"),
+    );
+    expect(survivorsTsv([third, second, first], "/repo").split("\n")).toEqual([
+      "file\tline\tcolumn\tmutator\treplacement",
+      "service/src/rate.ts\t3\t3\tBooleanLiteral\ttrue",
+      "service/src/rate.ts\t3\t3\tConditionalExpression\tfalse",
+      "service/src/rate.ts\t3\t3\tConditionalExpression\ttrue",
+      "",
+    ]);
+  });
+
   it("has one line for each mutant no test caught, by file and place, with tabs and line ends in the replacement written out", () => {
     expect(
       survivorsTsv(

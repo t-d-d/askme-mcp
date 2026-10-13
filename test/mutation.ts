@@ -12,8 +12,27 @@
 //
 // Node runs test/mutate.ts with its types stripped, so this module imports
 // with the file's extension, and imports nothing it would have to build.
-import { isAbsolute, relative } from "node:path";
+import { createHash } from "node:crypto";
+import { availableParallelism, tmpdir } from "node:os";
+import { isAbsolute, join, relative } from "node:path";
 import { tiers } from "./tiers.ts";
+
+// A folder in the system's temp folder for one kind of run, apart for each
+// checkout, so runs in two worktrees at once do not clear each other's files.
+export function scratch(root: string, kind: string): string {
+  const checkout = createHash("sha256").update(root).digest("hex").slice(0, 12);
+  return join(tmpdir(), kind, checkout);
+}
+
+// The file a suite's target names, without its range of lines, written
+// "path:74-130", or of lines and columns, written "path:74:3-130:5".
+export function targetFile(target: string): string {
+  return target.replace(/:\d+(?::\d+)?-\d+(?::\d+)?$/u, "");
+}
+
+// The command runner hands its command to a shell, so a path is kept to
+// letters, digits and the marks a path needs, which the shell reads as text.
+const plainPath = /^[\w./-]+$/u;
 
 // A named set of code to mutate and the tests that guard it.
 export interface Suite {
@@ -46,6 +65,11 @@ export function testCommand(tests: readonly string[]): string {
   if (tests.length === 0) throw new Error("A suite needs a test file.");
   const used = new Set<string>();
   for (const path of tests) {
+    if (!plainPath.test(path)) {
+      throw new Error(
+        `${path} has a character the shell would read, so a suite cannot run it.`,
+      );
+    }
     const tier = tiers.find((each) => path.endsWith(each.suffix));
     if (tier === undefined || !runnable.has(tier.name)) {
       throw new Error(
@@ -60,14 +84,26 @@ export function testCommand(tests: readonly string[]): string {
   return ["npx vitest run", ...projects, ...tests].join(" ");
 }
 
+// The most mutants run at once. Each run is a whole vitest run, and an
+// integration suite's starts its own DynamoDB. A crowded machine slows a run
+// past Stryker's time limit, and Stryker counts a mutant that timed out as
+// killed, which would hide a survivor. Three at once on four cores gave no
+// timeouts for an integration suite of eight files.
+const mostAtOnce = 3;
+
 // Stryker's options for a suite, with its sandboxes in the given folder.
 // The only reporter writes to the terminal, so nothing lands in the repo.
-export function strykerOptions(suite: Suite, sandboxes: string) {
+export function strykerOptions(
+  suite: Suite,
+  sandboxes: string,
+  cores = availableParallelism(),
+) {
   return {
     testRunner: "command",
     commandRunner: { command: testCommand(suite.tests) },
     mutate: [...suite.mutate],
     coverageAnalysis: "off" as const,
+    concurrency: Math.max(1, Math.min(mostAtOnce, cores - 1)),
     reporters: ["clear-text"],
     tempDirName: sandboxes,
     cleanTempDir: true,
@@ -120,8 +156,9 @@ export function verdict(mutants: readonly Mutant[]): string | undefined {
 const oneLine = (text: string) =>
   text.replaceAll("\t", "\\t").replaceAll("\r", "\\r").replaceAll("\n", "\\n");
 
-// Every survivor as one line of tab-separated values, by file and place, so
-// two runs can be compared with diff.
+// Every survivor as one line of tab-separated values, by file, place,
+// mutator and replacement, so two runs can be compared with diff. Stryker
+// gives its results in the order its runs finished, which differs each run.
 export function survivorsTsv(mutants: readonly Mutant[], root: string): string {
   const rows = mutants
     .filter(survived)
@@ -133,7 +170,11 @@ export function survivorsTsv(mutants: readonly Mutant[], root: string): string {
     }))
     .sort(
       (a, b) =>
-        a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column,
+        a.file.localeCompare(b.file) ||
+        a.line - b.line ||
+        a.column - b.column ||
+        a.mutator.localeCompare(b.mutator) ||
+        a.replacement.localeCompare(b.replacement),
     )
     .map((row) =>
       [row.file, row.line, row.column, row.mutator, row.replacement].join("\t"),
