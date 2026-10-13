@@ -206,6 +206,8 @@ Every ask after the first. A summary of up to two lines, then one line with the 
 
 Tapping a row opens its card, the same as tapping the top card's summary. The site name says where the card's main button leads.
 
+A site's name too long for the rest of the line, such as console.aws.amazon.com beside #shopping on a 320px phone, breaks onto a second line just after a dot, as on the top card. A part between two dots is split only when it is too long for a line on its own.
+
 | State | How it looks |
 | --- | --- |
 | Open | As above |
