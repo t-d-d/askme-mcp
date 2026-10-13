@@ -122,7 +122,13 @@ export async function handler(event: unknown): Promise<Result> {
     return await result(await serve(request, log));
   } catch (error) {
     log.error("request-failed", { errorClass: errorClass(error) });
-    return result(unavailable());
+    const response = unavailable();
+    // A browser-based client reads the metadata, so it must be able to read
+    // the metadata's failure too.
+    if (isRoute(request.route) && routes[request.route] === "public") {
+      response.headers.set("access-control-allow-origin", "*");
+    }
+    return result(response);
   }
 }
 

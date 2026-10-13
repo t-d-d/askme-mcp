@@ -406,6 +406,47 @@ describe("a request the handler cannot use", () => {
     expect(refusal.code).toBe("service_unavailable");
     expect(refusal.class).toBe("retry");
   });
+
+  // Each route builds its answer with Response.json, so making the first call
+  // throw makes serving the route fail.
+  async function failingOnce(request: Request): Promise<Response> {
+    const capture = captureLogs();
+    const json = vi.spyOn(Response, "json").mockImplementationOnce(() => {
+      throw new Error("Could not answer");
+    });
+    try {
+      return await invoke(handler, request);
+    } finally {
+      json.mockRestore();
+      capture.restore();
+    }
+  }
+
+  // A browser-based client must be able to read the 503's code.
+  it("answers the metadata's failure with a 503 a browser may read", async () => {
+    const response = await failingOnce(new Request(metadataUrl));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(
+      z.object({ code: z.string() }).parse(await response.json()).code,
+    ).toBe("service_unavailable");
+  });
+
+  it("answers the MCP endpoint's failure with a 503 that allows no other origin", async () => {
+    const response = await failingOnce(new Request(mcpUrl, { method: "POST" }));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("answers a page route's failure with a 503 that allows no other origin", async () => {
+    const response = await failingOnce(
+      new Request(`${new URL(mcpUrl).origin}/api/asks`, {
+        headers: { authorization: `Bearer ${await issuer.sessionToken()}` },
+      }),
+    );
+    expect(response.status).toBe(503);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
 });
 
 // The service holds no live connections (polling.md).
