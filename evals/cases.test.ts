@@ -108,6 +108,11 @@ describe("the core eval set", () => {
     expect(level("a ticket for next sprint")).toBe("low");
   });
 
+  it("holds money never saved at high, as the rules put money first and a saving not had costs as much as money lost (#226)", () => {
+    expect(level("a courier change from Monday")).toBe("high");
+    expect(level("a supplier's price rise next month")).toBe("high");
+  });
+
   it("has rules that say nothing about when an ask is due, since the level ignores time (#101)", () => {
     expect(evalRules.text).not.toMatch(/\bdue\b|next week|later|soon/iu);
   });
