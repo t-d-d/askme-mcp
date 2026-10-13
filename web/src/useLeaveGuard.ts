@@ -2,11 +2,9 @@ import { useEffect, type MouseEvent } from "react";
 import type { AskFirst } from "./screen";
 import { elsewhere } from "./toList";
 
-const leaving = "Leave without saving your rules?";
-
-// Leaving the rules with unsaved text asks first. The screens ask when Back
-// or a typed address changes the fragment, and the browser asks before the
-// tab closes.
+// Leaving a screen with unsaved text asks the question given first. The
+// screens ask when Back or a typed address changes the fragment, and the
+// browser asks before the tab closes.
 //
 // The screen's own links ask before the address changes, through away, so
 // staying adds nothing to the history. A link opened in a new tab or window
@@ -15,6 +13,7 @@ const leaving = "Leave without saving your rules?";
 export function useLeaveGuard(
   changed: boolean,
   askFirst: AskFirst,
+  leaving: string,
 ): { away: (event: MouseEvent) => void; mayLeave: () => boolean } {
   useEffect(() => {
     if (!changed) return;
@@ -27,7 +26,7 @@ export function useLeaveGuard(
       askFirst(null);
       window.removeEventListener("beforeunload", warn);
     };
-  }, [changed, askFirst]);
+  }, [changed, askFirst, leaving]);
   const away = (event: MouseEvent) => {
     if (!changed || elsewhere(event)) return;
     if (window.confirm(leaving)) askFirst(null);

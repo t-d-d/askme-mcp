@@ -27,7 +27,7 @@ export const suites: Record<string, Suite> = {
     about:
       "What the rules screen shows: the text, whether it changed, whether Save rules is awake, and the note, against their unit tests.",
     mutate: ["web/src/rulesState.ts"],
-    tests: ["web/src/rulesState.test.ts", "web/src/sorting.test.ts"],
+    tests: ["web/src/rulesState.test.ts"],
   },
   rate: {
     about:

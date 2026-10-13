@@ -1,4 +1,4 @@
-import { useId, useState, type SubmitEvent } from "react";
+import { useId, useState, type ReactNode, type SubmitEvent } from "react";
 import { rulesLimit } from "../../shared/page-api";
 import { useAuth } from "./auth";
 import { hoursText } from "./hours";
@@ -12,6 +12,8 @@ import { useAfter } from "./useAfter";
 import { useAsks } from "./useAsks";
 import { useLeaveGuard } from "./useLeaveGuard";
 import { browserTimeZone, useRules } from "./useRules";
+
+const leaving = "Leave without saving your rules?";
 
 // The rules: one box in plain English, and below it the hashtags askme read
 // from them, each with its hours. Saving waits while askme reads them. If
@@ -62,7 +64,7 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
       refused,
     },
   });
-  const { away, mayLeave } = useLeaveGuard(changed, askFirst);
+  const { away, mayLeave } = useLeaveGuard(changed, askFirst, leaving);
 
   // Signing out leaves the rules too, so unsaved text asks first. The screen
   // goes from the address, so whoever signs in next starts at the list.
@@ -219,57 +221,48 @@ function Footnote({
 
 // One short note under the button, giving the state.
 function Note({ note, onRetry }: { note: NoteKind; onRetry: () => void }) {
+  if (note.kind === "none") return null;
   const retry = (
     <button className={styles.retry} type="button" onClick={onRetry}>
       Try again
     </button>
   );
+  return (
+    <p className={styles.note} role="status">
+      {noteWords(note, retry)}
+    </p>
+  );
+}
+
+// What a note says, ending with Try again where it offers one.
+function noteWords(
+  note: Exclude<NoteKind, { kind: "none" }>,
+  retry: ReactNode,
+): ReactNode {
   switch (note.kind) {
-    case "none":
-      return null;
     case "notConnected":
-      return (
-        <p className={styles.note} role="status">
-          Not connected. Trying again.
-        </p>
-      );
+      return "Not connected. Trying again.";
     case "reading":
-      return (
-        <p className={styles.note} role="status">
-          Reading your rules.
-        </p>
-      );
+      return "Reading your rules.";
     case "sorting":
-      return (
-        <p className={styles.note} role="status">
-          Sorting your asks again.
-        </p>
-      );
+      return "Sorting your asks again.";
     case "refused":
       return (
-        <p className={styles.note} role="status">
+        <>
           {note.words}
           {note.retry && <> {retry}</>}
-        </p>
+        </>
       );
     case "readFailed":
       return (
-        <p className={styles.note} role="status">
+        <>
           askme couldn&apos;t read your rules just now. Your text is saved.{" "}
           {retry}
-        </p>
+        </>
       );
     case "saved":
-      return (
-        <p className={styles.note} role="status">
-          Saved.
-        </p>
-      );
+      return "Saved.";
     case "savedAsleep":
-      return (
-        <p className={styles.note} role="status">
-          Saved. The button wakes up when you change the text.
-        </p>
-      );
+      return "Saved. The button wakes up when you change the text.";
   }
 }

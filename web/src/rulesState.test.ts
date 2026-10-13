@@ -57,11 +57,24 @@ const capSave: RefusalNote = {
   goesAt: now + 60 * minute,
 };
 
+// The list as polled now, with the service's clock as this browser's
+// unless given.
+const polled = (
+  data: AsksAnswer,
+  more: Partial<RulesStateInput["listed"]> = {},
+): RulesStateInput["listed"] => ({
+  data,
+  polledAt: now,
+  serviceAhead: 0,
+  receivedAt: now,
+  ...more,
+});
+
 // The screen with its rules loaded and saved as the service holds them,
 // no text typed, no save made, and an empty list polled now.
 const input = (more: Partial<RulesStateInput> = {}): RulesStateInput => ({
   loaded: { data: rules, failed: false },
-  listed: { data: list, polledAt: now, serviceAhead: 0, receivedAt: now },
+  listed: polled(list),
   draft: null,
   resorting: false,
   save: { pending: false, succeeded: false, submittedAt: 0, refused: null },
@@ -131,12 +144,7 @@ describe("whether Save rules is awake", () => {
     expect(
       rulesState(
         input({
-          listed: {
-            data: stopped,
-            polledAt: now,
-            serviceAhead: 0,
-            receivedAt: now,
-          },
+          listed: polled(stopped),
         }),
       ).ready,
     ).toBe(true);
@@ -146,12 +154,7 @@ describe("whether Save rules is awake", () => {
     expect(
       rulesState(
         input({
-          listed: {
-            data: sorting,
-            polledAt: now,
-            serviceAhead: 0,
-            receivedAt: now,
-          },
+          listed: polled(sorting),
         }),
       ).ready,
     ).toBe(false);
@@ -161,12 +164,7 @@ describe("whether Save rules is awake", () => {
     expect(
       rulesState(
         input({
-          listed: {
-            data: sorting,
-            polledAt: now,
-            serviceAhead: 2 * minute,
-            receivedAt: now,
-          },
+          listed: polled(sorting, { serviceAhead: 2 * minute }),
         }),
       ).ready,
     ).toBe(true);
@@ -176,12 +174,7 @@ describe("whether Save rules is awake", () => {
     expect(
       rulesState(
         input({
-          listed: {
-            data: capped(stopped),
-            polledAt: now,
-            serviceAhead: 0,
-            receivedAt: now,
-          },
+          listed: polled(capped(stopped)),
         }),
       ).ready,
     ).toBe(false);
@@ -191,12 +184,7 @@ describe("whether Save rules is awake", () => {
     expect(
       rulesState(
         input({
-          listed: {
-            data: capped(stopped),
-            polledAt: now,
-            serviceAhead: 60 * minute,
-            receivedAt: now,
-          },
+          listed: polled(capped(stopped), { serviceAhead: 60 * minute }),
         }),
       ).ready,
     ).toBe(true);
@@ -207,12 +195,7 @@ describe("whether Save rules is awake", () => {
       rulesState(
         input({
           draft: "#home",
-          listed: {
-            data: capped(stopped),
-            polledAt: now,
-            serviceAhead: 0,
-            receivedAt: now,
-          },
+          listed: polled(capped(stopped)),
         }),
       ).ready,
     ).toBe(true);
@@ -223,12 +206,7 @@ describe("whether Save rules is awake", () => {
       rulesState(
         input({
           loaded: { data: undefined, failed: false },
-          listed: {
-            data: stopped,
-            polledAt: now,
-            serviceAhead: 0,
-            receivedAt: now,
-          },
+          listed: polled(stopped),
         }),
       ).ready,
     ).toBe(false);
@@ -289,12 +267,7 @@ describe("the note under Save rules", () => {
       rulesState(
         input({
           resorting: true,
-          listed: {
-            data: stopped,
-            polledAt: now,
-            serviceAhead: 0,
-            receivedAt: now,
-          },
+          listed: polled(stopped),
           save: {
             pending: true,
             succeeded: false,
@@ -400,12 +373,7 @@ describe("the note under Save rules", () => {
     expect(
       rulesState(
         input({
-          listed: {
-            data: stopped,
-            polledAt: now,
-            serviceAhead: 0,
-            receivedAt: now,
-          },
+          listed: polled(stopped),
         }),
       ).note,
     ).toEqual({ kind: "saved" });
@@ -457,7 +425,7 @@ describe("the note after a save of unchanged text", () => {
   ): RulesStateInput =>
     input({
       resorting: true,
-      listed: { data, polledAt: now, serviceAhead: 0, receivedAt },
+      listed: polled(data, { receivedAt }),
       save: {
         pending,
         succeeded: !pending,
