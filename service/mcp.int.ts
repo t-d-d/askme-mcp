@@ -391,11 +391,16 @@ describe("a request the handler cannot use", () => {
 
   // API Gateway always sends a well-formed event, so this is askme's fault
   // (ADR 11).
-  it("is answered 503 when the event is not one API Gateway sends", async () => {
+  it("is answered 503 with service_unavailable when the event is not one API Gateway sends", async () => {
     const result = z
-      .object({ statusCode: z.number() })
+      .object({ statusCode: z.number(), body: z.string() })
       .parse(await handler({ hello: "world" }));
     expect(result.statusCode).toBe(503);
+    const refusal = z
+      .object({ code: z.string(), class: z.string() })
+      .parse(JSON.parse(result.body));
+    expect(refusal.code).toBe("service_unavailable");
+    expect(refusal.class).toBe("retry");
   });
 });
 

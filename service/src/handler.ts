@@ -12,7 +12,7 @@ import {
   type McpRequestContext,
   type OAuthTokenVerifier,
 } from "@modelcontextprotocol/server";
-import { servePage, unavailable as pageUnavailable } from "./api";
+import { servePage, unavailable } from "./api";
 import { askTool } from "./ask";
 import { readEnv } from "./env";
 import {
@@ -121,10 +121,7 @@ export async function handler(event: unknown): Promise<Result> {
     return await result(await serve(request, log));
   } catch (error) {
     log.error("request-failed", { errorClass: errorClass(error) });
-    const { route } = request;
-    return result(
-      isRoute(route) && isPageRoute(route) ? pageUnavailable() : unavailable(),
-    );
+    return result(unavailable());
   }
 }
 
@@ -185,15 +182,4 @@ async function serve(
     log.error("request-failed", { status: response.status });
   }
   return response;
-}
-
-// Any unexpected failure outside the page's routes (ADR 11).
-function unavailable(): Response {
-  return Response.json(
-    {
-      error: "temporarily_unavailable",
-      error_description: "askme could not finish this request. Try again.",
-    },
-    { status: 503 },
-  );
 }

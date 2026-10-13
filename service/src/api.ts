@@ -47,6 +47,8 @@ const unauthorised = (challenge: string) =>
     headers: { ...noStore, "www-authenticate": challenge },
   });
 
+// Any unexpected failure, on the page's routes and the MCP endpoint alike
+// (ADR 11).
 export function unavailable(): Response {
   return pageRefusal(
     "service_unavailable",

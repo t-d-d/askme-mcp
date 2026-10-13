@@ -7,7 +7,7 @@ import { pagePaths } from "../shared/page-api";
 import { captureLogs, lineText } from "../test/logs";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
-import { connect, origin, refusalOf } from "../test/mcp";
+import { connect, mcpUrl, origin, refusalOf } from "../test/mcp";
 
 async function closedPort(): Promise<number> {
   const server = createServer();
@@ -48,6 +48,34 @@ afterAll(async () => {
 const internal = /\bat \S+ \(|ECONNREFUSED|127\.0\.0\.1|Error:/u;
 
 describe("fitness: unknown failures are contained (error-contract.md)", () => {
+  // Must run first, while no key has been fetched.
+  it("answers an MCP call with service_unavailable when the identity service is down, saying nothing internal", async () => {
+    issuer.failing = true;
+    try {
+      const response = await invoke(
+        handler,
+        new Request(mcpUrl, {
+          method: "POST",
+          headers: { authorization: `Bearer ${await issuer.token()}` },
+        }),
+      );
+      expect(response.status).toBe(503);
+      const text = await response.text();
+      const refusal = z
+        .strictObject({
+          code: z.string(),
+          class: z.string(),
+          message: z.string(),
+        })
+        .parse(JSON.parse(text));
+      expect(refusal.code).toBe("service_unavailable");
+      expect(refusal.class).toBe("retry");
+      expect(text).not.toMatch(internal);
+    } finally {
+      issuer.failing = false;
+    }
+  });
+
   it("answers ask with service_unavailable, saying nothing internal", async () => {
     const client = await connect(handler, { token: await issuer.token() });
     try {
