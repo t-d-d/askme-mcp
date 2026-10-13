@@ -13,6 +13,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { AddressInfo } from "node:net";
+import { hostname } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import {
@@ -36,7 +37,7 @@ declare module "vitest" {
   }
 }
 
-const image = "amazon/dynamodb-local:3.3.1";
+export const image = "amazon/dynamodb-local:3.3.1";
 const tableName = "askme";
 
 const run = promisify(execFile);
@@ -117,14 +118,45 @@ async function ready(client: DynamoDBClient): Promise<void> {
   throw new Error("The local DynamoDB did not answer.", { cause: failure });
 }
 
-export default async function setup(
-  project: TestProject,
-): Promise<() => Promise<void>> {
-  await dockerRunning();
+// The run a container belongs to: the process that started it, and the
+// machine that process runs on.
+export interface Owner {
+  pid: number;
+  host: string;
+}
+
+const label = "askme-mcp.dynamodb";
+
+// The labels that tie a container to the run it belongs to.
+export function ownerLabels(owner: Owner): string[] {
+  return [
+    "--label",
+    `${label}.pid=${String(owner.pid)}`,
+    "--label",
+    `${label}.host=${owner.host}`,
+  ];
+}
+
+// The run a container belongs to, read from its labels.
+export async function ownerOf(container: string): Promise<Owner> {
+  const { stdout } = await run("docker", [
+    "inspect",
+    "--format",
+    `{{index .Config.Labels "${label}.pid"}} {{index .Config.Labels "${label}.host"}}`,
+    container,
+  ]);
+  const [pid, host] = stdout.trim().split(" ");
+  return { pid: Number(pid), host: host ?? "" };
+}
+
+// Starts a local DynamoDB, labelled with the run it belongs to, and gives
+// the container's id.
+export async function startDatabase(owner: Owner): Promise<string> {
   const { stdout } = await run("docker", [
     "run",
     "--detach",
     "--rm",
+    ...ownerLabels(owner),
     "--publish",
     "127.0.0.1::8000",
     image,
@@ -133,7 +165,52 @@ export default async function setup(
     "-inMemory",
     "-sharedDb",
   ]);
-  const container = stdout.trim();
+  return stdout.trim();
+}
+
+// Whether a process on this machine is still running. A process that runs
+// as another user still exists, though it cannot be signalled.
+export function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error instanceof Error && Reflect.get(error, "code") === "EPERM";
+  }
+}
+
+// Removes every local DynamoDB whose run has ended without stopping it, as a
+// run killed before its teardown does. Only this machine's containers are
+// judged, as only its process ids can be checked.
+export async function removeOrphans(): Promise<void> {
+  const { stdout } = await run("docker", [
+    "ps",
+    "--all",
+    "--no-trunc",
+    "--filter",
+    `label=${label}.host=${hostname()}`,
+    "--format",
+    `{{.ID}} {{.Label "${label}.pid"}}`,
+  ]);
+  const orphans = [...stdout.matchAll(/^(\w+) (\d+)$/gmu)].flatMap(
+    ([, id, pid]) => (id !== undefined && !alive(Number(pid)) ? [id] : []),
+  );
+  if (orphans.length === 0) return;
+  // Another run starting at the same time may be removing the same ones.
+  // Whatever is left, the next run removes, so a failure here need not stop
+  // this one.
+  await run("docker", ["rm", "--force", ...orphans]).catch(() => undefined);
+}
+
+export default async function setup(
+  project: TestProject,
+): Promise<() => Promise<void>> {
+  await dockerRunning();
+  await removeOrphans();
+  const container = await startDatabase({
+    pid: process.pid,
+    host: hostname(),
+  });
   const stop = async () => {
     await run("docker", ["rm", "--force", container]);
   };
