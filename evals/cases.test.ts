@@ -94,7 +94,7 @@ describe("the core eval set", () => {
     );
   });
 
-  it("holds the levels the owner set by what the work was for, not by its price or how it is done (#191)", () => {
+  it("holds the levels the owner set by what never acting would cost, not by the price of the step or how it is done (#191)", () => {
     const level = (name: string) =>
       cases.find((one) => one.name === name)?.expected.level;
     expect(level("a plumber who can come today")).toBe("normal");

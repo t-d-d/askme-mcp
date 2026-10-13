@@ -420,8 +420,8 @@ export const cases: EvalCase[] = [
     expected: { hashtags: [["family"]], level: "high" },
   },
   {
-    // A dripping tap that is never fixed costs little, so the level is
-    // normal, whenever the next slot is (#191).
+    // A dripping kitchen tap does no damage and wastes little water, so
+    // never fixing it costs little, and the level is normal (#191).
     name: "a plumber who can come today",
     group: "core",
     area: "family",
