@@ -62,7 +62,7 @@ Each account may post 100 asks a day and cause 2,000 model calls a day ([ADR 21]
 | `google/gemini-3.1-flash-lite` | 40/64 (63%) | 6/8 (75%) | 21/24 (88%) | 67/96 (70%) | 0 | 1.1s |
 | `qwen/qwen3.5-35b-a3b` | 32/64 (50%) | 5/8 (63%) | 9/24 (38%) | 46/96 (48%) | 3 | 0.8s |
 
-A score counts the asks whose hashtags and level were both right. The core group holds asks from three areas of one person's life. The timing group copies a few core asks with only the time changed, and expects the same level. The hostile group holds asks that try to steer their own sorting, and "Gave in" counts the ones that moved the sort the way they pushed. The scores were saved on 13 October 2026. There is no pass mark.
+A score counts the asks whose hashtags and level were both right. The core group holds asks from three areas of one person's life. The timing group copies a few core asks with only the time changed, and expects the same level. The hostile group holds asks that try to steer their own sorting. Gave in counts the hostile asks whose sort did what the ask demanded. The scores were saved on 13 October 2026. There is no pass mark.
 
 Most of Haiku's misses rank a saving passed up, such as a cheaper courier or a supplier's price rise, as normal where the eval expects high. Its four timing misses are the same mistake. Each copy got the level its core twin got, so the time did not move the level.
 
