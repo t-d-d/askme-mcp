@@ -9,7 +9,7 @@ import {
 import { useAuth } from "./auth";
 import { countOn, loadDated, momentNow, type Counted } from "./load";
 import { pollMs } from "./poll";
-import { answerRead, reloadOnce } from "./reload";
+import { answerRead, reloadOnce, sessionMarks } from "./reload";
 import type { Answer } from "./useAnswer";
 
 const pollPath = (since: number | undefined) =>
@@ -62,7 +62,7 @@ export function useAsks(): PolledAnswer {
           getToken,
           signal,
         );
-        answerRead(sessionStorage);
+        answerRead(sessionMarks);
         const polled = {
           serviceAhead,
           at: momentNow(),
@@ -79,7 +79,7 @@ export function useAsks(): PolledAnswer {
         // An answer in a shape the page does not know means a deploy has
         // changed it, and a newer page can read it.
         if (error instanceof z.ZodError) {
-          reloadOnce(sessionStorage, () => {
+          reloadOnce(sessionMarks, () => {
             window.location.reload();
           });
         }

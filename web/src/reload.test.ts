@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerRead, reloadOnce, type Marks } from "./reload";
+import { answerRead, reloadOnce, storedMarks, type Marks } from "./reload";
 
 const memory = (): Marks => {
   const held = new Map<string, string>();
@@ -71,6 +71,16 @@ describe("reloading for an answer the page cannot read", () => {
       removeItem: () => undefined,
     };
     reloadOnce(refusing, reload);
+    expect(reloads.count).toBe(0);
+  });
+
+  it("does not reload, or throw, when the storage itself cannot be reached", () => {
+    const { reloads, reload } = counting();
+    const blocked = storedMarks(() => {
+      throw new Error("The operation is insecure.");
+    });
+    reloadOnce(blocked, reload);
+    answerRead(blocked);
     expect(reloads.count).toBe(0);
   });
 });

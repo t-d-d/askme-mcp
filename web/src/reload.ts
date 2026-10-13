@@ -4,6 +4,20 @@ export const signInWaitMs = 10_000;
 
 export type Marks = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
+// Reaching the storage at all can throw, as where a browser blocks site
+// data, so it is reached only inside the calls below, which catch.
+export const storedMarks = (storage: () => Marks): Marks => ({
+  getItem: (key) => storage().getItem(key),
+  setItem: (key, value) => {
+    storage().setItem(key, value);
+  },
+  removeItem: (key) => {
+    storage().removeItem(key);
+  },
+});
+
+export const sessionMarks = storedMarks(() => window.sessionStorage);
+
 const reloadedKey = "askme-reloaded";
 
 // After a deploy changes the poll's answer, the page left open cannot read
