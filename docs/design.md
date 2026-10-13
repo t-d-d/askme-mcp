@@ -157,6 +157,7 @@ An agent can say when its ask stops mattering. Once that time has passed, the as
 - When any asks have lapsed, one line sits under the held line, or directly under the tabs when nothing is held: an hourglass, "2 have lapsed", and a "Show them" control. With one, it says "1 has lapsed".
 - After "Show them" the line reads "Showing 2 lapsed asks", and the control reads "Hide them". The lapsed asks come after every other ask, longest waiting first. Each opens and dismisses like any other.
 - An ask outside its hours stays held until its time has passed. Then it counts as lapsed, not held.
+- An ask lapses by askme's clock. It moves up the list for its last hour, and goes behind the line once its time has passed, within a few seconds of each time by that clock. A device whose clock is a few minutes out moves neither.
 - When nothing has lapsed, the line is not there.
 - It also shows on the All clear screen, at the foot, under the held line.
 - At desktop width it sits beside the held line, at the right of the tabs.

@@ -1,6 +1,7 @@
 // How the list reads its asks: the order they come in, which asks have
 // lapsed, and how long each has waited, in the short forms docs/design.md
-// gives.
+// gives. The service gives the time an ask lapses by its own clock, so the
+// page works out which asks have lapsed, and the order, by that clock.
 import { levels, type Level } from "../../shared/page-api";
 
 const minuteMs = 60_000;
@@ -41,24 +42,31 @@ interface MayLapse {
 const hourMs = 60 * minuteMs;
 const dayMs = 24 * hourMs;
 
-// How long until an ask lapses at a moment, or undefined for an ask with no
-// time to lapse at.
-const timeLeft = ({ lapsesAt }: MayLapse, now: number) =>
-  lapsesAt === undefined ? undefined : Date.parse(lapsesAt) - now;
+// How long until an ask lapses at a moment on this browser's clock, or
+// undefined for an ask with no time to lapse at. The service gives the time
+// by its own clock, serviceAhead ahead of this one (load.ts).
+const timeLeft = ({ lapsesAt }: MayLapse, now: number, serviceAhead: number) =>
+  lapsesAt === undefined
+    ? undefined
+    : Date.parse(lapsesAt) - (now + serviceAhead);
 
 // Whether an ask's time has passed, by the time left. It has from the
 // moment it lapses.
 const passed = (left: number | undefined) => left !== undefined && left <= 0;
 
-// The ids of the asks that have lapsed at a moment (PRD, "Web page"). A
-// lapsed ask is not closed. It leaves the order and waits behind a line of
-// its own.
+// The ids of the asks that have lapsed at a moment on this browser's clock
+// (PRD, "Web page"), once the service's clock, serviceAhead ahead of this
+// one, reaches each time. A lapsed ask is not closed. It leaves the order
+// and waits behind a line of its own.
 export function lapsedAsks(
   asks: readonly (MayLapse & { id: string })[],
   now: number,
+  serviceAhead: number,
 ): ReadonlySet<string> {
   return new Set(
-    asks.filter((ask) => passed(timeLeft(ask, now))).map(({ id }) => id),
+    asks
+      .filter((ask) => passed(timeLeft(ask, now, serviceAhead)))
+      .map(({ id }) => id),
   );
 }
 
@@ -79,14 +87,16 @@ function part(sort: { level: Level } | null, left: number | undefined) {
 const placeInPart = (left: number | undefined) =>
   left !== undefined && !passed(left) && left <= dayMs ? left : dayMs + 1;
 
-// The order of the list at a moment (PRD, "Web page"). An ask that lapses
-// within the hour comes first, whatever its level, soonest first. Then come
-// the levels, higher first, and an ask not sorted yet waits below them until
-// it is. At each, the asks that lapse within the next day come first,
-// soonest first, and the rest follow, longest waiting first, so a far-off
-// time gains an ask nothing. An opened ask sinks below the unopened ones in
-// its part, and no further, and the opened ones keep the same order. A
-// lapsed ask, when shown, comes after all of them, longest waiting first.
+// The order of the list at a moment on this browser's clock (PRD, "Web
+// page"), with the time each ask has left by the service's clock,
+// serviceAhead ahead of this one. An ask that lapses within the hour comes
+// first, whatever its level, soonest first. Then come the levels, higher
+// first, and an ask not sorted yet waits below them until it is. At each, the
+// asks that lapse within the next day come first, soonest first, and the rest
+// follow, longest waiting first, so a far-off time gains an ask nothing. An
+// opened ask sinks below the unopened ones in its part, and no further, and
+// the opened ones keep the same order. A lapsed ask, when shown, comes after
+// all of them, longest waiting first.
 export function inListOrder<
   Ask extends MayLapse & {
     id: string;
@@ -94,9 +104,9 @@ export function inListOrder<
     opened: boolean;
     sort: { level: Level } | null;
   },
->(asks: readonly Ask[], now: number): Ask[] {
+>(asks: readonly Ask[], now: number, serviceAhead: number): Ask[] {
   const placed = longestWaitingFirst(asks).map((ask) => {
-    const left = timeLeft(ask, now);
+    const left = timeLeft(ask, now, serviceAhead);
     return { ask, part: part(ask.sort, left), place: placeInPart(left) };
   });
   return placed
