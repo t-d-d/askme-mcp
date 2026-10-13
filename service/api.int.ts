@@ -492,7 +492,6 @@ const officeHours = {
 
 describe("the rules", () => {
   it("are the example rules for a new account, with the hashtags read from them", async () => {
-    const calls = fakes.model.calls.length;
     const response = await get(pagePaths.rules, await session(newAccount()));
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -501,7 +500,7 @@ describe("the rules", () => {
       hashtags: exampleHashtags,
       readFailed: false,
     });
-    expect(fakes.model.calls).toHaveLength(calls);
+    expect(fakes.model.calls).toEqual([]);
   });
 
   it("are saved, with the hashtags the model read from them, each with its colour", async () => {
@@ -509,7 +508,6 @@ describe("the rules", () => {
     vi.resetModules();
     const fresh = (await import("./src/handler")).handler;
     const account = newAccount();
-    const calls = fakes.model.calls.length;
     fakes.model.reply({ json: { hashtags: ["shop", "work"], hours: [] } });
     const response = await saveRules(account, { text: rulesText }, fresh);
     expect(response.status).toBe(200);
@@ -525,7 +523,7 @@ describe("the rules", () => {
     expect(
       await (await get(pagePaths.rules, await session(account))).json(),
     ).toEqual(saved);
-    expect(fakes.model.calls.slice(calls)).toEqual([
+    expect(fakes.model.calls).toEqual([
       expect.objectContaining({ authorization: `Bearer ${testModelKey}` }),
     ]);
     expect(fakes.parameters.asked).toEqual([modelKeyParameter]);
@@ -956,9 +954,8 @@ describe("sorting", () => {
     const account = newAccount();
     await saveRules(account, { text: "" });
     const id = await post(account);
-    const calls = fakes.model.calls.length;
     await runSorts();
-    expect(fakes.model.calls).toHaveLength(calls);
+    expect(fakes.model.calls).toEqual([]);
     expect(await sorted(account)).toEqual({
       hashtags: [],
       formerHashtags: [],
@@ -1349,15 +1346,12 @@ describe("sample asks", () => {
     const account = newAccount();
     await runSorts();
     await sendSamples(account);
-    const calls = fakes.model.calls.length;
     const reply = {
       json: { hashtags: ["shop"], level: "high", reason: "A customer waits." },
     };
     fakes.model.reply(reply, reply, reply);
     expect(await runSorts()).toBe(3);
-    const prompts = fakes.model.calls
-      .slice(calls)
-      .map(({ body }) => JSON.stringify(body));
+    const prompts = fakes.model.calls.map(({ body }) => JSON.stringify(body));
     expect(prompts).toHaveLength(3);
     for (const prompt of prompts) {
       expect(prompt).toContain("#work is my day job.");

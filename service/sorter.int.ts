@@ -65,7 +65,6 @@ it("reads the model's key on its first sort, and keeps it for the runs after", a
     if (posting.kind !== "posted") throw new Error("Not posted.");
     askIds.push(posting.id);
   }
-  const calls = fakes.model.calls.length;
   const capture = captureLogs();
   try {
     for (const askId of askIds) {
@@ -89,7 +88,7 @@ it("reads the model's key on its first sort, and keeps it for the runs after", a
   const keyed: unknown = expect.objectContaining({
     authorization: `Bearer ${testModelKey}`,
   });
-  expect(fakes.model.calls.slice(calls)).toEqual(askIds.map(() => keyed));
+  expect(fakes.model.calls).toEqual(askIds.map(() => keyed));
   expect(fakes.parameters.asked).toEqual([modelKeyParameter]);
 });
 
