@@ -1,19 +1,16 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { PageAsk } from "../../shared/page-api";
 import type { AskActions } from "./actions";
 import { AllClear } from "./AllClear";
 import { AskList } from "./AskList";
 import { DismissedNote } from "./DismissedNote";
-import { everything, onTab, type Tab } from "./tab";
+import { listView } from "./listView";
+import { everything, type Tab } from "./tab";
 import styles from "./Asks.module.css";
 import { Header } from "./Header";
 import { Held } from "./Held";
-import { heldAsks } from "./hours";
 import { NewAccount } from "./NewAccount";
 import { OpenCard } from "./OpenCard";
 import { hashtagColours } from "./palette";
-import { clockTime } from "./resets";
-import { capSpentUntil, sortingLine, sortingState } from "./sorting";
 import { SortingLine } from "./SortingLine";
 import { browserSpeech } from "./speech";
 import { Tabs, type TabsHandle } from "./Tabs";
@@ -22,7 +19,6 @@ import type { Dismissing } from "./useDismissing";
 import { useLineFocus } from "./useLineFocus";
 import { useListPlace } from "./useListPlace";
 import { useOpening } from "./useOpening";
-import { inListOrder, lapsedAsks } from "./waiting";
 
 // The main screen: the person's open asks, or when none are waiting, All
 // clear, or for an account that has never had an ask, how to begin. The list
@@ -109,65 +105,47 @@ export function Asks({
     () => ({ speak, markOpened, dismiss }),
     [speak, markOpened, dismiss],
   );
-  const asks = useMemo(
-    () =>
-      (data?.asks ?? [])
-        .filter(({ id }) => !dismissed.has(id))
-        .map((ask) => (opened.has(ask.id) ? { ...ask, opened: true } : ask)),
-    [data, dismissed, opened],
-  );
   const hashtags = data?.hashtags ?? [];
-  // Every hashtag an ask may carry, the former ones included, for colour.
-  const coloured =
-    data === undefined ? [] : [...hashtags, ...data.formerHashtags];
-  // Counted over the list as polled, so an ask dismissed here still counts
-  // until askme drops it, and Undo brings it back as it was.
-  const lapsed = useMemo(
-    () => lapsedAsks(data?.asks ?? [], polledAt, serviceAhead),
-    [data, polledAt, serviceAhead],
-  );
-  const held = useMemo(
+  // What the list shows, worked out in one place (listView.ts).
+  const {
+    open,
+    tab,
+    shown,
+    heldHere,
+    lapsedHere,
+    allClear,
+    sorting,
+    coloured,
+    keepHeld,
+    keepLapsed,
+  } = useMemo(
     () =>
-      heldAsks(
-        (data?.asks ?? []).filter(({ id }) => !lapsed.has(id)),
-        data?.hashtags ?? [],
-        data?.timeZone,
+      listView({
+        answer: data,
         polledAt,
-      ),
-    [data, lapsed, polledAt],
+        serviceAhead,
+        dismissed,
+        opened,
+        card,
+        chosen,
+        showingHeld,
+        showingLapsed,
+      }),
+    [
+      data,
+      polledAt,
+      serviceAhead,
+      dismissed,
+      opened,
+      card,
+      chosen,
+      showingHeld,
+      showingLapsed,
+    ],
   );
-  if (showingHeld && held.size === 0) showHeld(false);
-  if (showingLapsed && lapsed.size === 0) showLapsed(false);
-  const capResets = capSpentUntil(
-    data?.modelCapResetsAt,
-    polledAt,
-    serviceAhead,
-  );
-  const sorting = sortingLine(
-    sortingState(asks, polledAt, serviceAhead),
-    capResets === null ? null : clockTime(capResets),
-  );
-  const waiting = (list: readonly PageAsk[]) =>
-    list.filter(
-      ({ id }) =>
-        (showingHeld || !held.has(id)) && (showingLapsed || !lapsed.has(id)),
-    );
-  const open = card === null ? undefined : asks.find(({ id }) => id === card);
-  // An open card keeps the list's tab, though every ask behind it is held or
-  // lapsed.
-  const allClear =
-    open === undefined &&
-    data?.everAsked === true &&
-    waiting(asks).length === 0;
-  const tab =
-    !allClear && hashtags.some(({ name }) => name === chosen)
-      ? chosen
-      : everything;
+  if (showingHeld && !keepHeld) showHeld(false);
+  if (showingLapsed && !keepLapsed) showLapsed(false);
   if (tab !== chosen) choose(tab);
-  const onThisTab = onTab(asks, tab);
-  const shown = inListOrder(waiting(onThisTab), polledAt, serviceAhead);
-  const heldHere = onThisTab.filter(({ id }) => held.has(id)).length;
-  const lapsedHere = onThisTab.filter(({ id }) => lapsed.has(id)).length;
   const list = useListPlace(
     open?.id,
     shown.map(({ id }) => id),
