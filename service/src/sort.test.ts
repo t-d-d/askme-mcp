@@ -136,6 +136,19 @@ describe("the sorting prompt", () => {
     expect(system).not.toMatch(/passkey|sign-in|times out/u);
   });
 
+  it("draws low as nobody worse off, and normal without the unfinished work every ask has (issue #258)", () => {
+    const { system } = sortingPrompt(rules, ask);
+    const line = (level: string) =>
+      new RegExp(`^${level}: .*$`, "mu").exec(system)?.[0];
+    expect(line("low")).toContain(
+      "nobody worse off in a way they would notice: any answer, or none, would do",
+    );
+    expect(line("normal")).not.toContain("the agent's work unfinished");
+    expect(line("high")).toContain(
+      "someone would go without something they need or were counting on",
+    );
+  });
+
   it("asks for a shorter reason than the limit, since the model runs past what it is asked", () => {
     const { system } = sortingPrompt(rules, ask);
     expect(reasonAsked).toBeLessThan(reasonLimit);
