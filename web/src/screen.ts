@@ -4,6 +4,10 @@ import { askIdPattern } from "../../shared/page-api";
 // (SignedIn.tsx): #connect, #rules, and anything else for the list.
 export type Screen = "asks" | "connect" | "rules";
 
+// A screen with unsaved work gives the question to ask before it is left,
+// and null once it can be left without asking.
+export type AskFirst = (question: string | null) => void;
+
 export const screenIn = (hash: string): Screen =>
   hash === "#connect" ? "connect" : hash === "#rules" ? "rules" : "asks";
 
