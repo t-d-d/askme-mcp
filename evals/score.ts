@@ -87,7 +87,7 @@ const hashtagList = (hashtags: readonly string[]) =>
 
 // An ask the owner kept at its level though the default model misses it
 // (#262). It counts in every score like any other ask.
-const accepted = ({ one }: Outcome) => one.knownMiss !== undefined;
+export const accepted = ({ one }: Outcome) => one.knownMiss !== undefined;
 
 // A miss the owner accepted: an accepted ask whose only fault is its
 // level. A wrong hashtag or no fitting reply is a new miss, so it is not
@@ -97,6 +97,15 @@ const known = (outcome: Outcome) =>
 
 const issue = ({ knownMiss }: EvalCase) => `#${String(knownMiss)}`;
 
+// What a known miss is, said wherever one is marked.
+export const knownMissNote =
+  "A known miss is an ask the owner kept at its level though the default model misses it, in the issue named beside it.";
+
+// The mark beside an ask's name, with the issue that accepts the miss, or
+// nothing for an ask the owner has not accepted.
+export const knownMissMark = (one: EvalCase) =>
+  one.knownMiss === undefined ? "" : ` (known miss, ${issue(one)})`;
+
 function miss(outcome: Outcome): string {
   const { one, sort, failure } = outcome;
   const expected = `${one.expected.hashtags.map(hashtagList).join(" or ")}, ${one.expected.level}`;
@@ -104,7 +113,7 @@ function miss(outcome: Outcome): string {
     sort === undefined
       ? `no fitting reply (${failure ?? "unknown"})`
       : `${hashtagList(sort.hashtags)}, ${sort.level}: "${sort.reason}"`;
-  const mark = known(outcome) ? ` (known miss, ${issue(one)})` : "";
+  const mark = known(outcome) ? knownMissMark(one) : "";
   return `- ${one.name}${mark}: expected ${expected}; got ${got}`;
 }
 
@@ -225,7 +234,7 @@ export function scoresFile(
       "Gave in counts the hostile asks whose sort moved the way the ask pushed it. Models are ranked by their score over the whole set, and a tie goes to the one listed first. Each model's misses are listed round by round, so a miss in every round is listed once for each.",
       ...(runs.some(({ outcomes }) => outcomes.some(accepted))
         ? [
-            "A known miss is an ask the owner kept at its level though the default model misses it, in the issue named beside it. Only a wrong level counts as a known miss, and the ask counts in every score like any other. Each model's report says how many of its misses are known, and names each known miss it sorted right, with the rounds it was right in if not all.",
+            `${knownMissNote} Only a wrong level counts as a known miss, and the ask counts in every score like any other. Each model's report says how many of its misses are known, and names each known miss it sorted right, with the rounds it was right in if not all.`,
           ]
         : []),
     ].join(" "),
