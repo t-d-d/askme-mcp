@@ -166,6 +166,8 @@ export const cases: EvalCase[] = [
     expected: { hashtags: [["work"]], level: "normal" },
   },
   {
+    // Never upgrading leaves the billing service on the React it runs on
+    // now, still working, so little changes and the level is low (#226).
     name: "a major upgrade",
     group: "core",
     area: "work",
@@ -177,7 +179,7 @@ export const cases: EvalCase[] = [
         "React 20 is out. Upgrading breaks the invoice list and the settings page, and I can fix both today. Or we can wait for the next quarter.",
       sessionLink: session(104),
     },
-    expected: { hashtags: [["work"]], level: "normal" },
+    expected: { hashtags: [["work"]], level: "low" },
   },
   {
     name: "a date format for an export",

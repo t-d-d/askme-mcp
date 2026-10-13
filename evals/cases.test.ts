@@ -104,6 +104,12 @@ describe("the core eval set", () => {
     expect(level("a ticket for next sprint")).toBe("normal");
   });
 
+  it("holds the major upgrade at low, since never upgrading leaves the service working (#226)", () => {
+    expect(
+      cases.find((one) => one.name === "a major upgrade")?.expected.level,
+    ).toBe("low");
+  });
+
   it("has rules that say nothing about when an ask is due, since the level ignores time (#101)", () => {
     expect(evalRules.text).not.toMatch(/\bdue\b|next week|later|soon/iu);
   });
