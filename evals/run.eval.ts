@@ -6,7 +6,8 @@
 // It runs the service's default model, or the models EVAL_MODELS names,
 // separated by commas. `npm run eval:candidates` runs every model in
 // evals/candidates.ts, sends each ask to each of them twice, and saves the
-// scores in evals/scores.md, unless a model gave no fitting reply at all.
+// scores in evals/scores.md, unless a model gave no fitting reply at all or
+// the provider refused any ask for rate.
 import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { defaultModel } from "../service/src/model";
@@ -15,7 +16,7 @@ import { sortAttempts } from "../service/src/sorter";
 import { candidates } from "./candidates";
 import { cases } from "./cases";
 import { clientFor, evalKey, keyLine, namedModels, proxyLine } from "./model";
-import { modelReport, scoresFile, unanswered, type ModelRun } from "./score";
+import { modelReport, notSaved, scoresFile, type ModelRun } from "./score";
 import { inPool, sortEvalAsk } from "./sorting";
 
 const acrossCandidates = process.env.EVAL_CANDIDATES === "1";
@@ -65,11 +66,9 @@ describe("the eval set against the real model", () => {
     console.log(
       `${header}\n\nThe service tries each ask up to ${String(sortAttempts)} times. The eval tries each ask once a round, to measure the model, and leaves out the service's plain second try, which is a second draw. When a reply's only fault is a reason over ${String(reasonLimit)} characters, the eval sends it back for a shorter one, as the service does, since that finishes the same draw.\n`,
     );
-    const silent = unanswered(runs);
-    if (acrossCandidates && silent.length > 0) {
-      console.log(
-        `Not saved in evals/scores.md: no fitting reply came from ${silent.join(", ")}. See the reasons above.\n`,
-      );
+    const why = notSaved(runs);
+    if (acrossCandidates && why !== undefined) {
+      console.log(`${why}\n`);
     } else if (acrossCandidates) {
       const saved = scoresFile(runs, {
         date: new Date().toISOString().slice(0, 10),

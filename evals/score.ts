@@ -199,6 +199,50 @@ export const unanswered = (runs: readonly ModelRun[]): string[] =>
     )
     .map(({ model }) => model);
 
+// The models with asks the provider refused for rate, and how many of their
+// asks it refused. A 429 counts as a miss, so a run with any is not saved:
+// it would rank a model by the provider's limit, not its replies (#294).
+const rateLimited = (
+  runs: readonly ModelRun[],
+): { model: string; refused: number; of: number }[] =>
+  runs.flatMap(({ model, outcomes }) => {
+    const refused = outcomes.filter(
+      ({ failure }) => failure === "status-429",
+    ).length;
+    return refused === 0 ? [] : [{ model, refused, of: outcomes.length }];
+  });
+
+// Why a run across the candidates is not saved in evals/scores.md, or
+// nothing when it is saved. A model refused for rate on every ask is named
+// for its 429s only, since it never had the chance to reply.
+export function notSaved(runs: readonly ModelRun[]): string | undefined {
+  const limited = rateLimited(runs);
+  const allRefused = new Set(
+    limited
+      .filter(({ refused, of }) => refused === of)
+      .map(({ model }) => model),
+  );
+  const silent = unanswered(runs).filter((model) => !allRefused.has(model));
+  if (silent.length === 0 && limited.length === 0) return undefined;
+  return [
+    "Not saved in evals/scores.md:",
+    ...(silent.length === 0
+      ? []
+      : [
+          `- No fitting reply came from ${silent.join(", ")}. See the reasons above.`,
+        ]),
+    ...limited.map(
+      ({ model, refused, of }) =>
+        `- ${model} got a 429 on ${String(refused)} of ${String(of)} asks.`,
+    ),
+    ...(limited.length === 0
+      ? []
+      : [
+          "A 429 is the provider refusing the call for rate, not the model's answer. Run the candidates again later.",
+        ]),
+  ].join("\n");
+}
+
 export const capital = (word: string) =>
   `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`;
 
