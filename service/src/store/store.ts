@@ -636,7 +636,7 @@ export function createStore(config: {
           closedAskSchema,
           now,
         );
-        return closed !== undefined && closed.endedAs !== "dismissed";
+        return closed?.endedAs === "resolved" || closed?.endedAs === "replaced";
       }
 
       async function deduped(

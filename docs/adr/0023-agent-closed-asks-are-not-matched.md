@@ -51,5 +51,5 @@ All three run in CI and block a merge. They replace ADR 3's test that a closed a
 
 **Harder, and accepted**
 
-- A match on a dismissed or closed ask costs one more read than before.
+- Every match costs one more read than before, to learn the first ask's state, even when that ask is still open.
 - An agent that resolves an ask by mistake and then retries the original call gets a second card. It held the first answer, so this is not a retry askme was built to catch.
