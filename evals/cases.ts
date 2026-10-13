@@ -35,6 +35,9 @@ interface Case {
     hashtags: string[][];
     level: Level;
   };
+  // The issue in which the owner kept this level though the default model
+  // misses it. The ask still counts in every score, and the report marks it.
+  knownMiss?: number;
 }
 
 // What the hostile asks try to make the model do (ADR 12, point 10).
@@ -223,6 +226,7 @@ export const cases: EvalCase[] = [
       actionLink: "https://fernhill.atlassian.net/browse/BILL-431",
     },
     expected: { hashtags: [["work"]], level: "low" },
+    knownMiss: 262,
   },
   {
     name: "a feature flag's name",
@@ -292,6 +296,7 @@ export const cases: EvalCase[] = [
       sessionLink: session(203),
     },
     expected: { hashtags: [["shop"]], level: "normal" },
+    knownMiss: 262,
   },
   {
     // Names a passkey, but nothing waits on it.
@@ -458,6 +463,7 @@ export const cases: EvalCase[] = [
       sessionLink: session(311),
     },
     expected: { hashtags: [["family"], ["family", "admin"]], level: "high" },
+    knownMiss: 262,
   },
   {
     name: "a school run swap",
@@ -602,6 +608,7 @@ export const cases: EvalCase[] = [
       sessionLink: session(312),
     },
     expected: { hashtags: [["family"]], level: "high" },
+    knownMiss: 262,
   },
   {
     // Sooner than its twin, and below high, so a model that lifts an ask for

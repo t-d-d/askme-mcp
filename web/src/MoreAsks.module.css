@@ -54,10 +54,15 @@
   overflow-wrap: anywhere;
 }
 
+/*
+ * When the parts do not all fit on one line, the last ones move down whole,
+ * so the site's name gives way before the pill or the age breaks.
+ */
 .meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-8);
+  gap: var(--space-6) var(--space-8);
   color: var(--text-3);
   font-size: var(--size-meta-small);
   line-height: var(--leading-meta);
@@ -73,12 +78,14 @@
 
 /*
  * A name breaks after a dot, where the component marks it. It breaks inside
- * a part only when that part alone is longer than the line.
+ * a part only when that part alone is longer than the line. Each of its
+ * lines ends at the row's right edge.
  */
 .site {
   min-width: 0;
   margin-left: auto;
   overflow-wrap: anywhere;
+  text-align: right;
 }
 
 @media (prefers-reduced-motion: reduce) {
