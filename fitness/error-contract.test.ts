@@ -6,34 +6,19 @@ import { askTool, limits } from "../service/src/ask";
 import { resolveTool } from "../service/src/resolve";
 import { callerOf } from "../service/src/identity";
 import type { SortRequests } from "../service/src/jobs";
-import type { Store } from "../service/src/store/store";
 import { addTool } from "../service/src/tools";
+import { fakeStore } from "../test/fake-store";
 import { captureLogs } from "../test/logs";
 import { refusalOf } from "../test/mcp";
 
 // The tools in memory, with a store they never reach: every call here is
 // refused before it would be stored.
-const unused = () => Promise.reject(new Error("The store is not used here."));
-const store: Store = {
-  postAsk: unused,
-  resolveAsk: unused,
-  markOpened: unused,
-  dismissAsk: unused,
-  openAsks: unused,
-  asksSince: unused,
-  countCall: unused,
-  rules: unused,
-  saveRules: unused,
-  resaveRules: unused,
-  modelCapSpent: unused,
-  recordModelCapReset: unused,
-  askToSort: unused,
-  recordSort: unused,
-  close: () => undefined,
-};
+const store = fakeStore();
 
 // A queue the tools never reach either.
-const sorts: SortRequests = { queue: unused };
+const sorts: SortRequests = {
+  queue: () => Promise.reject(new Error("The queue is not used here.")),
+};
 
 let client: Client;
 let capture: ReturnType<typeof captureLogs>;

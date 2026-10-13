@@ -7,7 +7,9 @@
 // separated by commas. `npm run eval:candidates` runs every model in
 // evals/candidates.ts, sends each ask to each of them twice, and saves the
 // scores in evals/scores.md, unless a model gave no fitting reply at all or
-// the provider refused any ask for rate.
+// the provider still refused an ask for rate after the eval sent it again.
+// Any other run saves nothing, and names each model the provider refused
+// for rate.
 import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { defaultModel } from "../service/src/model";
@@ -15,9 +17,22 @@ import { reasonLimit } from "../service/src/sort";
 import { sortAttempts } from "../service/src/sorter";
 import { candidates } from "./candidates";
 import { cases } from "./cases";
-import { clientFor, evalKey, keyLine, namedModels, proxyLine } from "./model";
-import { modelReport, notSaved, scoresFile, type ModelRun } from "./score";
-import { inPool, sortEvalAsk } from "./sorting";
+import {
+  clientFor,
+  evalKey,
+  keyLine,
+  namedModels,
+  proxyLine,
+  rateWaits,
+} from "./model";
+import {
+  modelReport,
+  notSaved,
+  refusedForRate,
+  scoresFile,
+  type ModelRun,
+} from "./score";
+import { inPool, sortEvalAsk, sortingTimeoutMs } from "./sorting";
 
 const acrossCandidates = process.env.EVAL_CANDIDATES === "1";
 
@@ -35,6 +50,10 @@ const rounds = acrossCandidates ? 2 : 1;
 // How many asks are sent at once.
 const parallel = 5;
 
+// The models run at once, each with its own pool, so a run takes as long as
+// its slowest model.
+const timeout = sortingTimeoutMs(rounds * cases.length, parallel);
+
 const header = [
   keyLine,
   proxyLine,
@@ -42,7 +61,7 @@ const header = [
 ].join("\n");
 
 describe("the eval set against the real model", () => {
-  it("sorts every ask and reports the scores", async () => {
+  it("sorts every ask and reports the scores", { timeout }, async () => {
     const key = evalKey();
     if (acrossCandidates && namedModels.length > 0) {
       throw new Error(
@@ -64,18 +83,23 @@ describe("the eval set against the real model", () => {
     const runs = await Promise.all(models.map(runModel));
     for (const run of runs) console.log(`\n${modelReport(run)}\n`);
     console.log(
-      `${header}\n\nThe service tries each ask up to ${String(sortAttempts)} times. The eval tries each ask once a round, to measure the model, and leaves out the service's plain second try, which is a second draw. When a reply's only fault is a reason over ${String(reasonLimit)} characters, the eval sends it back for a shorter one, as the service does, since that finishes the same draw.\n`,
+      `${header}\n\nThe service tries each ask up to ${String(sortAttempts)} times. The eval tries each ask once a round, to measure the model, and leaves out the service's plain second try, which is a second draw. When a reply's only fault is a reason over ${String(reasonLimit)} characters, the eval sends it back for a shorter one, as the service does, since that finishes the same draw. When the provider refuses a call for rate, with a 429, the eval waits and sends it again, up to ${String(rateWaits.length)} times, since the model never saw it.\n`,
     );
-    const why = notSaved(runs);
-    if (acrossCandidates && why !== undefined) {
-      console.log(`${why}\n`);
-    } else if (acrossCandidates) {
-      const saved = scoresFile(runs, {
-        date: new Date().toISOString().slice(0, 10),
-        rounds,
-      });
-      writeFileSync(new URL("./scores.md", import.meta.url), saved);
-      console.log(`${saved}\nSaved in evals/scores.md.\n`);
+    if (!acrossCandidates) {
+      const refused = refusedForRate(runs);
+      if (refused !== undefined) console.log(`${refused}\n`);
+    } else {
+      const why = notSaved(runs);
+      if (why !== undefined) {
+        console.log(`${why}\n`);
+      } else {
+        const saved = scoresFile(runs, {
+          date: new Date().toISOString().slice(0, 10),
+          rounds,
+        });
+        writeFileSync(new URL("./scores.md", import.meta.url), saved);
+        console.log(`${saved}\nSaved in evals/scores.md.\n`);
+      }
     }
     // The run counts only if a model answered at all.
     expect(
