@@ -77,8 +77,8 @@ most of it can only be read signed in.
   sort again: a re-sort tests nothing more, and the rules stay changed.
 - Check which hashtags or level a sample got in the live tier: the
   model is not deterministic, so a good deploy would fail.
-- Press Send sample asks again after a refusal: back-to-back deploys
-  are rare, and the failure names its cause.
+- Press Send sample asks again after a refusal: a refusal is rare,
+  and the failure names its cause.
 
 Judgment: A real agent connecting and its ask reaching a card is
 checked by hand after a deploy, and how narrow a third-party

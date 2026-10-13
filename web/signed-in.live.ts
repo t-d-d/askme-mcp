@@ -8,7 +8,6 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
-  askChange,
   askChangePaths,
   pagePaths,
   samplesPath,
@@ -16,6 +15,7 @@ import {
 } from "../shared/page-api";
 import { mcpUrl, pageUrl, phone } from "../test/live";
 import {
+  dismissedId,
   failsWith,
   sampleCount,
   screen,
@@ -79,8 +79,7 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
         apiCalls.push(`${request.method()} ${url.pathname}`);
       }
       if (url.origin === origin && url.pathname === askChangePaths.dismissed) {
-        const change = askChange.safeParse(request.postDataJSON());
-        dismissed.push(change.data?.id ?? "(no id)");
+        dismissed.push(dismissedId(request.postData()));
       }
     });
     answer = watchAnswers(page, origin);
@@ -151,16 +150,25 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
       async () => {
         posted = await sendSortAndDismiss(page, answer, { stepMs, sortMs });
       },
-      sortMs + (4 + 2 * sampleCount) * stepMs,
+      // The press, the new asks, then the card, its sort and its dismissal
+      // for each sample, with room to spare.
+      sortMs + (4 + 3 * sampleCount) * stepMs,
     );
   });
 
-  // The page ends on the list after the last dismissal, and the header
-  // there links to the rules. The reload shows Clerk ended the session, so
-  // the run leaves none behind.
+  // The sample step ends on the list, whose header links to the rules. When
+  // it fails it may leave Connect your agents or a card open, which link only
+  // to All asks, so the run still signs out. The reload shows Clerk ended the
+  // session, so the run leaves none behind.
   it(
     "signs out from the rules and shows the signed-out page",
     async () => {
+      const allAsks = page.getByRole("link", { name: "All asks" });
+      if (await allAsks.isVisible()) {
+        await allAsks
+          .click({ timeout: stepMs })
+          .catch(failsWith(page, "The All asks link did not respond."));
+      }
       await page
         .getByRole("link", { name: "Rules", exact: true })
         .click({ timeout: stepMs })

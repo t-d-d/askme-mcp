@@ -64,9 +64,15 @@ export async function sendSortAndDismiss(
   answer: () => AsksAnswer | undefined,
   { stepMs, sortMs }: Waits,
 ): Promise<PageAsk[]> {
-  const known = answer();
-  expect(known, "The page read no list before the samples.").toBeDefined();
-  const before = new Set(known?.asks.map(({ id }) => id));
+  // The page's answer is read apart from the page, so it can come a moment
+  // after the list shows.
+  await expect
+    .poll(answer, {
+      timeout: stepMs,
+      message: "The page read no list before the samples.",
+    })
+    .toBeDefined();
+  const before = new Set(answer()?.asks.map(({ id }) => id));
   const [sent] = await Promise.all([
     page
       .waitForResponse(
@@ -153,8 +159,7 @@ async function dismissSorted(
         (response) =>
           response.request().method() === "POST" &&
           new URL(response.url()).pathname === askChangePaths.dismissed &&
-          askChange.safeParse(response.request().postDataJSON()).data?.id ===
-            id,
+          dismissedId(response.request().postData()) === id,
         { timeout: stepMs },
       )
       .catch(failsWith(page, `The page sent no dismissal for "${summary}".`)),
@@ -164,6 +169,16 @@ async function dismissSorted(
       .catch(failsWith(page, `The card for "${summary}" showed no Dismiss.`)),
   ]);
   expect(sent.ok(), `The service refused to dismiss "${summary}".`).toBe(true);
+}
+
+// The id a dismissal names, from its body as sent. A body that is not JSON
+// names none, so a listener that reads it does not throw.
+export function dismissedId(body: string | null): string {
+  try {
+    return askChange.safeParse(JSON.parse(body ?? "")).data?.id ?? "(no id)";
+  } catch {
+    return "(no id)";
+  }
 }
 
 export function failsWith(page: Page, message: string) {

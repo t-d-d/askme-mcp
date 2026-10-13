@@ -21,7 +21,7 @@ The live tier may post sample asks and dismiss them, as the test account, throug
 1. **What it presses.** After the check of ADR 16 signs in and reads the list, it opens Connect your agents, as it does already, and presses Send sample asks once.
 2. **What it waits for.** Each ask that press posted must show as sorted: its card shows its sort, not "Not sorted yet", and the account's answer no longer counts it in the sorting line. It checks that each was sorted, not which hashtags or level it got, because the model is not deterministic.
 3. **The time limit.** A sort that fails once comes back after the queue's six-minute visibility timeout (ADR 22). So the check waits up to eight minutes from the press, then fails, naming the asks still not sorted.
-4. **A refusal.** If the service refuses the press, the check fails with the service's own words. That includes "Every sample ask was sent in the last 10 minutes", which two runs close together can meet. Back-to-back deploys are rare, so the check does not wait it out.
+4. **A refusal.** If the service refuses the press, the check fails with the service's own words. That includes "Every sample ask was sent in the last 10 minutes". A press skips any sample sent in the last ten minutes, and each area holds eight, so only about eight runs within ten minutes meet it. That is rare, so the check does not wait it out.
 5. **The dismissal.** It opens each card it posted and presses Dismiss, and waits until the page has sent that dismissal. It opens no card by following its link, so it marks none opened.
 6. **What follows from these writes.** The service writes what it writes for any sample ask: the ask, its dedupe record, the ask counters, the model call counter, and the sort. A run costs three model calls on the service's key, and three of the test account's 100 asks a day.
 7. **Everything else stays as ADR 20 sets it.** Every other call the check sends the page's API is a `GET` on one of the page's read routes, and the poll stays in the check. Any other write needs a new decision.
@@ -32,7 +32,7 @@ The live tier may post sample asks and dismiss them, as the test account, throug
 2. **Post the ask from a real MCP client.** It covers more, from the agent's side. Rejected: it needs an agent token from Clerk's sign-in and consent screens, driven in CI. The README's manual checklist covers that path.
 3. **Save the rules to make the service sort again.** Rejected: a re-sort goes through the same queue, so it tests nothing more, and it would leave the test account's rules changed. An implementer is likely to reach for this, so it becomes a "Do not" in the constraint file.
 4. **Check the hashtags and level each sample got.** Rejected: the model is not deterministic, so the check would fail on a good deploy. The eval set judges the sorts. This is likely too, and becomes a "Do not".
-5. **Press Send sample asks again after the ten-minute refusal, until the service takes it.** Rejected: back-to-back deploys are rare, and the wait would add ten minutes to the run. A failure that names the cause tells whoever reads it to rerun the job. This becomes a "Do not".
+5. **Press Send sample asks again after the ten-minute refusal, until the service takes it.** Rejected: it takes about eight runs within ten minutes, which is rare, and the wait would add up to ten minutes to the run. A failure that names the cause tells whoever reads it to rerun the job. This becomes a "Do not".
 
 ## Fitness functions
 
@@ -55,6 +55,6 @@ The first runs in the gate and blocks a merge. The second and third run in the l
 
 - Each run spends three model calls on the service's key, and three of the test account's 100 asks a day. A day of more than about thirty deploys would reach the cap and fail the check.
 - Each run takes as long as the sorts take, and up to eight minutes when one fails once.
-- Two runs within ten minutes fail the second on the samples' dedupe window. Rerunning the job after ten minutes passes it.
+- About eight runs within ten minutes use up every sample, and the next fails on the samples' dedupe window. Rerunning the job ten minutes later passes it.
 - A run that fails between the press and the dismissals leaves its samples on the test account. The next run's press posts new ones beside them, and the old ones stay until someone dismisses them.
 - The check now depends on the page's sample button, its card screen and its Dismiss button. A change to any of them changes the live check too.
