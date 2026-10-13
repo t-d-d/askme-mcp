@@ -611,6 +611,10 @@ describe.each([
     await view.page
       .getByRole("heading", { name: "Connect your agents" })
       .waitFor();
+    // The Cursor link shows only once the connection fetch returns.
+    await view.page
+      .getByRole("link", { name: /Add askme to Cursor/u })
+      .waitFor();
   });
   afterAll(async () => {
     await view.close();
