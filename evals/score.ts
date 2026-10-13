@@ -85,23 +85,68 @@ function medianTime(outcomes: Outcome[]): string {
 const hashtagList = (hashtags: readonly string[]) =>
   hashtags.map((hashtag) => `#${hashtag}`).join(" ") || "none";
 
-function miss({ one, sort, failure }: Outcome): string {
+// An ask the owner kept at its level though the default model misses it
+// (#262). It counts in every score like any other ask.
+const accepted = ({ one }: Outcome) => one.knownMiss !== undefined;
+
+// A miss the owner accepted: an accepted ask whose only fault is its
+// level. A wrong hashtag or no fitting reply is a new miss, so it is not
+// marked.
+const known = (outcome: Outcome) =>
+  accepted(outcome) && hashtagsRight(outcome) && !levelRight(outcome);
+
+const issue = ({ knownMiss }: EvalCase) => `#${String(knownMiss)}`;
+
+function miss(outcome: Outcome): string {
+  const { one, sort, failure } = outcome;
   const expected = `${one.expected.hashtags.map(hashtagList).join(" or ")}, ${one.expected.level}`;
   const got =
     sort === undefined
       ? `no fitting reply (${failure ?? "unknown"})`
       : `${hashtagList(sort.hashtags)}, ${sort.level}: "${sort.reason}"`;
-  return `- ${one.name}: expected ${expected}; got ${got}`;
+  const mark = known(outcome) ? ` (known miss, ${issue(one)})` : "";
+  return `- ${one.name}${mark}: expected ${expected}; got ${got}`;
 }
 
-// One model's scores: a line for each group, then every miss.
+// How many misses are known, and the accepted asks the model sorted right,
+// each named once with the rounds it was right in when it missed in
+// others, so it is clear when a mark can come off. Nothing when the set
+// has none.
+function knownLines(outcomes: Outcome[], missed: Outcome[]): string[] {
+  if (!outcomes.some(accepted)) return [];
+  const right = [
+    ...new Map(
+      outcomes
+        .filter((outcome) => accepted(outcome) && bothRight(outcome))
+        .map(({ one }) => [one.name, one]),
+    ).values(),
+  ].map((one) => {
+    const tries = outcomes.filter((outcome) => outcome.one.name === one.name);
+    const hits = tries.filter(bothRight).length;
+    const line = `- ${one.name} (${issue(one)})`;
+    return hits === tries.length
+      ? line
+      : `${line}, right in ${String(hits)} of ${String(tries.length)}`;
+  });
+  return [
+    "",
+    `Known misses: ${String(missed.filter(known).length)} of ${String(missed.length)} misses`,
+    right.length === 0
+      ? "Known misses sorted right: none"
+      : "Known misses sorted right:",
+    ...right,
+  ];
+}
+
+// One model's scores: a line for each group, then every miss, then what
+// it did with the known misses.
 export function modelReport({ model, outcomes }: ModelRun): string {
   const rows = groupsOf(outcomes).map((group) => {
     const scored = inGroup(outcomes, group);
     const n = scored.length;
     return `| ${group} | ${String(n)} | ${percent(scored.filter(hashtagsRight).length, n)} | ${percent(scored.filter(levelRight).length, n)} | ${score(scored)} | ${String(noFittingReply(scored))} |`;
   });
-  const misses = outcomes.filter((outcome) => !bothRight(outcome)).map(miss);
+  const missed = outcomes.filter((outcome) => !bothRight(outcome));
   const replies = outcomes.filter(
     ({ failure }) => failure === undefined || failure === "reply-rejected",
   ).length;
@@ -123,8 +168,9 @@ export function modelReport({ model, outcomes }: ModelRun): string {
     "| --- | --- | --- | --- | --- | --- |",
     ...rows,
     "",
-    misses.length === 0 ? "No misses." : "Misses:",
-    ...misses,
+    missed.length === 0 ? "No misses." : "Misses:",
+    ...missed.map(miss),
+    ...knownLines(outcomes, missed),
   ].join("\n");
 }
 
@@ -177,6 +223,11 @@ export function scoresFile(
       "A score counts the asks whose hashtags and level were both right. Each group is scored on its own.",
       ...groups.map((group) => groupNotes[group]),
       "Gave in counts the hostile asks whose sort moved the way the ask pushed it. Models are ranked by their score over the whole set, and a tie goes to the one listed first. Each model's misses are listed round by round, so a miss in every round is listed once for each.",
+      ...(runs.some(({ outcomes }) => outcomes.some(accepted))
+        ? [
+            "A known miss is an ask the owner kept at its level though the default model misses it, in the issue named beside it. Only a wrong level counts as a known miss, and the ask counts in every score like any other. Each model's report says how many of its misses are known, and names each known miss it sorted right, with the rounds it was right in if not all.",
+          ]
+        : []),
     ].join(" "),
     "",
     `Best: \`${order[0]?.model ?? "none"}\``,

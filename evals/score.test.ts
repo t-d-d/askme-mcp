@@ -256,6 +256,126 @@ describe("comparing models", () => {
   });
 });
 
+describe("a known miss (#262)", () => {
+  const accepted = (name: string): EvalCase => ({
+    ...core(name),
+    knownMiss: 262,
+  });
+
+  // One ask right, one known miss and one other miss.
+  const withKnown: Outcome[] = [
+    sorted(core("a hotfix"), "high"),
+    sorted(accepted("a sprint ticket"), "normal"),
+    sorted(core("a rollback"), "low"),
+  ];
+  const report = lines(
+    modelReport({ model: "maker/model", outcomes: withKnown }),
+  );
+
+  it("is marked in the list of misses, with the issue that accepts it", () => {
+    expect(report).toContain(
+      '- a sprint ticket (known miss, #262): expected #work, high; got #work, normal: "Because."',
+    );
+    expect(report).toContain(
+      '- a rollback: expected #work, high; got #work, low: "Because."',
+    );
+  });
+
+  it("is counted among the misses", () => {
+    expect(report).toContain("Known misses: 1 of 2 misses");
+  });
+
+  it("still counts in the score", () => {
+    expect(report).toContain(
+      "| core | 3 | 3/3 (100%) | 1/3 (33%) | 1/3 (33%) | 0 |",
+    );
+  });
+
+  it("is named when the model sorts it right, so its mark can come off", () => {
+    const right = lines(
+      modelReport({
+        model: "maker/model",
+        outcomes: [
+          sorted(accepted("a sprint ticket"), "high"),
+          sorted(accepted("a sign-in code"), "low"),
+        ],
+      }),
+    );
+    expect(right).toContain("Known misses sorted right:");
+    expect(right).toContain("- a sprint ticket (#262)");
+    expect(right).not.toContain("- a sign-in code (#262)");
+  });
+
+  it("is named once over several rounds, with the rounds it was right in when it missed in others", () => {
+    const sprint = accepted("a sprint ticket");
+    const code = accepted("a sign-in code");
+    const rounds = lines(
+      modelReport({
+        model: "maker/model",
+        outcomes: [
+          sorted(sprint, "high"),
+          sorted(code, "high"),
+          sorted(sprint, "normal"),
+          sorted(code, "high"),
+        ],
+      }),
+    );
+    expect(rounds).toContain("- a sprint ticket (#262), right in 1 of 2");
+    expect(rounds.filter((line) => line === "- a sign-in code (#262)")).toEqual(
+      ["- a sign-in code (#262)"],
+    );
+  });
+
+  it("is not marked when the miss is more than its level, since only the level is accepted", () => {
+    const other = lines(
+      modelReport({
+        model: "maker/model",
+        outcomes: [
+          unsorted(accepted("a sprint ticket")),
+          sorted(accepted("a sign-in code"), "high", ["shop"]),
+          sorted(accepted("a rota"), "low"),
+        ],
+      }),
+    );
+    expect(other).toContain(
+      "- a sprint ticket: expected #work, high; got no fitting reply (reply-rejected)",
+    );
+    expect(other).toContain(
+      '- a sign-in code: expected #work, high; got #shop, high: "Because."',
+    );
+    expect(other).toContain(
+      '- a rota (known miss, #262): expected #work, high; got #work, low: "Because."',
+    );
+    expect(other).toContain("Known misses: 1 of 3 misses");
+  });
+
+  it("says when the model sorted no known miss right", () => {
+    expect(report).toContain("Known misses sorted right: none");
+  });
+
+  it("is not mentioned when the set has none", () => {
+    const plain = modelReport({ model: "maker/model", outcomes });
+    expect(plain).not.toContain("Known misses");
+  });
+
+  it("is explained in the saved scores, and counts there like any other ask", () => {
+    const saved = scoresFile([{ model: "maker/k", outcomes: withKnown }], {
+      date: "2026-10-13",
+      rounds: 1,
+    });
+    expect(saved).toContain("A known miss is an ask");
+    expect(lines(saved)).toContain(
+      "| `maker/k` | 1/3 (33%) | 1/3 (33%) | 0 | 0 | 1.0s |",
+    );
+    expect(saved).toContain("Known misses: 1 of 2 misses");
+  });
+
+  it("is not explained in saved scores whose set has none", () => {
+    const saved = scoresFile(runs, { date: "2026-10-13", rounds: 1 });
+    expect(saved).not.toContain("known miss");
+  });
+});
+
 describe("a model that never answered", () => {
   it("is named, so a broken run does not overwrite the saved scores", () => {
     const silent: ModelRun = {
