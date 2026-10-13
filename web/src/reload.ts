@@ -14,22 +14,41 @@ export const storedMarks = (storage: () => Marks): Marks => ({
 
 export const sessionMarks = storedMarks(() => window.sessionStorage);
 
-// Holds the path of the answer that reloaded the page.
+// Holds the id of the page load that asked for the reload, a space, and the
+// path of the answer that failed. A page from before the id kept the path
+// alone.
 const reloadedKey = "askme-reloaded-for";
+
+// Each page load has its own id, so a page can tell its own mark from one an
+// earlier page left.
+const thisPage = `page-${String(Math.random())}`;
+
+const markOf = (page: string, answer: string) => `${page} ${answer}`;
+
+function readMark(mark: string): { page: string; answer: string } {
+  const space = mark.indexOf(" ");
+  return space < 0
+    ? { page: "", answer: mark }
+    : { page: mark.slice(0, space), answer: mark.slice(space + 1) };
+}
 
 // After a deploy changes one of the page's answers, the page left open
 // cannot read it, and a reload fetches the new page (index.html is served
 // no-cache). The mark lets that happen once, for any answer, so a page whose
 // own schema is wrong does not reload for ever. Where the mark cannot be
-// kept, it does not reload.
+// kept, it does not reload. A mark this page set, found while this page
+// still runs, means its reload did not happen, as when the person stayed at
+// "Leave site?", so it does not stop the next one.
 export function reloadOnce(
   marks: Marks,
   reload: () => void,
   answer: string,
+  page: string = thisPage,
 ): void {
   try {
-    if (marks.getItem(reloadedKey) !== null) return;
-    marks.setItem(reloadedKey, answer);
+    const mark = marks.getItem(reloadedKey);
+    if (mark !== null && readMark(mark).page !== page) return;
+    marks.setItem(reloadedKey, markOf(page, answer));
   } catch {
     return;
   }
@@ -42,7 +61,10 @@ export function reloadOnce(
 // each time it loaded.
 export function answerRead(marks: Marks, answer: string): void {
   try {
-    if (marks.getItem(reloadedKey) === answer) marks.removeItem(reloadedKey);
+    const mark = marks.getItem(reloadedKey);
+    if (mark !== null && readMark(mark).answer === answer) {
+      marks.removeItem(reloadedKey);
+    }
   } catch {
     // Kept or not, the page carries on.
   }
