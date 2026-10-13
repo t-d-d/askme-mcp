@@ -627,6 +627,43 @@ describe("the rules", () => {
     ).toBe(true);
   });
 
+  it.each([
+    [401, "error"],
+    [402, "error"],
+    [403, "warn"],
+    [429, "warn"],
+    [500, "warn"],
+    [503, "warn"],
+  ])(
+    "log a %i from the model at %s, and keep the text",
+    async (status, level) => {
+      const account = newAccount();
+      const capture = captureLogs();
+      fakes.model.reply({ status });
+      const response = await saveRules(account, { text: rulesText });
+      capture.restore();
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(
+        expect.objectContaining({ text: rulesText, readFailed: true }),
+      );
+      // The failed reading stays at warn. askme's own fault adds an error.
+      const failed = capture.lines.filter((line) =>
+        lineText(line).includes("rules-read-failed"),
+      );
+      expect(failed.map(({ method }) => method)).toEqual(["warn"]);
+      const errors = capture.lines.filter(({ method }) => method === "error");
+      expect(errors.map(lineText)).toEqual(
+        level === "error"
+          ? [
+              expect.stringMatching(
+                new RegExp(`request-failed.*status-${String(status)}`, "u"),
+              ),
+            ]
+          : [],
+      );
+    },
+  );
+
   it("keep the old hashtags when the model names one the rules do not write", async () => {
     const account = newAccount();
     fakes.model.reply({ json: { hashtags: ["home"], hours: [] } });

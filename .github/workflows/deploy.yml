@@ -33,6 +33,31 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
+      # The serverless package only installs a launcher, which fetches the
+      # framework and runs it. Serverless publishes no checksum for either, so
+      # both must match sums of downloads made when the version was pinned. A
+      # new launcher build fails here until someone checks it and commits its
+      # sum. The framework is unpacked, and the list of releases written,
+      # where the launcher looks, so it fetches nothing. Then the host is
+      # blocked, so nothing unchecked can come from it.
+      - name: Check the Serverless launcher and framework
+        run: |
+          version=4.43.0
+          archive="$RUNNER_TEMP/serverless-$version.tgz"
+          curl --fail --silent --show-error --output "$archive" \
+            "https://install.serverless.com/archives/serverless-$version.tgz"
+          sha256sum --check --strict <<EOF
+          b2de18a44fef8c320b7c0059aa68c8a8fb30b1a975a17ac4b528539f9366858f  node_modules/serverless/node_modules/.bin/serverless-linux-amd64-0.0.2
+          87eef92a242b92c44b6ac02fcc3176553c774f1340c536176a0a9d373771eb5b  $archive
+          EOF
+          release="$HOME/.serverless/releases/$version"
+          mkdir -p "$release" ~/.serverless/binaries
+          tar -xzf "$archive" -C "$release"
+          echo "{\"supportedVersions\":[\"$version\"],\"blockedVersions\":[]}" \
+            > ~/.serverless/binaries/versions.json
+          echo "{\"version\":\"$version\",\"updateLastChecked\":\"$(date -u +%FT%TZ)\"}" \
+            > ~/.serverless/binaries/metadata.json
+          echo "0.0.0.0 install.serverless.com" | sudo tee -a /etc/hosts > /dev/null
       # Build before the job holds any AWS credentials. Clerk's publishable
       # key is public (ADR 6).
       - name: Build the page
@@ -89,10 +114,181 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - run: npm ci
+      # Only the deploy and rollback jobs run the Serverless launcher, and check
+      # it. Its download is the one install script on a Linux runner, so the
+      # other jobs skip it.
+      - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run test:live
         env:
           ASKME_URL: ${{ needs.deploy.outputs.url }}
           ASKME_MCP_URL: ${{ needs.deploy.outputs.mcp }}
+          CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
+
+  # live-ok names the last commit that passed its live check (ADR 25).
+  mark-live-ok:
+    needs: live
+    # A re-run after a rollback checks the build the rollback put back, not
+    # this run's commit, so only the first attempt moves the tag.
+    if: ${{ success() && github.run_attempt == '1' }}
+    runs-on: ubuntu-24.04
+    # A tag left behind only means a rollback goes one build further back. It
+    # is no reason to fail a deploy that passed its live check.
+    continue-on-error: true
+    permissions:
+      contents: write
+    steps:
+      - name: Move live-ok to the deployed commit
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/live-ok" --silent; then
+            gh api --method PATCH \
+              "repos/$GITHUB_REPOSITORY/git/refs/tags/live-ok" \
+              -f sha="$GITHUB_SHA" -F force=true --silent
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref=refs/tags/live-ok -f sha="$GITHUB_SHA" --silent
+          fi
+          echo "live-ok now names $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Say the tag did not move
+        if: failure()
+        run: >-
+          echo "live-ok did not move to $GITHUB_SHA. A rollback would put
+          back an older build." >> "$GITHUB_STEP_SUMMARY"
+
+  # The live check failed, so put back the last build that passed it. The run
+  # still ends failed, and the owner reverts the pull request.
+  find-live-ok:
+    needs: live
+    if: ${{ failure() && needs.live.result == 'failure' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.tag.outputs.sha }}
+    steps:
+      - name: Find the last build that passed its live check
+        id: tag
+        run: |
+          # mark-live-ok makes a lightweight tag, so it names the commit itself.
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/live-ok" \
+            --jq '.[] | select(.ref == "refs/tags/live-ok" and .object.type == "commit") | .object.sha')
+          if [ -z "$sha" ]; then
+            echo "There is no live-ok tag naming a commit, so nothing is rolled back." \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "The live check failed. Redeploying live-ok, commit $sha." \
+            >> "$GITHUB_STEP_SUMMARY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # The deploy's steps, at live-ok, without the deploy role's own stack: an
+  # older template must not undo a change to the role.
+  rollback:
+    needs: find-live-ok
+    if: ${{ !cancelled() && needs.find-live-ok.outputs.sha != '' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      url: ${{ steps.page.outputs.url }}
+      mcp: ${{ steps.page.outputs.mcp }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.find-live-ok.outputs.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      # The serverless package only installs a launcher, which fetches the
+      # framework and runs it. Serverless publishes no checksum for either, so
+      # both must match sums of downloads made when the version was pinned. A
+      # new launcher build fails here until someone checks it and commits its
+      # sum. The framework is unpacked, and the list of releases written,
+      # where the launcher looks, so it fetches nothing. Then the host is
+      # blocked, so nothing unchecked can come from it.
+      - name: Check the Serverless launcher and framework
+        run: |
+          version=4.43.0
+          archive="$RUNNER_TEMP/serverless-$version.tgz"
+          curl --fail --silent --show-error --output "$archive" \
+            "https://install.serverless.com/archives/serverless-$version.tgz"
+          sha256sum --check --strict <<EOF
+          b2de18a44fef8c320b7c0059aa68c8a8fb30b1a975a17ac4b528539f9366858f  node_modules/serverless/node_modules/.bin/serverless-linux-amd64-0.0.2
+          87eef92a242b92c44b6ac02fcc3176553c774f1340c536176a0a9d373771eb5b  $archive
+          EOF
+          release="$HOME/.serverless/releases/$version"
+          mkdir -p "$release" ~/.serverless/binaries
+          tar -xzf "$archive" -C "$release"
+          echo "{\"supportedVersions\":[\"$version\"],\"blockedVersions\":[]}" \
+            > ~/.serverless/binaries/versions.json
+          echo "{\"version\":\"$version\",\"updateLastChecked\":\"$(date -u +%FT%TZ)\"}" \
+            > ~/.serverless/binaries/metadata.json
+          echo "0.0.0.0 install.serverless.com" | sudo tee -a /etc/hosts > /dev/null
+      # Build before the job holds any AWS credentials. Clerk's publishable
+      # key is public (ADR 6).
+      - name: Build the page
+        run: npm run build
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Deploy the stack
+        run: node_modules/.bin/serverless deploy
+        env:
+          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }}
+          CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
+      - name: Publish the page
+        id: page
+        run: |
+          output() {
+            aws cloudformation describe-stacks --stack-name askme-prod \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" \
+              --output text
+          }
+          bucket=$(output WebBucketName)
+          url=$(output WebUrl)
+          mcp="$(output HttpApiUrl)/mcp"
+          # The hashed files first, then the page that names them. The page is
+          # revalidated on every load, so a deploy shows at once.
+          aws s3 sync web/dist "s3://$bucket" --exclude index.html \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 cp web/dist/index.html "s3://$bucket/index.html" \
+            --cache-control "no-cache"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "mcp=$mcp" >> "$GITHUB_OUTPUT"
+          echo "The page is live at $url" >> "$GITHUB_STEP_SUMMARY"
+          echo "The MCP endpoint is $mcp" >> "$GITHUB_STEP_SUMMARY"
+
+  # live-ok's own live tier, against what the rollback put back.
+  rollback-live:
+    needs: [find-live-ok, rollback]
+    # The live job failed upstream, so without a condition this never runs.
+    if: ${{ !cancelled() && needs.rollback.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.find-live-ok.outputs.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      # Only the deploy and rollback jobs run the Serverless launcher, and check
+      # it. Its download is the one install script on a Linux runner, so the
+      # other jobs skip it.
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:live
+        env:
+          ASKME_URL: ${{ needs.rollback.outputs.url }}
+          ASKME_MCP_URL: ${{ needs.rollback.outputs.mcp }}
           CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}

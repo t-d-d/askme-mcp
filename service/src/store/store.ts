@@ -628,15 +628,23 @@ export function createStore(config: {
       }
 
       // An agent can close an ask only with its id, so a repeat of one it
-      // resolved or replaced is not a retry. It is posted as new, and takes
-      // over the dedupe record. A dismissed ask still matches (ADR 23).
-      async function closedByAgent(askId: string): Promise<boolean> {
+      // resolved or replaced is not a retry. Nor is it one of an ask that
+      // expired: the page no longer shows it. Either is posted as new, and
+      // takes over the dedupe record. A dismissed ask still matches (ADR 23,
+      // ADR 27).
+      async function stillMatches(askId: string): Promise<boolean> {
+        const open = await stored(
+          keys.openAsk(account, askId),
+          storedAskSchema,
+          now,
+        );
+        if (open !== undefined) return true;
         const closed = await stored(
           keys.closedAsk(account, askId),
           closedAskSchema,
           now,
         );
-        return closed?.endedAs === "resolved" || closed?.endedAs === "replaced";
+        return closed?.endedAs === "dismissed";
       }
 
       async function deduped(
@@ -648,11 +656,11 @@ export function createStore(config: {
           const result = await guarded(changes, posted, named);
           if (result !== "repeat") return result;
           const first = await stored(record, dedupeSchema, now);
-          if (first !== undefined && !(await closedByAgent(first.askId))) {
+          if (first !== undefined && (await stillMatches(first.askId))) {
             return { kind: "matched", id: first.askId };
           }
-          // The record expired, or names an ask the agent closed, since the
-          // write was sent.
+          // The record expired, or names an ask the agent closed or one that
+          // expired, since the write was sent.
           named = first?.askId;
         }
         throw new Error("The dedupe record kept changing under the post.");
