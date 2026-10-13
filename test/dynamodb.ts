@@ -13,7 +13,6 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { AddressInfo } from "node:net";
-import { hostname } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import {
@@ -28,7 +27,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { TestProject } from "vitest/node";
 import { z } from "zod";
-import { readYaml } from "./repo";
+import { readYaml } from "./repo.ts";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -37,7 +36,7 @@ declare module "vitest" {
   }
 }
 
-export const image = "amazon/dynamodb-local:3.3.1";
+const image = "amazon/dynamodb-local:3.3.1";
 const tableName = "askme";
 
 const run = promisify(execFile);
@@ -118,111 +117,73 @@ async function ready(client: DynamoDBClient): Promise<void> {
   throw new Error("The local DynamoDB did not answer.", { cause: failure });
 }
 
-// The run a container belongs to: the process that started it, and the
-// machine that process runs on.
-export interface Owner {
-  pid: number;
-  host: string;
-}
+// The container's own command. DynamoDB Local runs in the background while
+// the shell reads its stdin, which the run holds open through the Docker
+// client it starts. When the run ends, however it ends, the stream closes:
+// the shell exits, and the container stops and is removed. When the client
+// is killed with the run, the daemon closes the stream itself.
+//
+// Nothing judges a run by its process id or its machine's hostname, so a
+// reused process id, a changed hostname or a second process namespace on
+// one Docker daemon (#254) can neither keep a container running nor stop
+// another run's. Two cases are accepted. A container started before this,
+// with the labels from #244 or none, is tied to no run, and one left
+// running needs one docker rm by hand. A run killed between making its
+// container and starting it leaves one that never started, which holds no
+// process, memory or port.
+const untilRunEnds =
+  "java -jar DynamoDBLocal.jar -inMemory -sharedDb & cat > /dev/null";
 
-const label = "askme-mcp.dynamodb";
-
-// The labels that tie a container to the run it belongs to.
-export function ownerLabels(owner: Owner): string[] {
-  return [
-    "--label",
-    `${label}.pid=${String(owner.pid)}`,
-    "--label",
-    `${label}.host=${owner.host}`,
-  ];
-}
-
-// The run a container belongs to, read from its labels.
-export async function ownerOf(container: string): Promise<Owner> {
-  const { stdout } = await run("docker", [
-    "inspect",
-    "--format",
-    `{{index .Config.Labels "${label}.pid"}} {{index .Config.Labels "${label}.host"}}`,
-    container,
-  ]);
-  const [pid, host] = stdout.trim().split(" ");
-  return { pid: Number(pid), host: host ?? "" };
-}
-
-// Starts a local DynamoDB, labelled with the run it belongs to, and gives
+// Starts a local DynamoDB that runs no longer than this process, and gives
 // the container's id.
-export async function startDatabase(owner: Owner): Promise<string> {
+async function startDatabase(): Promise<string> {
+  // Made as a step of its own, so the image is pulled before anything waits
+  // for the container to start.
   const { stdout } = await run("docker", [
-    "run",
-    "--detach",
+    "create",
+    "--interactive",
     "--rm",
-    ...ownerLabels(owner),
     "--publish",
     "127.0.0.1::8000",
+    "--entrypoint",
+    "sh",
     image,
-    "-jar",
-    "DynamoDBLocal.jar",
-    "-inMemory",
-    "-sharedDb",
+    "-c",
+    untilRunEnds,
   ]);
-  return stdout.trim();
+  const container = stdout.trim();
+  // The client attaches before it starts the container, so the container
+  // never runs without its stdin held. It writes only if the start fails.
+  spawn("docker", ["start", "--attach", "--interactive", container], {
+    stdio: ["pipe", "ignore", "inherit"],
+  });
+  return container;
 }
 
-// Whether a process on this machine is still running. A process that runs
-// as another user still exists, though it cannot be signalled.
-export function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error instanceof Error && Reflect.get(error, "code") === "EPERM";
+// The address the container publishes DynamoDB Local on, once it has
+// started.
+async function publishedEndpoint(container: string): Promise<string> {
+  for (let tries = 0; tries < 60; tries += 1) {
+    const port = await run("docker", ["port", container, "8000/tcp"]).then(
+      ({ stdout }) => /:(\d+)\s*$/mu.exec(stdout.split("\n")[0] ?? "")?.[1],
+      () => undefined,
+    );
+    if (port !== undefined) return `http://127.0.0.1:${port}`;
+    await sleep(250);
   }
-}
-
-// Removes every local DynamoDB whose run has ended without stopping it, as a
-// run killed before its teardown does. Only this machine's containers are
-// judged, as only its process ids can be checked.
-export async function removeOrphans(): Promise<void> {
-  const { stdout } = await run("docker", [
-    "ps",
-    "--all",
-    "--no-trunc",
-    "--filter",
-    `label=${label}.host=${hostname()}`,
-    "--format",
-    `{{.ID}} {{.Label "${label}.pid"}}`,
-  ]);
-  const orphans = [...stdout.matchAll(/^(\w+) (\d+)$/gmu)].flatMap(
-    ([, id, pid]) => (id !== undefined && !alive(Number(pid)) ? [id] : []),
-  );
-  if (orphans.length === 0) return;
-  // Another run starting at the same time may be removing the same ones.
-  // Whatever is left, the next run removes, so a failure here need not stop
-  // this one.
-  await run("docker", ["rm", "--force", ...orphans]).catch(() => undefined);
+  throw new Error("The local DynamoDB has no port.");
 }
 
 export default async function setup(
   project: TestProject,
 ): Promise<() => Promise<void>> {
   await dockerRunning();
-  await removeOrphans();
-  const container = await startDatabase({
-    pid: process.pid,
-    host: hostname(),
-  });
+  const container = await startDatabase();
   const stop = async () => {
     await run("docker", ["rm", "--force", container]);
   };
   try {
-    const { stdout: published } = await run("docker", [
-      "port",
-      container,
-      "8000/tcp",
-    ]);
-    const port = /:(\d+)\s*$/mu.exec(published.split("\n")[0] ?? "")?.[1];
-    if (port === undefined) throw new Error("The local DynamoDB has no port.");
-    const endpoint = `http://127.0.0.1:${port}`;
+    const endpoint = await publishedEndpoint(container);
     const client = localClient(endpoint);
     await ready(client);
     const { Properties: table } = readYaml("serverless.yml", tableSchema)
