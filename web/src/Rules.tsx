@@ -7,11 +7,10 @@ import {
 } from "react";
 import { rulesLimit } from "../../shared/page-api";
 import { useAuth } from "./auth";
-import { capped, Refusal } from "./load";
 import type { AskFirst } from "./SignedIn";
 import { hoursText } from "./hours";
 import { colourOf, tagColour } from "./palette";
-import { resetsHere, resetTime } from "./resets";
+import { refusalNote, type RefusalNote } from "./refusalNote";
 import styles from "./Rules.module.css";
 import { capSpentUntil, sortingState } from "./sorting";
 import { elsewhere, followToList } from "./toList";
@@ -50,17 +49,14 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
   // Whether the last save sent the text unchanged, after a reading that
   // succeeded, so askme sorts the asks again and reads nothing.
   const [resorting, setResorting] = useState(false);
+  const refused =
+    save.error === null ? null : refusalNote(save.error, save.submittedAt);
   // Once the limit resets, the refusal's note goes. The refused save sorted
   // nothing, so no note says the asks are being sorted again either.
-  useAfter(
-    capped(save.error)
-      ? resetsHere(save.submittedAt, save.error.serviceAhead)
-      : undefined,
-    () => {
-      setResorting(false);
-      save.reset();
-    },
-  );
+  useAfter(refused?.goesAt, () => {
+    setResorting(false);
+    save.reset();
+  });
   const text = draft ?? data?.text ?? "";
   const changed = data !== undefined && draft !== null && draft !== data.text;
   const capSpent =
@@ -199,8 +195,7 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
           <Note
             failed={failed}
             pending={save.isPending}
-            error={save.error}
-            savedAt={save.submittedAt}
+            refused={refused}
             changed={changed}
             awake={awake}
             resorting={resorted}
@@ -282,8 +277,7 @@ function Footnote({
 function Note({
   failed,
   pending,
-  error,
-  savedAt,
+  refused,
   changed,
   awake,
   resorting,
@@ -293,11 +287,8 @@ function Note({
 }: {
   failed: boolean;
   pending: boolean;
-  error: Error | null;
-  // When the last save was sent, from which a refusal at the daily limit
-  // says when the limit resets: the next midnight UTC, by the service's
-  // clock.
-  savedAt: number;
+  // The last save's refusal or failure, if it had one.
+  refused: RefusalNote | null;
   changed: boolean;
   awake: boolean;
   resorting: boolean;
@@ -324,22 +315,11 @@ function Note({
       </p>
     );
   }
-  if (capped(error)) {
+  if (refused !== null) {
     return (
       <p className={styles.note} role="status">
-        You&apos;ve reached today&apos;s limit. It resets at{" "}
-        {resetTime(savedAt + error.serviceAhead)}.
-      </p>
-    );
-  }
-  if (error !== null) {
-    return error instanceof Refusal && error.code === "rate_limited" ? (
-      <p className={styles.note} role="status">
-        Slow down a little. Try again in a few seconds.
-      </p>
-    ) : (
-      <p className={styles.note} role="status">
-        That didn&apos;t go through. {retry}
+        {refused.words}
+        {refused.kind === "failed" && <> {retry}</>}
       </p>
     );
   }
