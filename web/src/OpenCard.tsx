@@ -6,6 +6,7 @@ import styles from "./OpenCard.module.css";
 import { OutLink } from "./OutLink";
 import { askColour, tagColour, type HashtagColour } from "./palette";
 import { Pills } from "./Pills";
+import { SiteName } from "./SiteName";
 import { listenLength } from "./speech";
 import type { Tab } from "./tab";
 import { backToList, followToList } from "./toList";
@@ -97,7 +98,9 @@ export function OpenCard({
             onFollowed={followed}
           >
             <span className={styles.label}>{main.label}</span>
-            <span className={styles.site}>{main.site}</span>
+            <span className={styles.site}>
+              <SiteName site={main.site} />
+            </span>
           </OutLink>
           {session !== undefined && (
             <OutLink
@@ -106,7 +109,9 @@ export function OpenCard({
               onFollowed={followed}
             >
               <span className={styles.label}>{session.label}</span>
-              <span className={styles.site}>{session.site}</span>
+              <span className={styles.site}>
+                <SiteName site={session.site} />
+              </span>
             </OutLink>
           )}
         </div>
