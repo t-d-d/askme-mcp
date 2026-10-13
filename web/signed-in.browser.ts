@@ -129,13 +129,13 @@ describe.each([
   let view: OpenPage;
   beforeAll(async () => {
     view = await open(five, viewport);
+    await view.page.getByRole("article").waitFor();
   });
   afterAll(async () => {
     await view.close();
   });
 
-  it("asks the API for the list with the session token", async () => {
-    await view.page.getByRole("article").waitFor();
+  it("asks the API for the list with the session token", () => {
     const calls = view.apiCalls.filter((call) => call.path === pagePaths.asks);
     expect(calls.length).toBeGreaterThan(0);
     for (const call of calls) {
@@ -298,6 +298,7 @@ describe("the top card's spoken detail", () => {
   it("shows beside the top ask at desktop width", async () => {
     const view = await open(five, desktop);
     try {
+      await view.page.getByRole("article").waitFor();
       expect(
         await view.page
           .getByText("The spoken detail of Merge the fix")
