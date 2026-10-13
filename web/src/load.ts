@@ -13,6 +13,17 @@ export async function load<T>(
   getToken: () => Promise<string | null>,
   signal: AbortSignal,
 ): Promise<T> {
+  return (await loadDated(path, schema, getToken, signal)).answer;
+}
+
+// Loads one answer as load does, and gives how far the service's clock was
+// ahead of this browser's when it arrived (serviceAhead).
+export async function loadDated<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  getToken: () => Promise<string | null>,
+  signal: AbortSignal,
+): Promise<{ answer: T; serviceAhead: number }> {
   const token = await getToken();
   const response = await fetch(path, {
     headers: { authorization: `Bearer ${token ?? ""}` },
@@ -21,7 +32,8 @@ export async function load<T>(
   if (!response.ok) {
     throw new Error(`The API answered ${String(response.status)}.`);
   }
-  return schema.parse(await response.json());
+  const ahead = serviceAhead(response, Date.now());
+  return { answer: schema.parse(await response.json()), serviceAhead: ahead };
 }
 
 // A refusal from the page's API, with its code from the error contract, so

@@ -165,7 +165,7 @@ An agent can say when its ask stops mattering. Once that time has passed, the as
 
 Saving the rules sorts every open ask again, and an ask can be left behind. One line says how sorting stands. It looks like the held line, with no clock and no control, and sits under the tabs, below the held and lapsed lines when they show.
 
-- While the daily limit is reached: "Today's sorting limit is reached. It resets at 01:00." The time is in the person's time zone.
+- While the daily limit is reached: "Today's sorting limit is reached. It resets at 01:00." The time is in the person's time zone. It goes, and "Save rules" wakes, within a few seconds of the limit resetting by askme's clock. A device whose clock is a few minutes out moves neither.
 - Otherwise, while any asks are being sorted: "Sorting 40 asks with your rules".
 - Otherwise, when sorting stopped for some asks: "3 asks couldn't be sorted. Saving your rules tries again."
 - Only one of these shows, in that order. With none of them, the line is not there.

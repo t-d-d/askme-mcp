@@ -14,11 +14,10 @@ import {
   answerPoll,
   openPage,
   Status,
+  stepUntilShown,
   type OpenPage,
   type PageOptions,
 } from "../test/browser";
-
-type Locator = ReturnType<OpenPage["page"]["locator"]>;
 
 const phone = { width: 390, height: 844 };
 const session = "test-session-token";
@@ -111,31 +110,13 @@ async function openNewAccount(
   });
 }
 
-// Moves the page's stopped clock on a millisecond at a time until the part
-// shows. The page's requests take real time, which the stopped clock does
-// not count. Steps are at least 10ms of real time apart, so in the wait's
-// 10 seconds the clock moves on a second at most. A test waits twice, so
-// two seconds in all, well short of the next poll. An error thrown by one
-// of the page's timers as the clock moves fails the test.
-async function stepUntilShown(
-  { page }: OpenPage,
-  part: Locator,
-): Promise<void> {
-  const deadline = Date.now() + 10_000;
-  while ((await part.count()) === 0) {
-    expect(Date.now(), "the part to show within 10 seconds").toBeLessThan(
-      deadline,
-    );
-    await page.clock.runFor(1);
-    await new Promise((waited) => setTimeout(waited, 10));
-  }
-}
-
 // Steps the stopped clock until the page's first poll is answered and the
-// new account's card shows.
+// new account's card shows. Each wait moves the clock on a second at most
+// (stepUntil). A test waits twice, so two seconds in all, well short of the
+// next poll.
 const firstPoll = (view: OpenPage) =>
   stepUntilShown(
-    view,
+    view.page,
     view.page.getByRole("heading", { name: "Your agents can ask here." }),
   );
 
@@ -146,7 +127,7 @@ async function showsSamplesBeforeNextPoll(view: OpenPage): Promise<void> {
   const card = view.page
     .getByRole("article")
     .filter({ hasText: "Approve the hotfix for the login page" });
-  await stepUntilShown(view, card);
+  await stepUntilShown(view.page, card);
   expect(await card.count()).toBe(1);
   expect(
     view.apiCalls.filter((call) => call.path === pagePaths.asks),
@@ -183,7 +164,7 @@ async function pressIntoCapAt(pageClock: Date): Promise<OpenPage> {
   );
   await firstPoll(opened);
   await samplesButton(opened.page).click();
-  await stepUntilShown(opened, capNote(opened.page));
+  await stepUntilShown(opened.page, capNote(opened.page));
   return opened;
 }
 
