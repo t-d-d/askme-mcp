@@ -5,6 +5,7 @@ import { z } from "zod";
 import { handler } from "../service/src/handler";
 import { callerOf, type AccountId } from "../service/src/identity";
 import {
+  askLifetimeDays,
   createStore,
   dedupeWindowMinutes,
   type Posting,
@@ -194,6 +195,37 @@ describe("fitness: a dismissal still matches (ask-idempotency.md)", () => {
     } finally {
       await agent.close();
     }
+  });
+});
+
+describe("fitness: expired is new (ask-idempotency.md)", () => {
+  it("makes a new card with a new id when the first ask expired, never closed, inside the window", async () => {
+    const owner = accountId(newAccount());
+    const newAsk = {
+      summary: ask.summary,
+      area: ask.area,
+      spokenDetail: ask.spoken_detail,
+    };
+    const start = new Date("2026-10-11T09:30:00.000Z");
+    const at = (ms: number) => new Date(start.getTime() + ms);
+    const lifetime = askLifetimeDays * 86_400_000;
+
+    // A replacing ask keeps the expiry of the ask it replaces (ADR 13), so
+    // this one expires two minutes after it is posted.
+    const oldest = idFrom(await store.postAsk(owner, newAsk, start));
+    const replacing = { ...newAsk, replaces: oldest };
+    const first = idFrom(
+      await store.postAsk(owner, replacing, at(lifetime - 120_000)),
+    );
+    const later = at(lifetime + 60_000);
+    expect((await store.openAsks(owner, later)).asks).toEqual([]);
+
+    const again = idFrom(await store.postAsk(owner, replacing, later));
+    expect(again).not.toBe(first);
+    expect(
+      (await store.openAsks(owner, later)).asks.map(({ id }) => id),
+    ).toEqual([again]);
+    expect(await asksOf(owner)).toHaveLength(3);
   });
 });
 
