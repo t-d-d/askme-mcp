@@ -81,55 +81,51 @@ const askParameter = async (): Promise<void> => {
   });
 };
 
+// Sends a message and asks for a parameter, then sets every switch.
+const changeEveryFake = async (deduplicationId: string): Promise<void> => {
+  expect(await sendBatch(deduplicationId)).toBe(200);
+  await askParameter();
+  fakes.queue.loseAnswers(1);
+  fakes.queue.failing = true;
+  fakes.queue.hanging = true;
+  fakes.queue.refusing = true;
+  fakes.parameters.hanging = true;
+};
+
+const expectEveryFakeAsItBegan = async (
+  deduplicationId: string,
+): Promise<void> => {
+  expect(fakes.model.unused()).toBe(0);
+  expect(fakes.queue.failing).toBe(false);
+  expect(fakes.queue.hanging).toBe(false);
+  expect(fakes.queue.refusing).toBe(false);
+  expect(fakes.queue.sent).toEqual([]);
+  expect(fakes.queue.calls).toEqual([]);
+  expect(fakes.queue.waiting()).toBe(0);
+  expect(fakes.parameters.hanging).toBe(false);
+  expect(fakes.parameters.asked).toEqual([]);
+  // No lost answer is left, and the earlier message is not a repeat.
+  expect(await sendBatch(deduplicationId)).toBe(200);
+  expect(fakes.queue.sent.map(({ taken }) => taken)).toEqual([true]);
+};
+
 // The tests run in order, and the second sees what the first left.
 describe("every fake between tests", () => {
   it("leaves every fake changed", async () => {
-    expect(await sendBatch("between-tests")).toBe(200);
-    await askParameter();
-    fakes.queue.loseAnswers(1);
-    fakes.queue.failing = true;
-    fakes.queue.hanging = true;
-    fakes.queue.refusing = true;
-    fakes.parameters.hanging = true;
+    await changeEveryFake("between-tests");
     expect(fakes.queue.waiting()).toBe(1);
   });
 
   it("starts the next test with every fake as it began", async () => {
-    expect(fakes.queue.failing).toBe(false);
-    expect(fakes.queue.hanging).toBe(false);
-    expect(fakes.queue.refusing).toBe(false);
-    expect(fakes.queue.sent).toEqual([]);
-    expect(fakes.queue.calls).toEqual([]);
-    expect(fakes.queue.waiting()).toBe(0);
-    expect(fakes.parameters.hanging).toBe(false);
-    expect(fakes.parameters.asked).toEqual([]);
-    // No lost answer is left, and the earlier message is not a repeat.
-    expect(await sendBatch("between-tests")).toBe(200);
-    expect(fakes.queue.sent.map(({ taken }) => taken)).toEqual([true]);
+    await expectEveryFakeAsItBegan("between-tests");
   });
 });
 
 describe("resetting every fake", () => {
   it("returns each fake to its starting state", async () => {
     fakes.model.reply({ status: 429 });
-    expect(await sendBatch("reset")).toBe(200);
-    await askParameter();
-    fakes.queue.loseAnswers(1);
-    fakes.queue.failing = true;
-    fakes.queue.hanging = true;
-    fakes.queue.refusing = true;
-    fakes.parameters.hanging = true;
+    await changeEveryFake("reset");
     fakes.reset();
-    expect(fakes.model.unused()).toBe(0);
-    expect(fakes.queue.failing).toBe(false);
-    expect(fakes.queue.hanging).toBe(false);
-    expect(fakes.queue.refusing).toBe(false);
-    expect(fakes.queue.sent).toEqual([]);
-    expect(fakes.queue.calls).toEqual([]);
-    expect(fakes.queue.waiting()).toBe(0);
-    expect(fakes.parameters.hanging).toBe(false);
-    expect(fakes.parameters.asked).toEqual([]);
-    expect(await sendBatch("reset")).toBe(200);
-    expect(fakes.queue.sent.map(({ taken }) => taken)).toEqual([true]);
+    await expectEveryFakeAsItBegan("reset");
   });
 });

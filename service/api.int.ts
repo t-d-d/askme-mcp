@@ -521,6 +521,8 @@ describe("the rules", () => {
     expect(fakes.model.calls.slice(calls)).toEqual([
       expect.objectContaining({ authorization: `Bearer ${testModelKey}` }),
     ]);
+    // The handler keeps the key for the whole file, so this holds only while
+    // this is the file's first test to reach the model.
     expect(fakes.parameters.asked).toContain("/askme/openrouter/api-key");
   });
 
