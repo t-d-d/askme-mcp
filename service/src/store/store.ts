@@ -27,6 +27,7 @@ import { awsClientConfig } from "../aws";
 import type { AccountId } from "../identity";
 import {
   askLimit,
+  modelCallLimit,
   pollLimit,
   rulesSaveLimit,
   secondsLeft,
@@ -225,18 +226,29 @@ export interface AskToSort {
   rules: AccountRules;
 }
 
+// The account marker. Once the cap on model calls refuses a call, it also
+// holds when the cap resets, the next midnight UTC (ADR 22).
 const metaSchema = z.object({
   version: z.number().int().nonnegative(),
   everAsked: z.boolean().optional(),
+  modelCapResetsAt: z.iso.datetime().optional(),
 });
 
 // What the page shows: the account's open asks, the version they were read
-// at, and whether the account has ever had an ask.
+// at, whether the account has ever had an ask, and when the cap on model
+// calls last refused one, the time it resets.
 export interface AccountAsks {
   version: number;
   everAsked: boolean;
   asks: StoredAsk[];
+  modelCapResetsAt?: string;
 }
+
+// A rate counter, as count() writes it.
+const counterSchema = z.object({
+  count: z.number().int().nonnegative(),
+  expiresAt: z.number().int(),
+});
 
 // What a poll gets when nothing changed since the version it carried.
 export interface Unchanged {
@@ -296,6 +308,15 @@ export interface Store {
   ): Promise<AccountRules | undefined>;
   // Counts a save of the rules against the account's limit for the minute.
   countRulesSave(account: AccountId, now: Date): Promise<Counted>;
+  // Counts a model call against the account's cap for the UTC day (ADR 21).
+  countModelCall(account: AccountId, now: Date): Promise<Counted>;
+  // Whether the account has made every model call its cap allows in the UTC
+  // day. It reads the count, and counts nothing.
+  modelCapSpent(account: AccountId, now: Date): Promise<boolean>;
+  // Records on META when the cap on model calls resets, raising the
+  // version, so every open page learns of it (ADR 22). False, with nothing
+  // written, when META already holds that time or a later one.
+  recordModelCapReset(account: AccountId, resetsAt: Date): Promise<boolean>;
   // An open ask and the account's rules, or undefined when the ask is not
   // open.
   askToSort(
@@ -369,24 +390,42 @@ export function createStore(config: {
   });
 
   // Every write to an account's items, as one transaction that also raises
-  // the account's version, so the page learns of it (ADR 13).
+  // the account's version, so the page learns of it (ADR 13). It can also
+  // mark META: that the account has had an ask, or when the cap on model
+  // calls resets, which is written only over an earlier time, so a second
+  // refusal for the same reset fails its condition.
   async function write(
     account: AccountId,
     changes: Change[],
-    marks: { everAsked?: true } = {},
+    marks: { everAsked?: true; modelCapResetsAt?: string } = {},
   ): Promise<void> {
-    const set = marks.everAsked === true ? " SET everAsked = :yes" : "";
+    const { everAsked, modelCapResetsAt } = marks;
+    const sets = [
+      ...(everAsked === true ? ["everAsked = :yes"] : []),
+      ...(modelCapResetsAt === undefined
+        ? []
+        : ["modelCapResetsAt = :resetsAt"]),
+    ];
     const items: Change[] = [
       ...changes,
       {
         Update: {
           TableName,
           Key: keys.meta(account),
-          UpdateExpression: `ADD version :one${set}`,
+          UpdateExpression: `ADD version :one${sets.length === 0 ? "" : ` SET ${sets.join(", ")}`}`,
           ExpressionAttributeValues: {
             ":one": 1,
-            ...(set === "" ? {} : { ":yes": true }),
+            ...(everAsked === true ? { ":yes": true } : {}),
+            ...(modelCapResetsAt === undefined
+              ? {}
+              : { ":resetsAt": modelCapResetsAt }),
           },
+          ...(modelCapResetsAt === undefined
+            ? {}
+            : {
+                ConditionExpression:
+                  "attribute_not_exists(modelCapResetsAt) OR modelCapResetsAt < :resetsAt",
+              }),
         },
       },
     ];
@@ -621,10 +660,15 @@ export function createStore(config: {
   async function listed(
     account: AccountId,
     now: Date,
-    { version, everAsked }: z.output<typeof metaSchema>,
+    { version, everAsked, modelCapResetsAt }: z.output<typeof metaSchema>,
   ): Promise<AccountAsks> {
     const asks = await storedAsks(account, now);
-    return { version, everAsked: everAsked ?? false, asks };
+    return {
+      version,
+      everAsked: everAsked ?? false,
+      asks,
+      ...(modelCapResetsAt === undefined ? {} : { modelCapResetsAt }),
+    };
   }
 
   return {
@@ -882,6 +926,43 @@ export function createStore(config: {
         rulesSaveLimit.windowMinutes,
         now,
       );
+    },
+
+    async countModelCall(account, now) {
+      return countIn(
+        (window) => keys.modelCount(account, window),
+        modelCallLimit.calls,
+        modelCallLimit.windowMinutes,
+        now,
+      );
+    },
+
+    async modelCapSpent(account, now) {
+      const { name } = windowOf(now, modelCallLimit.windowMinutes);
+      const counter = await stored(
+        keys.modelCount(account, name),
+        counterSchema,
+        now,
+      );
+      return (counter?.count ?? 0) >= modelCallLimit.calls;
+    },
+
+    // META is read first, so the refusals after the first in a day each
+    // cost a read, not a refused transaction.
+    async recordModelCapReset(account, resetsAt) {
+      const at = resetsAt.toISOString();
+      const { modelCapResetsAt } = await meta(account);
+      if (modelCapResetsAt !== undefined && modelCapResetsAt >= at) {
+        return false;
+      }
+      try {
+        await write(account, [], { modelCapResetsAt: at });
+        return true;
+      } catch (error) {
+        // Another refusal recorded it after META was read.
+        if (conditionFailed(error)) return false;
+        throw error;
+      }
     },
 
     async askToSort(account, askId, now) {

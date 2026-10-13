@@ -35,6 +35,11 @@ export class Refusal extends Error {
   }
 }
 
+// Whether an error is a refusal at a daily cap, which the page notes with
+// the time the cap resets.
+export const capped = (error: Error | null): boolean =>
+  error instanceof Refusal && error.code === "cap_reached";
+
 // Sends a request to the page's API with the session token, and a JSON
 // body unless the body is left out. A refusal throws as a Refusal, and any
 // other failure as an error.

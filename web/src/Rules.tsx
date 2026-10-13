@@ -7,13 +7,15 @@ import {
 } from "react";
 import { rulesLimit } from "../../shared/page-api";
 import { useAuth } from "./auth";
-import { Refusal } from "./load";
+import { capped, Refusal } from "./load";
 import type { AskFirst } from "./SignedIn";
 import { hoursText } from "./hours";
 import { colourOf, tagColour } from "./palette";
+import { resetsAt, resetTime } from "./resets";
 import styles from "./Rules.module.css";
-import { sortingState } from "./sorting";
+import { capSpentUntil, sortingState } from "./sorting";
 import { elsewhere, followToList } from "./toList";
+import { useAfter } from "./useAfter";
 import { useAsks } from "./useAsks";
 import { browserTimeZone, useRules } from "./useRules";
 
@@ -28,9 +30,12 @@ const leaving = "Leave without saving your rules?";
 // out.
 //
 // While some asks couldn't be sorted, "Save rules" works on unchanged text
-// too. When the last reading succeeded, that save reads nothing, and sorts
-// again only the asks still behind the rules (ADR 22). The screen polls the
-// list, as the list does, to know when asks stopped.
+// too, unless today's sorting limit is reached. When the last reading
+// succeeded, that save reads nothing, and sorts again only the asks still
+// behind the rules (ADR 22). The screen polls the list, as the list does,
+// to know when asks stopped and when the limit is reached. A save refused
+// at the limit keeps the text in the box, and says when the limit resets.
+// That note goes once the limit resets, with no reload.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const auth = useAuth();
   const { loaded, save } = useRules();
@@ -43,17 +48,31 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
   // Whether the last save sent the text unchanged, after a reading that
   // succeeded, so askme sorts the asks again and reads nothing.
   const [resorting, setResorting] = useState(false);
+  // Once the limit resets, the refusal's note goes. The refused save sorted
+  // nothing, so no note says the asks are being sorted again either.
+  useAfter(capped(save.error) ? resetsAt(save.submittedAt) : undefined, () => {
+    setResorting(false);
+    save.reset();
+  });
   const text = draft ?? data?.text ?? "";
   const changed = data !== undefined && draft !== null && draft !== data.text;
+  const capSpent =
+    capSpentUntil(listed.data?.modelCapResetsAt, listed.polledAt) !== null;
   const stopped =
     data !== undefined &&
     sortingState(listed.data?.asks ?? [], listed.polledAt).stopped > 0;
-  const ready = changed || stopped;
+  // A save of unchanged text would be refused while the limit is reached.
+  const awake = stopped && !capSpent;
+  const ready = changed || awake;
   // The note for a save of unchanged text stands until a poll that came
-  // back after the save finds asks stopped again, and the button wakes.
+  // back after the save finds asks stopped again, or the limit reached.
   const resorted =
     resorting &&
-    !(stopped && !save.isPending && listed.receivedAt > save.submittedAt);
+    !(
+      (stopped || capSpent) &&
+      !save.isPending &&
+      listed.receivedAt > save.submittedAt
+    );
 
   // Leaving with unsaved text asks first. The screens ask when Back or a
   // typed address changes the fragment, and the browser asks before the tab
@@ -169,8 +188,9 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
             failed={failed}
             pending={save.isPending}
             error={save.error}
+            savedAt={save.submittedAt}
             changed={changed}
-            stopped={stopped}
+            awake={awake}
             resorting={resorted}
             readFailed={data?.readFailed ?? false}
             saved={data !== undefined && (data.text !== "" || save.isSuccess)}
@@ -251,8 +271,9 @@ function Note({
   failed,
   pending,
   error,
+  savedAt,
   changed,
-  stopped,
+  awake,
   resorting,
   readFailed,
   saved,
@@ -261,8 +282,11 @@ function Note({
   failed: boolean;
   pending: boolean;
   error: Error | null;
+  // When the last save was sent, from which a refusal at the daily limit
+  // says when the limit resets: the next midnight UTC.
+  savedAt: number;
   changed: boolean;
-  stopped: boolean;
+  awake: boolean;
   resorting: boolean;
   readFailed: boolean;
   saved: boolean;
@@ -284,6 +308,14 @@ function Note({
     return (
       <p className={styles.note} role="status">
         {resorting ? "Sorting your asks again." : "Reading your rules."}
+      </p>
+    );
+  }
+  if (capped(error)) {
+    return (
+      <p className={styles.note} role="status">
+        You&apos;ve reached today&apos;s limit. It resets at{" "}
+        {resetTime(savedAt)}.
       </p>
     );
   }
@@ -314,10 +346,11 @@ function Note({
       </p>
     );
   }
-  // While some asks couldn't be sorted, the button is already awake.
+  // While some asks couldn't be sorted, and the limit is not reached, the
+  // button is already awake.
   return saved ? (
     <p className={styles.note} role="status">
-      {stopped
+      {awake
         ? "Saved."
         : "Saved. The button wakes up when you change the text."}
     </p>

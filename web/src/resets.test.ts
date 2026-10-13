@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resetsAt, resetTime } from "./resets";
+import { clockTime, resetsAt, resetTime } from "./resets";
 
 // 12 October 2026. London is on summer time, an hour ahead of UTC, until
 // 1am UTC on 25 October. New York is four hours behind UTC.
@@ -61,6 +61,22 @@ describe("the moment a daily cap resets", () => {
   it("is a day on, at midnight UTC itself", () => {
     expect(resetsAt(at("2026-10-13T00:00:00Z"))).toBe(
       at("2026-10-14T00:00:00Z"),
+    );
+  });
+});
+
+describe("a moment on the clock", () => {
+  it("is the time it shows on the 24-hour clock in the time zone", () => {
+    const midnight = at("2026-10-13T00:00:00Z");
+    expect(clockTime(midnight, "Europe/London")).toBe("01:00");
+    expect(clockTime(midnight, "America/New_York")).toBe("20:00");
+    expect(clockTime(midnight, "Asia/Kolkata")).toBe("05:30");
+    expect(clockTime(midnight, "UTC")).toBe("00:00");
+  });
+
+  it("is the time in UTC in a time zone this browser does not know", () => {
+    expect(clockTime(at("2026-10-13T00:00:00Z"), "Nowhere/At_All")).toBe(
+      "00:00",
     );
   });
 });
