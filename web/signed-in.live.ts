@@ -51,7 +51,7 @@ const signUpAnswer = z.object({
   }),
 });
 
-describe("fitness: a person can sign in and out on the live page (test-tiers.md)", () => {
+describe("fitness: a person can sign in on the live page (test-tiers.md)", () => {
   let browser: Browser | undefined;
   let page: Page;
   // Every call the page, or a worker it starts, sends its own API during the
@@ -167,11 +167,13 @@ describe("fitness: a person can sign in and out on the live page (test-tiers.md)
 
   // The page polled while signed in, and the first test saw the list that
   // poll loaded. It sent nothing but reads, so the run made no write of its
-  // own to askme's store (ADR 20).
-  it("sends the page's API nothing but reads", () => {
-    const reads = Object.values(pagePaths).map((path) => `GET ${path}`);
-    expect(apiCalls).toContain(`GET ${pagePaths.asks}`);
-    expect(apiCalls.filter((call) => !reads.includes(call))).toEqual([]);
+  // own to askme's store (ADR 20). This runs last, after every step above.
+  describe("fitness: the signed-in check sends the API only reads (test-tiers.md)", () => {
+    it("sends the page's API nothing but reads", () => {
+      const reads = Object.values(pagePaths).map((path) => `GET ${path}`);
+      expect(apiCalls).toContain(`GET ${pagePaths.asks}`);
+      expect(apiCalls.filter((call) => !reads.includes(call))).toEqual([]);
+    });
   });
 });
 

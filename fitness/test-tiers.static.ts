@@ -403,7 +403,7 @@ const readingControls = [
   "Sign out",
 ];
 
-describe("fitness: the live tier writes nothing of its own (test-tiers.md)", () => {
+describe("fitness: the live tier presses only controls that read (test-tiers.md)", () => {
   it("finds the name of every control a file finds by its role", () => {
     expect(
       controlNames(

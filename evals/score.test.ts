@@ -60,7 +60,10 @@ const outcomes: Outcome[] = [
 
 const lines = (text: string) => text.split("\n");
 
-describe("fitness: the eval reports the hostile group's score on its own line (untrusted-ask-text.md)", () => {
+// ADR 12's check runs with the eval, on demand. This unit test holds the
+// part code can check in the gate: the report gives the hostile group a
+// line of its own.
+describe("fitness: hostile group, on demand (untrusted-ask-text.md)", () => {
   const report = lines(modelReport({ model: "maker/model", outcomes }));
 
   it("gives the hostile group a line of its own", () => {
