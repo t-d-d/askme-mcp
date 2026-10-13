@@ -110,6 +110,13 @@ afterEach(async () => {
   view = undefined;
 });
 
+// What open takes besides the list: the page's options, the answer to a
+// change of an ask, and the screen.
+type OpenOptions = PageOptions & {
+  change?: unknown;
+  screen?: { width: number; height: number };
+};
+
 // The page with a list, on a phone unless another screen is given, and the
 // API taking every change to an ask. With the clock, time jumps a minute
 // once the list shows, then stands still until a test moves it. The clock
@@ -117,10 +124,7 @@ afterEach(async () => {
 // so it aims further ahead than vitest.config.ts lets a browser test run.
 async function open(
   list: AsksAnswer,
-  options: PageOptions & {
-    change?: unknown;
-    screen?: { width: number; height: number };
-  } = {},
+  options: OpenOptions = {},
 ): Promise<OpenPage> {
   const { change = new Status(204), screen = phone, ...rest } = options;
   view = await openPage(inject("pageUrl"), screen, {
@@ -626,10 +630,7 @@ describe("following a link", () => {
 });
 
 describe("the open card", () => {
-  const openCard = async (
-    asks: PageAsk[],
-    options: Parameters<typeof open>[1] = {},
-  ) => {
+  const openCard = async (asks: PageAsk[], options: OpenOptions = {}) => {
     const opened = await open(listOf(...asks), options);
     await opened.page
       .getByRole("article")
