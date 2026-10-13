@@ -14,7 +14,7 @@ A test's file name sets its tier, and its tier sets what it may touch. An assert
 | Unit | `*.test.ts` | Memory only | In the gate |
 | Integration | `*.int.ts` | Loopback: the local database, the fake model, test-key tokens | In the gate |
 | Browser | `*.browser.ts` | Loopback, with the API faked | In the gate |
-| Live | `*.live.ts` | The deployed site, reading only. It may sign in as the one test account. | After each deploy, with `npm run test:live` |
+| Live | `*.live.ts` | The deployed site, reading only. It may sign in, or sign up once, as the one test account. | After each deploy, with `npm run test:live` |
 | Conformance | `*.conformance.ts` | Setup outside the repo, such as GitHub's settings, read only | Every day, with `npm run conformance` |
 
 `npm run gate` runs format, lint, types, and the static, unit, integration and browser tests. It runs on every pull request, and again on main before each deploy. Main's ruleset requires it, so a pull request merges only when it passes. The test setup refuses any connection that is not to loopback, and the gate's job declares no secrets.
@@ -31,8 +31,8 @@ The gate cannot reach the services askme depends on, so each one has a stand-in 
 | The model, through OpenRouter | A fake at the HTTP edge that serves recorded replies. The code under test still makes a real HTTP call. | The eval set, on demand. |
 | Clerk | Tokens signed with a test key, checked by the real verification code. | The live tier signs in through Clerk's own screens, as the one test account. |
 | Agents' MCP clients | The official MCP client, connected to the service's handler. | The [checklist for connecting a real agent](agent-checklist.md), by hand. |
-| The sort queue and Parameter Store | Fakes on loopback. | Nowhere automated. The live tier only reads, so no test puts a real ask through the queue. |
-| GitHub's settings | None. | The conformance tier reads main's ruleset every day. |
+| The sort queue and Parameter Store | Fakes on loopback. | Each deploy reads the alert address and the spend alarm's threshold from the real Parameter Store. Nothing automated reads the model key or puts a real ask through the queue, because the live tier only reads. |
+| GitHub's settings | None. | The conformance tier reads main's ruleset every day, so a change shows up the next day. |
 
 ## Fitness functions
 
@@ -58,7 +58,7 @@ There is no coverage target ([ADR 9](adr/0009-test-pyramid.md)). Two measures ru
 
 A suite names whole files and the unit and integration tests that guard them. There are eight: `listView`, `view`, `sorter`, `refusalNote`, `rulesState`, `dismissing`, `rate` and `rateLimits`. A suite with an integration test runs one mutant at a time. Under load its tests time out, and Stryker counts a timeout as a catch, which would hide a survivor. A run in which most mutants timed out fails.
 
-The refactoring train in [#225](https://github.com/t-d-d/askme-mcp/issues/225) moved logic out of the page's components into pure functions. A mutation suite runs only unit and integration tests. The browser tier covered those components, but no unit test reached them, so before the move no mutant in them was caught.
+The refactoring train in [#225](https://github.com/t-d-d/askme-mcp/issues/225) moved logic into pure functions with unit tests of their own. Three of the moves took logic out of the page's components and hooks. A mutation suite runs only unit and integration tests. The browser tier covered that code, but no unit test reached it, so before each of these moves no mutant in it was caught.
 
 | Code moved | Mutants caught before | Mutants caught after |
 | --- | --- | --- |

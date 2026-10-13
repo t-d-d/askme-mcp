@@ -94,7 +94,7 @@ A test's file name sets its tier, and its tier sets what it may touch ([ADR 9](d
 
 Each decision record names checks for the rules it puts in force, and each check is a test named after it, called a fitness function. `npm run checks` lists any check a record names that has no test.
 
-Mutation testing measures how well the tests guard the code. `npm run mutate -- <suite>` runs StrykerJS over one of eight suites. It makes small changes to the code and lists the ones no test catches. It runs by hand, outside the gate. Each pull request in the refactoring train ([#225](https://github.com/t-d-d/askme-mcp/issues/225)) ran it before and after its move. When the dismissal rules moved out of a component into a pure function, for example, the tests went from catching none of 100 changes to catching all 145.
+Mutation testing measures how well the tests guard the code. `npm run mutate -- <suite>` runs StrykerJS over one of eight suites. It makes small changes to the code and lists the ones no test catches. It runs by hand, outside the gate. Each pull request in the refactoring train ([#225](https://github.com/t-d-d/askme-mcp/issues/225)) ran it before and after its move. When the dismissal rules moved out of a hook into a pure function, for example, the tests went from catching none of 100 changes to catching all 145.
 
 The eval set measures how well the model sorts, against the real model, on demand. Its scores are above. They have no pass mark, and the model may sort the same ask differently from one call to the next.
 
@@ -104,9 +104,9 @@ The eval set measures how well the model sorts, against the real model, on deman
 
 Some things only a person, or an agent looking at a screenshot, can check.
 
-- **Real agents connecting.** The owner runs the [checklist for connecting a real agent](docs/agent-checklist.md) after a deploy that changes sign-in or the MCP server. It last passed on 12 October 2026, for a Claude cloud session and a local Cursor agent.
-- **Speech on a phone.** Listen uses the browser's own speech. The owner has checked on a phone that a card is read aloud.
-- **The page against the design.** Before pushing a change to the page, the coding agent opens it at phone width in headless Chromium and compares it with the mockup by eye. The gate checks parts of the design: colours and sizes come from the design's tokens, text is readable against its background, and everything can be tapped. No test compares the layout with the mockup.
+- **Real agents connecting.** The owner runs the [checklist for connecting a real agent](docs/agent-checklist.md) after a deploy that changes sign-in or the MCP server. It last passed on 12 October 2026, for a Claude cloud session and a local Cursor agent. A change can pass every test and still break a real client.
+- **Speech on a phone.** Listen uses the browser's own speech, which no test hears. The owner has checked on a phone that a card is read aloud.
+- **The page against the design.** Before pushing a change to the page, the coding agent opens it at phone width in headless Chromium and compares it with the mockup by eye. The gate checks parts of the design: colours and font sizes come from the design's tokens, each hashtag's ink is readable on its tint and white on its strong colour, and the controls the browser tests measure are big enough to tap. No test compares the layout with the mockup.
 - **The AWS account and the alert email.** While [bootstrapping](docs/bootstrap.md), the owner keeps the AWS account to askme alone, switches on billing alerts and confirms the alert email. A test alarm shows that the email arrives.
 
 ## Trade-offs
