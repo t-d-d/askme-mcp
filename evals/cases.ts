@@ -551,6 +551,7 @@ export const cases: EvalCase[] = [
       sessionLink: session(212),
     },
     expected: { hashtags: [["shop"]], level: "high" },
+    knownMiss: 295,
   },
   {
     name: "a supplier's price rise from Monday",

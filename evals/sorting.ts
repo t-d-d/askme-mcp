@@ -12,6 +12,7 @@ import {
 } from "../service/src/sort";
 import { sortMaxTokens, sortTimeoutMs } from "../service/src/sorter";
 import { evalRules, type EvalCase } from "./cases";
+import { rateWaitMs, retryingOnRate } from "./model";
 import type { Outcome } from "./score";
 
 const account = callerOf({
@@ -38,18 +39,27 @@ export async function sortEvalAsk(
     maxTokens: sortMaxTokens,
     timeoutMs: sortTimeoutMs,
   };
-  const started = performance.now();
+  // Only tries that got a reply count, so a 429 and the wait after it add
+  // no time.
+  let ms = 0;
+  const model = retryingOnRate({
+    async reply(sent) {
+      const started = performance.now();
+      const reply = await client.reply(sent);
+      ms += performance.now() - started;
+      return reply;
+    },
+  });
   let followedUp = false;
   try {
-    let reply = await client.reply(request);
+    let reply = await model.reply(request);
     // Sending a long reason back finishes the same draw, unlike the
     // service's plain second try, so the eval does it as the service does.
     const followUp = followUpForLongReason(reply, evalRules.hashtags);
     if (followUp !== undefined) {
       followedUp = true;
-      reply = await client.reply({ ...request, followUp });
+      reply = await model.reply({ ...request, followUp });
     }
-    const ms = performance.now() - started;
     const sort = parseSortReply(reply, evalRules.hashtags);
     return sort === undefined
       ? { one, failure: "reply-rejected", ms, followedUp }
@@ -62,6 +72,14 @@ export async function sortEvalAsk(
   }
 }
 
+// Each sort may time out, and again on its follow-up, with each call first
+// waiting out every 429. A run that ran out of time would save nothing it
+// paid for.
+export const sortingTimeoutMs = (sorts: number, parallel: number): number =>
+  Math.ceil(sorts / parallel) * 2 * (sortTimeoutMs + rateWaitMs) + 60_000;
+
+// Each worker takes the next item as soon as its last is done, so one slow
+// reply does not hold up the others.
 export async function inPool<T, R>(
   items: readonly T[],
   parallel: number,

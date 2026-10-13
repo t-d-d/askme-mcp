@@ -128,6 +128,43 @@ const finish = (page: Page) =>
     }
   });
 
+// At the start, the picture of the screen being left lies in place over the
+// other.
+const atStart = (page: Page) =>
+  page.evaluate(async () => {
+    for (const animation of document.getAnimations()) {
+      animation.pause();
+      animation.currentTime = 0;
+    }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  });
+
+// The browser's picture of a screen can shade the edge of a letter a step or
+// so off the screen itself, so each pixel need only be within a few steps.
+const alike = (page: Page, one: Buffer, other: Buffer) =>
+  page.evaluate(
+    async ({ one, other }) => {
+      const pixels = async (png: string) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${png}`;
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const context = canvas.getContext("2d");
+        if (context === null) throw new Error("No canvas to read pixels");
+        context.drawImage(image, 0, 0);
+        return context.getImageData(0, 0, image.width, image.height).data;
+      };
+      const [a, b] = [await pixels(one), await pixels(other)];
+      return (
+        a.length === b.length &&
+        a.every((value, index) => Math.abs(value - (b[index] ?? Infinity)) <= 4)
+      );
+    },
+    { one: one.toString("base64"), other: other.toString("base64") },
+  );
+
 const anyMoving = (page: Page) =>
   page.evaluate(async () => {
     for (let frame = 0; frame < 3; frame += 1) {
@@ -165,6 +202,33 @@ async function slides(
 
 const click = (page: Page, name: string) => () =>
   page.getByRole("link", { name }).click();
+
+// Taps Dismiss and changes the address in the same frame, as a keyboard's
+// Back might. Both start just after a frame is drawn, so the change of
+// address reaches the page before the next.
+async function dismissAndGo(page: Page) {
+  const first = await page
+    .getByRole("button", { name: "Dismiss" })
+    .evaluate(async (button) => {
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => setTimeout(resolve)),
+      );
+      if (!(button instanceof HTMLButtonElement)) return "no Dismiss";
+      const first = new Promise<string>((resolve) => {
+        const came = (what: string) => () => {
+          resolve(what);
+        };
+        window.addEventListener("hashchange", came("the address"), {
+          once: true,
+        });
+        requestAnimationFrame(came("the next frame"));
+      });
+      button.click();
+      window.location.hash = "#asks";
+      return first;
+    });
+  expect(first, "what comes first after Dismiss").toBe("the address");
+}
 
 describe("the rules and Connect your agents", () => {
   it("slide in, the rules over the list and Connect your agents over the rules", async () => {
@@ -265,6 +329,34 @@ describe("an ask's card", () => {
     ).toEqual([]);
   });
 
+  // The change of address waits behind Dismiss, so the picture that slides
+  // out is the card's, not the list's.
+  it("slides the card out when Dismiss and a change of address come in one frame", async () => {
+    const page = await open("");
+    await theList(page);
+    await slides(page, () => row(page, 3).click(), slidesIn);
+    await theCard(page);
+    const card = await page.screenshot();
+    await dismissAndGo(page);
+    expect(await moving(page)).toEqual(slidesOut);
+    await atStart(page);
+    const leaving = await page.screenshot();
+    await finish(page);
+    await theList(page);
+    expect(
+      await alike(page, leaving, card),
+      "the picture sliding out is the card",
+    ).toBe(true);
+    expect(
+      await alike(page, await page.screenshot(), card),
+      "the list is unlike the card",
+    ).toBe(false);
+    await page.getByRole("button", { name: "Undo" }).waitFor();
+    await expect
+      .poll(() => page.evaluate(() => window.location.hash))
+      .toBe("#asks");
+  });
+
   // The address names a card, but its ask has gone, so the list shows.
   it("slides by what is drawn, not by the address", async () => {
     const page = await open("#ask/gone");
@@ -309,4 +401,22 @@ it("changes the screen at once on Back when the browser has drawn its own moveme
   await page.goBack();
   await theList(page);
   expect(await anyMoving(page)).toBe(false);
+});
+
+// Both changes are still made, in order.
+it("changes the screen at once when the browser draws its own movement in the frame Dismiss slides", async () => {
+  const page = await open("");
+  await theList(page);
+  await slides(page, () => row(page, 3).click(), slidesIn);
+  await theCard(page);
+  await page.evaluate(() => {
+    Object.defineProperty(PopStateEvent.prototype, "hasUAVisualTransition", {
+      configurable: true,
+      get: () => true,
+    });
+  });
+  await dismissAndGo(page);
+  await theList(page);
+  expect(await anyMoving(page)).toBe(false);
+  await page.getByRole("button", { name: "Undo" }).waitFor();
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readRepoFile, scripts } from "../test/repo";
+import { readRepoFile, repoFiles, scripts } from "../test/repo";
 
 const source = readRepoFile("evals/run.eval.ts");
 const call = readRepoFile("evals/sorting.ts");
@@ -46,9 +46,31 @@ describe("the eval and the trial share one call", () => {
   );
 });
 
+const evalFiles = repoFiles().filter(
+  (path) => path.startsWith("evals/") && path.endsWith(".eval.ts"),
+);
+
+describe("every eval sends a call the provider refused for rate again", () => {
+  it.each(evalFiles)(
+    "%s sorts through evals/sorting.ts, or wraps its client in retryingOnRate",
+    (path) => {
+      expect(readRepoFile(path)).toMatch(
+        /\bsortEvalAsk\(|\bretryingOnRate\(\s*clientFor\(/u,
+      );
+    },
+  );
+});
+
 describe("the eval across the candidates", () => {
   it("has a command of its own, which runs the eval with every candidate", () => {
     expect(scripts()["eval:candidates"]).toBe("EVAL_CANDIDATES=1 npm run eval");
+  });
+
+  it("has a time limit that covers every sort waiting out every 429 and timing out", () => {
+    expect(source).toMatch(
+      /^const timeout = sortingTimeoutMs\(rounds \* cases\.length, parallel\);$/mu,
+    );
+    expect(source).toMatch(/^ {2}it\("[^"]*", \{ timeout \}, async/mu);
   });
 
   it("reads the candidates from their list", () => {

@@ -2,7 +2,6 @@
 import { join, parse } from "node:path";
 import { z } from "zod";
 import { defaultModel } from "../service/src/model";
-import { sortTimeoutMs } from "../service/src/sorter";
 import { levels, type Level } from "../shared/page-api";
 import type { EvalCase } from "./cases";
 import { modelsNamed } from "./model";
@@ -16,6 +15,7 @@ import {
   percent,
   type Outcome,
 } from "./score";
+import { sortingTimeoutMs } from "./sorting";
 
 export interface TrialSettings {
   // Undefined sorts under the service's own prompt.
@@ -62,10 +62,8 @@ export function trialSettings(
 export const recordPath = (folder: string, name: string): string =>
   join(folder, `${name}.json`);
 
-// Room for every sort at the most sorts to time out, and again on its
-// follow-up. A trial that ran out of time would save nothing it paid for.
 export const trialTimeoutMs = (asks: number, parallel: number): number =>
-  Math.ceil((asks * mostSorts) / parallel) * 2 * sortTimeoutMs + 60_000;
+  sortingTimeoutMs(asks * mostSorts, parallel);
 
 const levelOf = (line: string): Level | undefined =>
   levels.find((level) => line.startsWith(`${level}: `));

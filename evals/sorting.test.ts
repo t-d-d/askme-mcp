@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   ModelFailed,
   type Model,
@@ -7,7 +7,8 @@ import {
 import { reasonLimit } from "../service/src/sort";
 import { sortMaxTokens, sortTimeoutMs } from "../service/src/sorter";
 import { cases } from "./cases";
-import { evalPrompt, inPool, sortEvalAsk } from "./sorting";
+import { rateWaitMs, rateWaits } from "./model";
+import { evalPrompt, inPool, sortEvalAsk, sortingTimeoutMs } from "./sorting";
 
 function fakeModel(replies: unknown[]) {
   const requests: ModelRequest[] = [];
@@ -81,6 +82,32 @@ describe("one sort of an eval ask", () => {
     expect(outcome.failure).toBe("reply-rejected");
   });
 
+  it("scores a reply that came after a 429 like any other, with no wait in its time", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "performance"] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const { model, requests } = fakeModel([
+      new ModelFailed("status-429"),
+      fits,
+    ]);
+    const sorted = sortEvalAsk(model, one);
+    await vi.advanceTimersByTimeAsync(rateWaits[0] ?? 0);
+    const outcome = await sorted;
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(outcome).toEqual({
+      one,
+      sort: {
+        hashtags: ["work"],
+        level: "high",
+        reason: "It holds a release.",
+      },
+      ms: 0,
+      followedUp: false,
+    });
+  });
+
   it("records a model that gave no reply by its reason", async () => {
     const { model } = fakeModel([new ModelFailed("timeout")]);
     const outcome = await sortEvalAsk(model, one);
@@ -106,5 +133,14 @@ describe("a pool of tasks", () => {
       running--;
     });
     expect(most).toBe(3);
+  });
+});
+
+describe("the time limit for sorting asks", () => {
+  it("covers every sort timing out, with its follow-up, each call after waiting out every 429", () => {
+    // 96 sorts, 5 at once: 20 turns, each up to two calls.
+    expect(sortingTimeoutMs(96, 5)).toBeGreaterThanOrEqual(
+      20 * 2 * (sortTimeoutMs + rateWaitMs),
+    );
   });
 });

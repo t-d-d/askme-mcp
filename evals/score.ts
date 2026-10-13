@@ -179,8 +179,8 @@ export const unanswered = (runs: readonly ModelRun[]): string[] =>
     )
     .map(({ model }) => model);
 
-// A 429 counts as a miss, so a run with any is not saved: it would rank a
-// model by the provider's limit, not its replies.
+// A 429 counts as a miss, so a run across the candidates with any is not
+// saved: it would rank a model by the provider's limit, not its replies.
 const rateLimited = (
   runs: readonly ModelRun[],
 ): { model: string; refused: number; of: number }[] =>
@@ -190,6 +190,27 @@ const rateLimited = (
     ).length;
     return refused === 0 ? [] : [{ model, refused, of: outcomes.length }];
   });
+
+const refusedLines = (limited: ReturnType<typeof rateLimited>) =>
+  limited.map(
+    ({ model, refused, of }) =>
+      `- ${model} got a 429 on ${String(refused)} of ${String(of)} asks.`,
+  );
+
+const rateNote =
+  "A 429 is the provider refusing the call for rate, not the model's answer.";
+
+// Such a run saves nothing, but its score may go in a pull request, and a
+// 429 lowers it by an ask the model never saw.
+export function refusedForRate(runs: readonly ModelRun[]): string | undefined {
+  const limited = rateLimited(runs);
+  if (limited.length === 0) return undefined;
+  return [
+    "Refused for rate:",
+    ...refusedLines(limited),
+    `${rateNote} Each counts as a miss in the scores above. Run the eval again before you quote them.`,
+  ].join("\n");
+}
 
 // A model refused for rate on every ask is named for its 429s only, since
 // it never had the chance to reply.
@@ -209,15 +230,10 @@ export function notSaved(runs: readonly ModelRun[]): string | undefined {
       : [
           `- No fitting reply came from ${silent.join(", ")}. See the reasons above.`,
         ]),
-    ...limited.map(
-      ({ model, refused, of }) =>
-        `- ${model} got a 429 on ${String(refused)} of ${String(of)} asks.`,
-    ),
+    ...refusedLines(limited),
     ...(limited.length === 0
       ? []
-      : [
-          "A 429 is the provider refusing the call for rate, not the model's answer. Run the candidates again later.",
-        ]),
+      : [`${rateNote} Run the candidates again later.`]),
   ].join("\n");
 }
 

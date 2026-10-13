@@ -7,7 +7,15 @@ import {
 } from "../service/src/rules";
 import { hoursText, isOpen, minutesInDay } from "../web/src/hours";
 import { defaultModel } from "../service/src/model";
-import { clientFor, evalKey, keyLine, namedModels, proxyLine } from "./model";
+import {
+  clientFor,
+  evalKey,
+  keyLine,
+  namedModels,
+  proxyLine,
+  rateWaits,
+  retryingOnRate,
+} from "./model";
 import { readingCases, type ReadingCase } from "./reading";
 
 const parallel = 4;
@@ -80,7 +88,7 @@ describe("the reading eval against the real model", () => {
     const key = evalKey();
 
     async function readWith(model: string): Promise<Outcome[]> {
-      const client = clientFor(model, key);
+      const client = retryingOnRate(clientFor(model, key));
       const readOne = async (one: ReadingCase): Promise<Outcome> => {
         const read = await readRules(one.text, client);
         return "failed" in read
@@ -103,7 +111,7 @@ describe("the reading eval against the real model", () => {
       console.log(`\n${report(models[place] ?? "", outcomes)}\n`);
     });
     console.log(
-      `${keyLine}\n${proxyLine}\n\nThe service reads the rules once on each save, and the page offers to try again when it fails. The eval tries once.\n`,
+      `${keyLine}\n${proxyLine}\n\nThe service reads the rules once on each save, and the page offers to try again when it fails. The eval tries once. When the provider refuses a call for rate, with a 429, the eval waits and sends it again, up to ${String(rateWaits.length)} times, since the model never saw it.\n`,
     );
     expect(
       runs.some((outcomes) =>
