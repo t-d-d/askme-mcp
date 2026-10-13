@@ -11,7 +11,7 @@ import { capped, Refusal } from "./load";
 import type { AskFirst } from "./SignedIn";
 import { hoursText } from "./hours";
 import { colourOf, tagColour } from "./palette";
-import { resetsAt, resetTime } from "./resets";
+import { resetsHere, resetTime } from "./resets";
 import styles from "./Rules.module.css";
 import { capSpentUntil, sortingState } from "./sorting";
 import { elsewhere, followToList } from "./toList";
@@ -35,7 +35,8 @@ const leaving = "Leave without saving your rules?";
 // behind the rules (ADR 22). The screen polls the list, as the list does,
 // to know when asks stopped and when the limit is reached. A save refused
 // at the limit keeps the text in the box, and says when the limit resets.
-// That note goes once the limit resets, with no reload.
+// That note goes once the limit resets, with no reload. The service's clock
+// decides when the limit resets, for the note and the button alike.
 export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const auth = useAuth();
   const { loaded, save } = useRules();
@@ -50,14 +51,23 @@ export function Rules({ askFirst }: { askFirst: AskFirst }) {
   const [resorting, setResorting] = useState(false);
   // Once the limit resets, the refusal's note goes. The refused save sorted
   // nothing, so no note says the asks are being sorted again either.
-  useAfter(capped(save.error) ? resetsAt(save.submittedAt) : undefined, () => {
-    setResorting(false);
-    save.reset();
-  });
+  useAfter(
+    capped(save.error)
+      ? resetsHere(save.submittedAt, save.error.serviceAhead)
+      : undefined,
+    () => {
+      setResorting(false);
+      save.reset();
+    },
+  );
   const text = draft ?? data?.text ?? "";
   const changed = data !== undefined && draft !== null && draft !== data.text;
   const capSpent =
-    capSpentUntil(listed.data?.modelCapResetsAt, listed.polledAt) !== null;
+    capSpentUntil(
+      listed.data?.modelCapResetsAt,
+      listed.polledAt,
+      listed.serviceAhead,
+    ) !== null;
   const stopped =
     data !== undefined &&
     sortingState(listed.data?.asks ?? [], listed.polledAt).stopped > 0;
@@ -283,7 +293,8 @@ function Note({
   pending: boolean;
   error: Error | null;
   // When the last save was sent, from which a refusal at the daily limit
-  // says when the limit resets: the next midnight UTC.
+  // says when the limit resets: the next midnight UTC, by the service's
+  // clock.
   savedAt: number;
   changed: boolean;
   awake: boolean;
@@ -315,7 +326,7 @@ function Note({
     return (
       <p className={styles.note} role="status">
         You&apos;ve reached today&apos;s limit. It resets at{" "}
-        {resetTime(savedAt)}.
+        {resetTime(savedAt + error.serviceAhead)}.
       </p>
     );
   }

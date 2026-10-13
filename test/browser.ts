@@ -8,8 +8,8 @@
 // visibility is replaced before it loads, and a test hides and shows it.
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { chromium, type Page } from "playwright";
-import { inject } from "vitest";
+import { chromium, type Locator, type Page } from "playwright";
+import { expect, inject } from "vitest";
 import { z } from "zod";
 import { sinceParam, type AsksAnswer } from "../shared/page-api";
 import {
@@ -103,6 +103,30 @@ export async function builtFiles(): Promise<string[]> {
     .filter((entry) => entry.isFile())
     .map((entry) => join(entry.parentPath, entry.name));
 }
+
+// Moves a page's stopped clock on a millisecond at a time until a check
+// holds, so the page's own timers run as they fall due, such as the one
+// React Query waits on before it draws an answer. The page's requests take
+// real time, which the stopped clock does not count. Steps are at least
+// 10ms of real time apart, so in the wait's 10 seconds the clock moves on a
+// second at most. An error thrown by one of the page's timers as the clock
+// moves fails the test.
+export async function stepUntil(
+  page: Page,
+  holds: () => Promise<boolean>,
+  what: string,
+): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (!(await holds())) {
+    expect(Date.now(), `${what} within 10 seconds`).toBeLessThan(deadline);
+    await page.clock.runFor(1);
+    await new Promise((waited) => setTimeout(waited, 10));
+  }
+}
+
+// Steps a page's stopped clock, as above, until a part of the page shows.
+export const stepUntilShown = (page: Page, part: Locator): Promise<void> =>
+  stepUntil(page, async () => (await part.count()) > 0, "the part to show");
 
 // Answers a poll for the list as the service does: with nothing new when it
 // carries the list's version, and with the whole list otherwise.

@@ -42,6 +42,27 @@ describe("the daily cap on model calls", () => {
   it("is not spent when the list gives no time", () => {
     expect(capSpentUntil(undefined, now)).toBeNull();
   });
+
+  // The service counts the cap by its own clock, which the poll's Date
+  // header gives (load.ts). On a clock three minutes fast, the cap resets
+  // at 00:03 by this browser's clock, and on one three minutes slow at
+  // 23:57. Either way, it is the time the list gives that comes back.
+  it("is spent until the service's clock reaches the time, on a clock a few minutes out", () => {
+    const fast = -3 * minute;
+    expect(
+      capSpentUntil(resets, Date.parse("2026-10-13T00:02:59Z"), fast),
+    ).toBe(Date.parse(resets));
+    expect(
+      capSpentUntil(resets, Date.parse("2026-10-13T00:03:00Z"), fast),
+    ).toBeNull();
+    const slow = 3 * minute;
+    expect(
+      capSpentUntil(resets, Date.parse("2026-10-12T23:56:59Z"), slow),
+    ).toBe(Date.parse(resets));
+    expect(
+      capSpentUntil(resets, Date.parse("2026-10-12T23:57:00Z"), slow),
+    ).toBeNull();
+  });
 });
 
 describe("the sorting line", () => {

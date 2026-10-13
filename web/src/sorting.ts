@@ -3,8 +3,8 @@
 // time it turns from sorting to stopped (ADR 22). Nothing is written when
 // that time passes, so the page works out which it is from the time, as it
 // does with a hashtag's hours. The list carries when the daily cap on model
-// calls resets while it is spent, and the page drops the cap by the clock
-// in the same way.
+// calls resets while it is spent, and the page drops the cap in the same
+// way, by the service's clock, which counts the cap.
 import type { PageAsk } from "../../shared/page-api";
 
 export interface SortingState {
@@ -30,15 +30,19 @@ export function sortingState(
   return { sorting, stopped };
 }
 
-// While the daily cap on model calls is spent at a moment, when it resets.
-// Null once that time has come, or when the list gives none.
+// While the daily cap on model calls is spent at a moment on this browser's
+// clock, when it resets. Null once that time has come, or when the list
+// gives none. The service counts the cap by its own clock, serviceAhead
+// ahead of this one (load.ts), and the cap resets when that clock reaches
+// the time.
 export function capSpentUntil(
   resetsAt: string | undefined,
   at: number,
+  serviceAhead = 0,
 ): number | null {
   if (resetsAt === undefined) return null;
   const until = Date.parse(resetsAt);
-  return at < until ? until : null;
+  return at + serviceAhead < until ? until : null;
 }
 
 const asks = (count: number) => `${String(count)} ask${count === 1 ? "" : "s"}`;

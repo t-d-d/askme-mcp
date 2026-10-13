@@ -8,9 +8,12 @@ import {
 } from "../shared/page-api";
 import {
   Answering,
+  answerPoll,
   computedColour,
   openPage,
   Status,
+  stepUntil,
+  stepUntilShown,
   type OpenPage,
 } from "../test/browser";
 import { palette } from "./src/palette";
@@ -404,6 +407,124 @@ describe("the rules screen", () => {
     await expect.poll(() => capNote.count()).toBe(0);
     expect(await page.getByRole("textbox").inputValue()).toBe(changed);
   });
+
+  // The service counts the cap by its own clock, so the note goes when the
+  // service's day ends, even on a page whose clock is a few minutes out. The
+  // service refuses the save at 23:58 UTC on 12 October by its own clock,
+  // which its answer's Date header gives, two minutes before the cap
+  // resets. A clock three minutes fast reads 00:03 then, and one three
+  // minutes slow reads 23:57.
+  it.each([
+    ["fast", "2026-10-13T00:01:00Z", "2026-10-13T00:03:00Z"],
+    ["slow", "2026-10-12T23:55:00Z", "2026-10-12T23:57:00Z"],
+  ])(
+    "drops the cap note when the service's day ends, on a clock a few minutes %s",
+    async (_, pressed, reset) => {
+      view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+        session,
+        email,
+        timeZone: "Europe/London",
+        clock: { stoppedAt: new Date(pressed) },
+        api: {
+          [pagePaths.rules]: rulesApi(
+            saved,
+            () =>
+              new Status(
+                429,
+                {
+                  code: "cap_reached",
+                  class: "do not retry",
+                  message: "Saving these rules needs model calls.",
+                },
+                { date: "Mon, 12 Oct 2026 23:58:00 GMT" },
+              ),
+          ),
+          [pagePaths.asks]: list,
+        },
+      });
+      const { page } = view;
+      const box = page.getByRole("textbox");
+      const capNote = page.getByRole("status").filter({
+        hasText: "You've reached today's limit. It resets at 01:00.",
+      });
+      await stepUntil(page, () => box.isEnabled(), "the rules to load");
+      await box.fill(`${text}\n\n#family is home.`);
+      await page.getByRole("button", { name: "Save rules" }).click();
+      await stepUntilShown(page, capNote);
+      await page.clock.pauseAt(new Date(Date.parse(reset) - 1000));
+      expect(await capNote.count()).toBe(1);
+      await page.clock.runFor(2000);
+      await expect.poll(() => capNote.count()).toBe(0);
+    },
+  );
+
+  // Asks that couldn't be sorted wake Save rules once today's sorting limit
+  // resets. The service counts the limit by its own clock, which the Date
+  // header of each poll's answer gives, so the button wakes when the
+  // service's day ends, even on a page whose clock is a few minutes out. A
+  // clock three minutes fast reads 00:03 then, and one three minutes slow
+  // reads 23:57. The page's clock stands still and moves only when the test
+  // moves it, so each answer can give the service's time as it is then.
+  it.each([
+    ["fast", -3 * 60_000],
+    ["slow", 3 * 60_000],
+  ])(
+    "wakes Save rules when the service's day ends, on a clock a few minutes %s",
+    async (_, serviceAhead) => {
+      const resets = "2026-10-13T00:00:00.000Z";
+      const reset = Date.parse(resets) - serviceAhead;
+      let pageAt = reset - 2 * 60_000;
+      const stopped: AsksAnswer = {
+        ...list,
+        modelCapResetsAt: resets,
+        asks: [
+          {
+            id: "a",
+            summary: "Renew the shop's domain?",
+            spokenDetail: "The domain lapses on Friday.",
+            postedAt: "2026-10-12T21:00:00.000Z",
+            opened: false,
+            sortingUntil: "2026-10-12T21:30:00.000Z",
+            sort: null,
+          },
+        ],
+      };
+      view = await openPage(inject("pageUrl"), phone, {
+        session,
+        email,
+        timeZone: "Europe/London",
+        clock: { stoppedAt: new Date(pageAt) },
+        api: {
+          [pagePaths.rules]: saved,
+          [pagePaths.asks]: new Answering(
+            (url) =>
+              new Status(200, answerPoll(url, stopped), {
+                date: new Date(pageAt + serviceAhead).toUTCString(),
+              }),
+          ),
+        },
+      });
+      const { page } = view;
+      // The list says the limit is reached before the rules screen opens,
+      // so the screen has the list from the start.
+      await stepUntilShown(
+        page,
+        page.getByText("Today's sorting limit is reached. It resets at 01:00."),
+      );
+      await page.getByRole("link", { name: "Rules" }).click();
+      const save = page.getByRole("button", { name: "Save rules" });
+      await stepUntil(
+        page,
+        async () => (await page.getByRole("textbox").inputValue()) === text,
+        "the rules to load",
+      );
+      expect(await save.isDisabled()).toBe(true);
+      // The first poll after the reset wakes the button.
+      pageAt = reset + pollMs;
+      await page.clock.pauseAt(new Date(pageAt));
+      await stepUntil(page, () => save.isEnabled(), "Save rules to wake");
+    },
+  );
 
   it("does not say asks are being sorted again once the cap note goes, after the cap refused an unchanged save", async () => {
     // One ask that couldn't be sorted, which closes while the save is

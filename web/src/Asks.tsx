@@ -73,7 +73,7 @@ import { inListOrder, lapsedAsks } from "./waiting";
 // or on the All clear headline when nothing is left on the tab
 // (useListPlace.ts).
 export function Asks({ card }: { card: string | null }) {
-  const { data, receivedAt, polledAt, failed } = useAsks();
+  const { data, receivedAt, polledAt, serviceAhead, failed } = useAsks();
   const [chosen, choose] = useState<Tab>(everything);
   const [showingHeld, showHeld] = useState(false);
   const [showingLapsed, showLapsed] = useState(false);
@@ -127,7 +127,11 @@ export function Asks({ card }: { card: string | null }) {
   );
   if (showingHeld && held.size === 0) showHeld(false);
   if (showingLapsed && lapsed.size === 0) showLapsed(false);
-  const capResets = capSpentUntil(data?.modelCapResetsAt, polledAt);
+  const capResets = capSpentUntil(
+    data?.modelCapResetsAt,
+    polledAt,
+    serviceAhead,
+  );
   const sorting = sortingLine(
     sortingState(asks, polledAt),
     capResets === null ? null : clockTime(capResets),

@@ -15,6 +15,8 @@ import {
   computedColour,
   openPage,
   Status,
+  stepUntil,
+  stepUntilShown,
   underTheNote,
   type OpenPage,
 } from "../test/browser";
@@ -264,6 +266,57 @@ describe("the sorting line while today's sorting limit is reached", () => {
       true,
     );
   });
+
+  // The service counts the cap by its own clock, which the Date header of
+  // each poll's answer gives, so the line goes when the service's day ends,
+  // even on a page whose clock is a few minutes out. A clock three minutes
+  // fast reads 00:03 then, and one three minutes slow reads 23:57. The
+  // page's clock stands still and moves only when the test moves it, so
+  // each answer can give the service's time as it is then.
+  it.each([
+    ["fast", -3 * minute],
+    ["slow", 3 * minute],
+  ])(
+    "is gone when the service's day ends, on a clock a few minutes %s",
+    async (_, serviceAhead) => {
+      const reset = Date.parse(resets) - serviceAhead;
+      let pageAt = reset - 2 * minute;
+      let list = capped([ask("a", "shop")]);
+      view = await openPage(inject("pageUrl"), phone, {
+        session,
+        clock: { stoppedAt: new Date(pageAt) },
+        timeZone: "Europe/London",
+        api: {
+          [pagePaths.asks]: new Answering(
+            (url) =>
+              new Status(200, answerPoll(url, list), {
+                date: new Date(pageAt + serviceAhead).toUTCString(),
+              }),
+          ),
+        },
+      });
+      const { page } = view;
+      await stepUntilShown(
+        page,
+        page.getByText("Today's sorting limit is reached. It resets at 01:00."),
+      );
+      // A second before the reset, by the page's clock, the next poll brings
+      // a new ask and still finds the limit reached.
+      list = { ...capped([ask("a", "shop"), ask("b", "shop")]), version: 4 };
+      pageAt = reset - 1000;
+      await page.clock.pauseAt(new Date(pageAt));
+      await stepUntilShown(page, page.getByText("Ask b", { exact: true }));
+      expect(await line(page).count()).toBe(1);
+      // The first poll after the reset finds it gone.
+      pageAt = reset + pollMs;
+      await page.clock.pauseAt(new Date(pageAt));
+      await stepUntil(
+        page,
+        async () => (await line(page).count()) === 0,
+        "the line to go",
+      );
+    },
+  );
 });
 
 describe("the sorting line on All clear", () => {
