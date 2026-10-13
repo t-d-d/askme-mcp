@@ -6,3 +6,7 @@ export const emailKey = "askme-test-email";
 export const spokenKey = "askme-test-spoken";
 // As Clerk tells a tab when another tab signs in or out.
 export const sessionChangedEvent = "askme-test-session-changed";
+// Set, sign-in stays loading, as when Clerk's script cannot be fetched.
+export const signInStuckKey = "askme-test-sign-in-stuck";
+// Set, the stand-in throws while rendering.
+export const brokenKey = "askme-test-broken";

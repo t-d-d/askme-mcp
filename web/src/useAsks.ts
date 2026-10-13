@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
 import {
   pagePaths,
   pollAnswer,
@@ -8,6 +9,7 @@ import {
 import { useAuth } from "./auth";
 import { countOn, loadDated, momentNow, type Counted } from "./load";
 import { pollMs } from "./poll";
+import { answerRead, reloadOnce } from "./reload";
 import type { Answer } from "./useAnswer";
 
 const pollPath = (since: number | undefined) =>
@@ -60,6 +62,7 @@ export function useAsks(): PolledAnswer {
           getToken,
           signal,
         );
+        answerRead(sessionStorage);
         const polled = {
           serviceAhead,
           at: momentNow(),
@@ -73,6 +76,13 @@ export function useAsks(): PolledAnswer {
         }
         return { list: answer, ...polled };
       } catch (error) {
+        // An answer in a shape the page does not know means a deploy has
+        // changed it, and a newer page can read it.
+        if (error instanceof z.ZodError) {
+          reloadOnce(sessionStorage, () => {
+            window.location.reload();
+          });
+        }
         // React Query keeps a failure until a poll succeeds, so count on
         // from the last failure if there is one.
         const before = queries.getQueryState(queryKey)?.error;
