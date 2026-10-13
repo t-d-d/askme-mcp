@@ -207,6 +207,19 @@ describe("the verdict on a run", () => {
       ]),
     ).toBeUndefined();
   });
+
+  // No test reached a mutant with no coverage, so it did not run.
+  it("leaves a mutant no test reached out of the mutants that ran", () => {
+    expect(
+      verdict([
+        mutant("/repo/service/src/rate.ts", "Timeout"),
+        mutant("/repo/service/src/rate.ts", "Timeout"),
+        mutant("/repo/service/src/rate.ts", "Killed"),
+        mutant("/repo/service/src/rate.ts", "NoCoverage"),
+        mutant("/repo/service/src/rate.ts", "NoCoverage"),
+      ]),
+    ).toMatch(/2 of the 3 that ran/iu);
+  });
 });
 
 describe("the folder a run keeps its files in", () => {

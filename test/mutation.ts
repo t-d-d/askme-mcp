@@ -155,7 +155,10 @@ export function verdict(mutants: readonly Mutant[]): string | undefined {
   if (!mutants.some(killed)) {
     return "No mutant was killed, so the harness ran no tests, or ran them without the mutant switched on. Its survivors say nothing about the tests.";
   }
-  const ran = mutants.filter((mutant) => killed(mutant) || survived(mutant));
+  // A mutant no test reached did not run.
+  const ran = mutants.filter(
+    (mutant) => killed(mutant) || mutant.status === "Survived",
+  );
   const timedOut = ran.filter((mutant) => mutant.status === "Timeout");
   if (timedOut.length * 2 > ran.length) {
     return `Most of the mutants timed out, ${String(timedOut.length)} of the ${String(ran.length)} that ran, so the machine was likely too slow for Stryker's time limit. A timeout counts as killed, so the run's survivors say nothing about the tests.`;
