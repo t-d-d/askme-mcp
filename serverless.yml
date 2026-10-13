@@ -94,9 +94,9 @@ functions:
 resources:
   Resources:
     # No secondary index (ADR 13). DynamoDB removes expired items late, so
-    # every read checks expiresAt itself. Each account's rules last, so the
-    # table outlives the stack and a replacement. The README's setup says how
-    # to restore it.
+    # every read checks expiresAt itself. Each account's rules never expire,
+    # so the table outlives the stack and a replacement. The README's setup
+    # says how to restore it.
     Table:
       Type: AWS::DynamoDB::Table
       DeletionPolicy: Retain
