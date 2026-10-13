@@ -38,6 +38,8 @@ export function Asks({
   const { dismissed, note, dismiss, undo } = dismissing;
   const headline = useRef<HTMLHeadingElement>(null);
   const tabs = useRef<TabsHandle>(null);
+  const bar = useRef<HTMLDivElement>(null);
+  const rescued = useMemo(() => [bar, headline], []);
   const actions = useMemo<AskActions>(
     () => ({ speak, markOpened, dismiss }),
     [speak, markOpened, dismiss],
@@ -91,9 +93,9 @@ export function Asks({
   const anyHeld = heldHere > 0 || lapsedHere > 0;
   const noted = note !== null;
   // Lost focus moves to All clear, or to the selected tab while there are
-  // tabs, so a screen reader says what happened. A tab whose hashtag goes
-  // leaves Everything selected.
-  useFocusRescue(list, () => {
+  // tabs, so a screen reader says what happened. When the selected tab's
+  // hashtag goes, Everything is the selected tab.
+  useFocusRescue(rescued, () => {
     if (allClear) headline.current?.focus();
     else tabs.current?.focusSelected();
   });
@@ -132,6 +134,7 @@ export function Asks({
           <div
             className={styles.bar}
             data-all-clear={allClear ? "" : undefined}
+            ref={bar}
           >
             {!allClear && (
               <Tabs
