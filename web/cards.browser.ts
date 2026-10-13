@@ -36,6 +36,9 @@ const googleDoc = "https://docs.google.com/document/d/1AbC/edit";
 const cloudflare = "https://dash.cloudflare.com/a1b2/example.com/dns";
 const aws = "https://console.aws.amazon.com/s3/buckets/shop";
 const longPart = "https://averyveryverylongsubdomainname.example.com/a";
+const longerPart =
+  "https://averyveryveryveryveryveryverylongsubdomainname.example.com/a";
+const azure = "https://productionresultssa0.blob.core.windows.net/results/12";
 const sessionLink = "https://claude.ai/code/session_01AbC";
 
 const ask = (
@@ -109,6 +112,13 @@ afterEach(async () => {
   view = undefined;
 });
 
+// What open takes besides the list: the page's options, the answer to a
+// change of an ask, and the screen.
+type OpenOptions = PageOptions & {
+  change?: unknown;
+  screen?: { width: number; height: number };
+};
+
 // The page with a list, on a phone unless another screen is given, and the
 // API taking every change to an ask. With the clock, time jumps a minute
 // once the list shows, then stands still until a test moves it. The clock
@@ -116,10 +126,7 @@ afterEach(async () => {
 // so it aims further ahead than vitest.config.ts lets a browser test run.
 async function open(
   list: AsksAnswer,
-  options: PageOptions & {
-    change?: unknown;
-    screen?: { width: number; height: number };
-  } = {},
+  options: OpenOptions = {},
 ): Promise<OpenPage> {
   const { change = new Status(204), screen = phone, ...rest } = options;
   view = await openPage(inject("pageUrl"), screen, {
@@ -286,15 +293,15 @@ async function expectBreaksOnlyAfterDots(name: Locator) {
   for (const end of ends) expect(end).toMatch(/\.$/u);
 }
 
-// The name of the longPart link stays inside its element, and is split
-// only inside the part too long for a line on its own (docs/design.md).
-async function expectOnlyLongPartSplit(name: Locator) {
+// The name of a link whose first part is too long for a line on its own,
+// longPart unless told otherwise, stays inside its element, and is split
+// only inside that part (docs/design.md).
+async function expectOnlyLongPartSplit(name: Locator, link = longPart) {
+  const [part = ""] = new URL(link).hostname.split(".");
   expect(await fitsWidth(name)).toBe(true);
   const split = (await lineEnds(name)).filter((end) => !end.endsWith("."));
   expect(split.length).toBeGreaterThan(0);
-  for (const end of split) {
-    expect("averyveryverylongsubdomainname".startsWith(end)).toBe(true);
-  }
+  for (const end of split) expect(part.startsWith(end)).toBe(true);
 }
 
 const cardIsOpen = (opened: OpenPage) =>
@@ -625,7 +632,7 @@ describe("following a link", () => {
 });
 
 describe("the open card", () => {
-  const openCard = async (asks: PageAsk[], options: PageOptions = {}) => {
+  const openCard = async (asks: PageAsk[], options: OpenOptions = {}) => {
     const opened = await open(listOf(...asks), options);
     await opened.page
       .getByRole("article")
@@ -678,6 +685,45 @@ describe("the open card", () => {
       );
     }
     expect(await page.locator("body").innerText()).not.toContain("new tab");
+  });
+
+  // A site's name too long for its button's line breaks just after a dot,
+  // not inside a word, on both buttons (docs/design.md).
+  it("breaks productionresultssa0.blob.core.windows.net only after a dot on both buttons on a 320px phone", async () => {
+    const { page } = await openCard(
+      [
+        ask("results", "Publish the test results?", 40 * minute, {
+          actionLink: azure,
+          sessionLink: `${azure}/session`,
+        }),
+      ],
+      { screen: { width: 320, height: phone.height } },
+    );
+    for (const name of [/^Open/u, /^Reply in the session/u]) {
+      const button = page.getByRole("link", { name });
+      const site = button.getByText(new URL(azure).hostname, { exact: true });
+      await expectBreaksOnlyAfterDots(site);
+      expect(await fitsWidth(button)).toBe(true);
+    }
+  });
+
+  // A part too long for the line on its own is split, so the name stays
+  // inside the button (docs/design.md).
+  it("splits only a part too long for the line on its own, and keeps the name inside the button", async () => {
+    const { page } = await openCard(
+      [
+        ask("part", "Check the old host?", 40 * minute, {
+          actionLink: longerPart,
+        }),
+      ],
+      { screen: { width: 320, height: phone.height } },
+    );
+    const button = page.getByRole("link", { name: /^Open/u });
+    const site = button.getByText(new URL(longerPart).hostname, {
+      exact: true,
+    });
+    await expectOnlyLongPartSplit(site, longerPart);
+    expect(await fitsWidth(button)).toBe(true);
   });
 
   it("marks the ask as opened when a link at its foot is followed", async () => {
