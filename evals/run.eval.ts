@@ -10,8 +10,17 @@
 import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { callerOf } from "../service/src/identity";
-import { defaultModel, ModelFailed } from "../service/src/model";
-import { parseSortReply, sortingPrompt } from "../service/src/sort";
+import {
+  defaultModel,
+  ModelFailed,
+  type ModelRequest,
+} from "../service/src/model";
+import {
+  followUpForLongReason,
+  parseSortReply,
+  reasonLimit,
+  sortingPrompt,
+} from "../service/src/sort";
 import {
   sortAttempts,
   sortMaxTokens,
@@ -71,23 +80,32 @@ describe("the eval set against the real model", () => {
       const client = clientFor(model, key);
 
       async function sortOne(one: EvalCase): Promise<Outcome> {
-        const prompt = sortingPrompt(rules, { account, ...one.ask });
+        const request: ModelRequest = {
+          ...sortingPrompt(rules, { account, ...one.ask }),
+          schemaName: "sort",
+          maxTokens: sortMaxTokens,
+          timeoutMs: sortTimeoutMs,
+        };
         const started = performance.now();
+        let followedUp = false;
         try {
-          const reply = await client.reply({
-            ...prompt,
-            schemaName: "sort",
-            maxTokens: sortMaxTokens,
-            timeoutMs: sortTimeoutMs,
-          });
+          let reply = await client.reply(request);
+          // A reply whose only fault is a long reason goes back to the model,
+          // as the service sends it. This finishes the same draw, unlike the
+          // service's plain second try, so the eval sends it too.
+          const followUp = followUpForLongReason(reply, evalRules.hashtags);
+          if (followUp !== undefined) {
+            followedUp = true;
+            reply = await client.reply({ ...request, followUp });
+          }
           const ms = performance.now() - started;
           const sort = parseSortReply(reply, evalRules.hashtags);
           return sort === undefined
-            ? { one, failure: "reply-rejected", ms }
-            : { one, sort, ms };
+            ? { one, failure: "reply-rejected", ms, followedUp }
+            : { one, sort, ms, followedUp };
         } catch (error) {
           if (error instanceof ModelFailed) {
-            return { one, failure: error.reason };
+            return { one, failure: error.reason, followedUp };
           }
           throw error;
         }
@@ -114,7 +132,7 @@ describe("the eval set against the real model", () => {
     const runs = await Promise.all(models.map(runModel));
     for (const run of runs) console.log(`\n${modelReport(run)}\n`);
     console.log(
-      `${header}\n\nThe service tries each ask up to ${String(sortAttempts)} times. The eval tries each ask once a round, to measure the model.\n`,
+      `${header}\n\nThe service tries each ask up to ${String(sortAttempts)} times. The eval tries each ask once a round, to measure the model, and leaves out the service's plain second try, which is a second draw. When a reply's only fault is a reason over ${String(reasonLimit)} characters, the eval sends it back for a shorter one, as the service does, since that finishes the same draw.\n`,
     );
     const silent = unanswered(runs);
     if (acrossCandidates && silent.length > 0) {

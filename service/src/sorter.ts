@@ -26,10 +26,17 @@ import {
   defaultModel,
   ModelFailed,
   type CountedModel,
+  type FollowUp,
+  type ModelRequest,
 } from "./model";
 import { emptyRules } from "./rules";
 import { createKeyReader } from "./secrets";
-import { parseSortReply, sortingPrompt, type Sort } from "./sort";
+import {
+  followUpForLongReason,
+  parseSortReply,
+  sortingPrompt,
+  type Sort,
+} from "./sort";
 import { createStore, type Store } from "./store/store";
 
 // How many times one run asks the model before it leaves the ask unsorted.
@@ -99,15 +106,23 @@ export async function sortAsk(
       },
     );
     const calls = model.forAccount(account);
+    const request: ModelRequest = {
+      ...prompt,
+      schemaName: "sort",
+      maxTokens: sortMaxTokens,
+      timeoutMs: sortTimeoutMs,
+    };
+    // A reply whose only fault is a long reason goes back to the model on
+    // the next try, which asks for a shorter one (#243). Anything else gets
+    // the first prompt again.
+    let followUp: FollowUp | undefined;
     for (let tries = 0; tries < sortAttempts && sort === undefined; tries++) {
       try {
-        const reply = await calls.reply({
-          ...prompt,
-          schemaName: "sort",
-          maxTokens: sortMaxTokens,
-          timeoutMs: sortTimeoutMs,
-        });
+        const reply = await calls.reply(
+          followUp === undefined ? request : { ...request, followUp },
+        );
         sort = parseSortReply(reply, rules.hashtags);
+        followUp = followUpForLongReason(reply, rules.hashtags);
         failure = "reply-rejected";
       } catch (error) {
         if (error instanceof CapReached) {
@@ -117,6 +132,7 @@ export async function sortAsk(
             : { capped: true };
         }
         if (!(error instanceof ModelFailed)) throw error;
+        followUp = undefined;
         failure = error.reason;
       }
     }
