@@ -646,16 +646,21 @@ describe("the rules", () => {
       expect(await response.json()).toEqual(
         expect.objectContaining({ text: rulesText, readFailed: true }),
       );
+      // The failed reading stays at warn. askme's own fault adds an error.
       const failed = capture.lines.filter((line) =>
         lineText(line).includes("rules-read-failed"),
       );
-      expect(failed.map(({ method }) => method)).toEqual([level]);
-      expect(lineText(failed[0] ?? { method: "", args: [] })).toContain(
-        `status-${String(status)}`,
+      expect(failed.map(({ method }) => method)).toEqual(["warn"]);
+      const errors = capture.lines.filter(({ method }) => method === "error");
+      expect(errors.map(lineText)).toEqual(
+        level === "error"
+          ? [
+              expect.stringMatching(
+                new RegExp(`request-failed.*status-${String(status)}`, "u"),
+              ),
+            ]
+          : [],
       );
-      expect(
-        capture.lines.filter(({ method }) => method === "error"),
-      ).toHaveLength(level === "error" ? 1 : 0);
     },
   );
 

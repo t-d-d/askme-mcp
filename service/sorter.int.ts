@@ -85,8 +85,9 @@ it("reads the model's key on its first sort, and keeps it for the runs after", a
   expect(fakes.parameters.asked.slice(reads)).toEqual([modelKeyParameter]);
 });
 
-// OpenRouter answers 401 for a refused key and 402 for spent credit. A 403
-// can come from moderation of a hostile ask, so it must not alert.
+// OpenRouter answers 401 for a refused key and 402 for spent credit, which
+// alert. A 403 can come from moderation of a hostile ask, so it must not.
+// The failed sort itself stays at warn (ADR 22).
 describe("a sort the model refuses on the last delivery", () => {
   it.each([
     [401, "error"],
@@ -120,17 +121,27 @@ describe("a sort the model refuses on the last delivery", () => {
     } finally {
       capture.restore();
     }
-    expect(capture.lines).toEqual([
-      {
-        method: level,
-        args: [
-          expect.objectContaining({
-            event: "sort-failed",
-            askId: posting.id,
-            errorClass: `status-${String(status)}`,
-          }),
-        ],
-      },
-    ]);
+    const failed = {
+      method: "warn",
+      args: [
+        expect.objectContaining({
+          event: "sort-failed",
+          askId: posting.id,
+          errorClass: `status-${String(status)}`,
+        }),
+      ],
+    };
+    const ours = {
+      method: "error",
+      args: [
+        expect.objectContaining({
+          event: "request-failed",
+          errorClass: `status-${String(status)}`,
+        }),
+      ],
+    };
+    expect(capture.lines).toEqual(
+      level === "error" ? [ours, failed] : [failed],
+    );
   });
 });

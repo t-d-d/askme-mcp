@@ -404,7 +404,7 @@ describe("a job from the queue", () => {
   });
 
   it.each(["status-401", "status-402"])(
-    `is let go when the sort fails with %s on the delivery numbered ${String(sortDeliveries)}, with one error line, as the key is askme's own`,
+    `logs %s at error as askme's own, and still lets the job go on the delivery numbered ${String(sortDeliveries)} with a warn line`,
     async (reason) => {
       const refused = memoryModel([
         new ModelFailed(reason),
@@ -416,6 +416,11 @@ describe("a job from the queue", () => {
       expect(logged()).toEqual([
         expect.objectContaining({
           level: "error",
+          event: "request-failed",
+          errorClass: reason,
+        }),
+        expect.objectContaining({
+          level: "warn",
           event: "sort-failed",
           accountId: owner,
           askId: ask.id,
@@ -426,7 +431,7 @@ describe("a job from the queue", () => {
   );
 
   it.each(["status-401", "status-402"])(
-    `still goes back to the queue on %s before the delivery numbered ${String(sortDeliveries)}`,
+    `logs %s at error on a delivery before the one numbered ${String(sortDeliveries)}, and still sends the job back`,
     async (reason) => {
       const refused = memoryModel([
         new ModelFailed(reason),
@@ -434,6 +439,11 @@ describe("a job from the queue", () => {
       ]).model;
       expect(await deliver(1, memoryStore({ ask, rules }), refused)).toBe(true);
       expect(logged()).toEqual([
+        expect.objectContaining({
+          level: "error",
+          event: "request-failed",
+          errorClass: reason,
+        }),
         expect.objectContaining({ level: "info", event: "sort-retried" }),
       ]);
     },
@@ -500,7 +510,7 @@ describe("a job from the queue", () => {
     ]);
   });
 
-  it("logs a refused key on the try before the cap at error", async () => {
+  it("logs a refused key on the try before the cap at error, and the failed sort still at warn", async () => {
     expect(
       await deliver(
         1,
@@ -511,6 +521,11 @@ describe("a job from the queue", () => {
     expect(logged()).toEqual([
       expect.objectContaining({
         level: "error",
+        event: "request-failed",
+        errorClass: "status-402",
+      }),
+      expect.objectContaining({
+        level: "warn",
         event: "sort-failed",
         errorClass: "status-402",
       }),

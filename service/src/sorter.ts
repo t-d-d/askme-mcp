@@ -164,26 +164,23 @@ export async function runJob(
     outcome = { failed: errorClass(error) };
   }
   if (outcome === "done") return false;
-  // A refused key fails every sort, so it alerts. The job is still retried.
-  const failed = (reason: string) =>
-    modelFaultIsOurs(reason) ? log.error : log.warn;
+  // The model refused askme's own key or settings, which fails every sort,
+  // so it alerts on each delivery. The sort is still retried and let go as
+  // any failed sort is.
+  if (outcome.failed !== undefined && modelFaultIsOurs(outcome.failed)) {
+    log.error("request-failed", { errorClass: outcome.failed });
+  }
   if ("capped" in outcome) {
     // Let go: a retry would come round again before the cap resets
     // (ADR 22).
     if (outcome.failed !== undefined) {
-      failed(outcome.failed)("sort-failed", {
-        ...at,
-        errorClass: outcome.failed,
-      });
+      log.warn("sort-failed", { ...at, errorClass: outcome.failed });
     }
     log.info("sort-capped", at);
     return false;
   }
   if (message.receives >= sortDeliveries) {
-    failed(outcome.failed)("sort-failed", {
-      ...at,
-      errorClass: outcome.failed,
-    });
+    log.warn("sort-failed", { ...at, errorClass: outcome.failed });
     return false;
   }
   log.info("sort-retried", { ...at, errorClass: outcome.failed });

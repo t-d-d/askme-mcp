@@ -188,12 +188,14 @@ async function saveRules(
   try {
     read = await readRules(text, model.forAccount(account));
     if ("failed" in read) {
-      // A refused key fails every reading, so it alerts.
-      const failed = modelFaultIsOurs(read.failed) ? log.error : log.warn;
-      failed("rules-read-failed", {
+      log.warn("rules-read-failed", {
         accountId: account,
         errorClass: read.failed,
       });
+      // The model refused askme's own key or settings, so it alerts.
+      if (modelFaultIsOurs(read.failed)) {
+        log.error("request-failed", { errorClass: read.failed });
+      }
     }
   } catch (error) {
     // The cap ran out after the check above, so refuse as that check would.
