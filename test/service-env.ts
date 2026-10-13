@@ -13,7 +13,10 @@ beforeEach(() => {
   fakes.queue.purge();
 });
 
-afterEach(() => {
+// A failed test may stop before it takes its replies, and its own error
+// says why, so only a passing test is held to this.
+afterEach(({ task }) => {
+  if (task.result?.state === "fail") return;
   expectRepliesUsed(fakes.model);
 });
 

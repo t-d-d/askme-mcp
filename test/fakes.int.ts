@@ -30,7 +30,6 @@ describe("resetting the fake model", () => {
     expect(fakes.model.calls).toEqual([]);
     expect(fakes.model.unused()).toBe(0);
     expect(await callModel()).toBe(503);
-    fakes.model.reset();
   });
 });
 
@@ -43,7 +42,9 @@ describe("a queued reply left unused", () => {
     fakes.model.reset();
   });
 
-  it("passes the check when every reply was used", () => {
+  it("passes the check when every reply was used", async () => {
+    fakes.model.reply({ status: 429 });
+    expect(await callModel()).toBe(429);
     expect(() => {
       expectRepliesUsed(fakes.model);
     }).not.toThrow();
