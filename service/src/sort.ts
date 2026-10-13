@@ -53,6 +53,10 @@ export interface Prompt {
   schema: Record<string, unknown>;
 }
 
+// #222 tried 21 wordings to get the delivery slot and the sign-in code eval
+// asks sorted at high. Each wording that got them there also moved another
+// case, so these lines were left unchanged. The pull request for #222 lists
+// every wording, and #226 asks the owner whether to take the closest one.
 const system = [
   "You sort one ask for one person. An ask is a request from one of their AI agents, which has stopped to wait for them.",
   "Decide three things: which of the person's hashtags the ask belongs to, how much it matters, and why, in one line.",
