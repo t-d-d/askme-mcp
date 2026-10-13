@@ -9,7 +9,7 @@ import {
   rulesLimit,
   sinceParam,
 } from "../../shared/page-api";
-import { pageRefusal } from "./errors";
+import { pageRefusal, unavailable } from "./errors";
 import { authorizationOf, jsonBody } from "./http";
 import { AgentToken, TokenRejected, type AccountId } from "./identity";
 import { queueSorts, type SortRequests } from "./jobs";
@@ -46,13 +46,6 @@ const unauthorised = (challenge: string) =>
     status: 401,
     headers: { ...noStore, "www-authenticate": challenge },
   });
-
-export function unavailable(): Response {
-  return pageRefusal(
-    "service_unavailable",
-    "askme could not finish this request. Try again in a moment.",
-  );
-}
 
 const sinceSchema = z
   .string()
