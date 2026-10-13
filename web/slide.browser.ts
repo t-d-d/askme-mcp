@@ -128,28 +128,24 @@ const finish = (page: Page) =>
     }
   });
 
-// At the start, the picture of the screen being left lies in place over the
-// other.
-const atStart = (page: Page) =>
-  page.evaluate(async () => {
+const holdAt = (page: Page, end: boolean) =>
+  page.evaluate(async (end) => {
     for (const animation of document.getAnimations()) {
       animation.pause();
-      animation.currentTime = 0;
+      const time = end ? animation.effect?.getComputedTiming().endTime : 0;
+      if (time === undefined) throw new Error("An animation with no end");
+      animation.currentTime = time;
     }
     await new Promise((resolve) => requestAnimationFrame(resolve));
-  });
+  }, end);
+
+// At the start, the picture of the screen being left lies in place over the
+// other.
+const atStart = (page: Page) => holdAt(page, false);
 
 // At the end, before the browser clears the slide away. A phone can draw a
 // frame there.
-const atEnd = (page: Page) =>
-  page.evaluate(async () => {
-    for (const animation of document.getAnimations()) {
-      animation.pause();
-      animation.currentTime =
-        animation.effect?.getComputedTiming().endTime ?? 0;
-    }
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-  });
+const atEnd = (page: Page) => holdAt(page, true);
 
 // The browser's picture of a screen can shade the edge of a letter a step or
 // so off the screen itself, so each pixel need only be within a few steps.
@@ -270,6 +266,8 @@ describe("the rules and Connect your agents", () => {
     const rules = await page.screenshot();
     await click(page, "All asks")();
     expect(await moving(page)).toEqual(slidesOut);
+    // The list draws live under the picture, so let its asks arrive first.
+    await theList(page);
     await atEnd(page);
     const ending = await page.screenshot();
     await finish(page);
