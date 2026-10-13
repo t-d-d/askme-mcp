@@ -225,6 +225,22 @@ describe("a trial's record", () => {
     });
   });
 
+  it("keeps the known miss of an ask that has one, and none for any other ask", () => {
+    const accepted: EvalCase = { ...hotfix, knownMiss: 262 };
+    const { sorts } = trialRecord(
+      [sorted(accepted, "normal"), sorted(hotfix, "normal")],
+      {
+        model: "a/model",
+        sorts: 1,
+        draft: undefined,
+        system: "The prompt sorted under.",
+        date: "2026-10-13",
+      },
+    );
+    expect(sorts[0]).toMatchObject({ ask: hotfix.name, knownMiss: 262 });
+    expect(sorts[1]).not.toHaveProperty("knownMiss");
+  });
+
   it("survives a trip through JSON unchanged", () => {
     expect(JSON.parse(JSON.stringify(record))).toEqual(record);
   });
