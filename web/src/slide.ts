@@ -24,15 +24,31 @@ export function useLayer(layer: number): void {
 // The slide under way, if one is.
 let underWay: ViewTransition | null = null;
 
+// The changes a slide holds while the browser draws the picture of the
+// screen being left, in the order they came, or null when no slide waits.
+let held: (() => void)[] | null = null;
+
 // Makes a change that may draw another screen, sliding if it does. The
 // change is made at once when the person's device asks for reduced motion,
 // when the browser cannot draw the pictures, and when it has drawn its own
 // movement already, as a phone's browser may on Back. A change while a slide
 // is under way is made at once too, and shows as part of that slide.
 //
+// A slide holds its change for about a frame, until the browser has drawn
+// the picture of the screen being left. A change that comes in that frame
+// joins the slide and is held behind it, so the changes are made in the
+// order they came and the picture shows the screen as it was before either.
+// When the browser has drawn its own movement for the change that joins,
+// the slide is skipped, and both changes are made at once.
+//
 // The page cannot be tapped while the screens move. Taps go to the pictures,
 // whatever the page's styles say.
 export function slide(change: () => void, browserMoved = false): void {
+  if (held !== null) {
+    held.push(change);
+    if (browserMoved) underWay?.skipTransition();
+    return;
+  }
   if (
     browserMoved ||
     underWay !== null ||
@@ -44,10 +60,16 @@ export function slide(change: () => void, browserMoved = false): void {
   }
   const from = drawn;
   const root = document.documentElement;
-  // The browser draws the new screen's picture once the change returns, so
-  // React draws it at once.
+  const changes = [change];
+  held = changes;
+  // The browser draws the new screen's picture once the changes return, so
+  // React draws them at once, and the slide's direction is worked out from
+  // the screen they leave drawn.
   const transition = document.startViewTransition(() => {
-    flushSync(change);
+    held = null;
+    flushSync(() => {
+      for (const each of changes) each();
+    });
     if (drawn > from) root.dataset.slide = "in";
     else if (drawn < from) root.dataset.slide = "out";
     else transition.skipTransition();
