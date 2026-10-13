@@ -76,6 +76,8 @@ describe("a call the provider refuses for rate (#303)", () => {
 
 describe("calls the provider refuses for rate at the same moment (#312)", () => {
   it("are not all sent again at the same moment", async () => {
+    const randoms = [0, 0.25, 0.5, 0.75, 1 - Number.EPSILON];
+    vi.spyOn(Math, "random").mockImplementation(() => randoms.shift() ?? 0);
     const calls = Array.from({ length: 5 }, () =>
       fakeModel([refused(), { level: "high" }]),
     );

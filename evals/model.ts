@@ -88,10 +88,10 @@ export const rateWaitMs = rateWaits.reduce((sum, { most }) => sum + most, 0);
 const pause = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-// A wait picked at random between its least and its most, in whole
-// milliseconds.
+// A wait picked at random between its least and its most, both included, in
+// whole milliseconds, each as likely as any other.
 const randomWait = ({ least, most }: RateWait) =>
-  least + Math.round(Math.random() * (most - least));
+  least + Math.floor(Math.random() * (most - least + 1));
 
 // A model that sends a call again when the provider refuses it for rate,
 // with a 429, once after each wait in rateWaits (#303), each picked at random
