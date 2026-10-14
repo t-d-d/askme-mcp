@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, inject, it } from "vitest";
+import { z } from "zod";
 import {
   pagePaths,
   samplesPath,
@@ -357,5 +358,80 @@ describe("a poll answer the page cannot read, beside rules it can", () => {
       })
       .toBeGreaterThanOrEqual(after);
     expect(opened.loads()).toBe(2);
+  });
+});
+
+// As after a deploy that changes the rules' answer to a save, while the page
+// stays open: askme stores the rules, and the page cannot read what it says.
+const savesWithNewAnswer = (stored: string[]) =>
+  new Answering((_url, _authorization, sent) => {
+    if (sent.method === "PUT") {
+      stored.push(
+        z.object({ text: z.string() }).parse(JSON.parse(sent.body ?? "")).text,
+      );
+      return { shape: "new" };
+    }
+    return { ...rules, text: stored.at(-1) ?? rules.text };
+  });
+
+const saves = (opened: OpenPage) =>
+  opened.apiCalls.filter(
+    ({ path, method }) => path === pagePaths.rules && method === "PUT",
+  ).length;
+
+describe("a rules save whose answer the page cannot read", () => {
+  it("reloads the page once to read the rules, and does not say the save did not go through", async () => {
+    const list = listAt(new Date());
+    const stored: string[] = [];
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      api: {
+        [pagePaths.asks]: new Answering((url) => answerPoll(url, list)),
+        [pagePaths.rules]: savesWithNewAnswer(stored),
+      },
+    });
+    const opened = view;
+    const { page } = opened;
+    const box = page.getByRole("textbox");
+    await expect.poll(() => box.inputValue()).toBe(rules.text);
+    await box.fill(`${rules.text}\n\n#family is home.`);
+    await page.getByRole("button", { name: "Save rules" }).click();
+    await expect.poll(() => opened.loads()).toBe(2);
+    await expect.poll(() => box.inputValue()).toBe(stored[0]);
+    expect(await page.getByText("That didn't go through").count()).toBe(0);
+    expect(stored).toHaveLength(1);
+  });
+
+  it("says it saved, without a reload, once the page has reloaded for another answer", async () => {
+    const list = listAt(new Date());
+    const stored: string[] = [];
+    let deployed = false;
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      clock: true,
+      api: {
+        [pagePaths.asks]: new Answering((url) =>
+          deployed ? { version: 4, shape: "new" } : answerPoll(url, list),
+        ),
+        [pagePaths.rules]: savesWithNewAnswer(stored),
+      },
+    });
+    const opened = view;
+    const { page } = opened;
+    const box = page.getByRole("textbox");
+    await expect.poll(() => box.inputValue()).toBe(rules.text);
+    deployed = true;
+    await page.clock.fastForward(pollMs);
+    await expect.poll(() => opened.loads()).toBe(2);
+    await expect.poll(() => box.inputValue()).toBe(rules.text);
+    const typed = `${rules.text}\n\n#family is home.`;
+    await box.fill(typed);
+    await page.getByRole("button", { name: "Save rules" }).click();
+    await expect.poll(() => saves(opened)).toBe(1);
+    await page.getByRole("status").filter({ hasText: "Saved." }).waitFor();
+    expect(await box.inputValue()).toBe(typed);
+    expect(await page.getByText("That didn't go through").count()).toBe(0);
+    expect(opened.loads()).toBe(2);
+    expect(stored).toHaveLength(1);
   });
 });

@@ -37,8 +37,19 @@ export function useRules() {
         rulesAnswer,
         getToken,
       ),
-    onSuccess: (answer: RulesAnswer) => {
-      queries.setQueryData([pagePaths.rules], answer);
+    onSuccess: (answer: RulesAnswer | null, text: string) => {
+      if (answer === null) {
+        // The page did not reload, so it keeps the text saved and reads the
+        // rules again.
+        queries.setQueryData(
+          [pagePaths.rules],
+          (before: RulesAnswer | undefined) =>
+            before === undefined ? before : { ...before, text },
+        );
+        void queries.invalidateQueries({ queryKey: [pagePaths.rules] });
+      } else {
+        queries.setQueryData([pagePaths.rules], answer);
+      }
       // A save queues sorts, so the list is polled now to show them.
       void queries.invalidateQueries({ queryKey: [pagePaths.asks] });
     },
