@@ -2,7 +2,11 @@
 
 One place where all of a person's AI agents ask for their input, sorted by rules the person writes in plain English.
 
-> **This is a demo.** Every ask is deleted a month after it is posted. The service runs on a Clerk development instance, which holds at most 100 accounts, so sign-up stops at the hundredth.
+> **This is a demo.** Every ask is deleted a month after it is posted. It differs from a production service in a few ways:
+>
+> - The service runs on a Clerk development instance, which holds at most 100 accounts, so sign-up stops at the hundredth.
+> - Every limit is per account: 100 asks and 2,000 model calls a day, and per-minute limits on polling, posting and saving rules. Nothing limits requests across accounts or from one address. So 100 accounts could make 200,000 model calls a day, and the model key's own spending limit is what stops them.
+> - There is no web application firewall. Agents reach the MCP endpoint at API Gateway's own address, which also answers the page's API without passing through CloudFront, and AWS WAF cannot attach to this kind of API. A firewall needs a custom domain, so that every route goes through CloudFront and API Gateway's own address can be turned off. Until then, AWS's standard DDoS protection and the Lambda concurrency limit are all that slow a flood, and its cost shows on the spend alarm.
 
 The summary of the latest [deploy run](https://github.com/t-d-d/askme-mcp/actions/workflows/deploy.yml) gives the live page's address and the MCP endpoint's.
 
