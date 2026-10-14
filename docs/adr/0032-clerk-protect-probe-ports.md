@@ -6,11 +6,11 @@ Parent PRD: [PRD](../../PRD.md). Amends [ADR 30](0030-csp-allows-clerk-protect.m
 
 ## Constraint-set delta
 
-Edits [`docs/constraints/content-security-policy.md`](../constraints/content-security-policy.md): the rule naming today's origins gives Clerk Protect's `connect-src` source any port.
+Edits [`docs/constraints/content-security-policy.md`](../constraints/content-security-policy.md): the rule naming today's origins gives Clerk Protect's `connect-src` source any port, and a "Do not" forbids any port on every other source.
 
 ## Context
 
-- **A deploy's live check failed on four ports.** In run 38532605514, Clerk Protect's probe went to its own host on ports 8443, 18443, 2082 and 992, twice each. A CSP source with no port matches only port 443, so the policy reported all eight, and the run rolled back.
+- **A deploy's live check failed on four ports.** In run 38532605514, Clerk Protect's probe went to its own host on ports 8443, 18443, 2082 and 992, twice each. A CSP source with no port matches only port 443, so the policy reported all eight as `connect-src` refusals, and the run rolled back.
 - **Clerk Protect varies from run to run.** The first failed run probed only port 443, and the two deploys after the failure passed with the same policy. Clerk chooses the ports, and the next run may use others.
 - **A deploy fails whenever Clerk picks those ports.** Each failure rolls the site back and blocks the changes in that deploy.
 

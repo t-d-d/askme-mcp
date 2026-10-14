@@ -43,6 +43,8 @@ loading more code, or sending what it reads, anywhere else.
   Clerk instance, so a wildcard lets in hosts that are not ours. Clerk
   Protect's https://*.client.protect.clerk.com is the one exception,
   because Clerk names the host under it for each instance (ADR 30).
+- Allow any port, as :* does, on a source other than Clerk Protect's in
+  connect-src. Only its probe picks its own ports (ADR 32).
 - Write Clerk's frontend host into serverless.yml: a move to a Clerk
   production instance on its own domain would break sign-in until
   someone edited it.

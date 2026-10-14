@@ -156,6 +156,18 @@ describe("fitness: the page's CSP names only Clerk's origins (content-security-p
     ).toEqual([`frame-src ${clerkHost}`]);
   });
 
+  it("flags any port on a source but Clerk Protect's in connect-src", () => {
+    expect(
+      notListed(
+        `script-src 'self' https://*.client.protect.clerk.com:*; connect-src ${clerkHost}:* https://*.client.protect.clerk.com https://*.client.protect.clerk.com:*`,
+      ),
+    ).toEqual([
+      "script-src https://*.client.protect.clerk.com:*",
+      `connect-src ${clerkHost}:*`,
+      "connect-src https://*.client.protect.clerk.com",
+    ]);
+  });
+
   it("tells eval or inline script, in any script directive and any case, from the page's own sources", () => {
     expect(
       scriptHoles(
