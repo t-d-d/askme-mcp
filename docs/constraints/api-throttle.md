@@ -1,6 +1,6 @@
 # API throttle
 Relevance: The API's request rate, the API Gateway stage, a new route, or how often the page or an agent calls: the deployment definition, web/src/poll.ts, the README's demo notice
-Decision: API Gateway throttles each route at 50 requests a second, bursts of 100, for all accounts. A request over it gets API Gateway's bare 429 and starts no function.
+Decision: API Gateway throttles the API at 50 requests a second, bursts of 100, shared by all routes and accounts. A request over it gets a 429 and starts no function.
 
 Why: Every other limit counts one account's requests inside the
 function, and a request that reaches the function costs money, signed
@@ -12,8 +12,8 @@ in or not. A throttle at API Gateway stops a flood before it is billed.
   burst of 100, in serverless.yml, as an extension of the framework's
   stage, HttpApiStage.
 - The throttle covers every route, the MCP endpoint and the page's API
-  alike. No route sets a higher limit of its own, and no HTTP API or
-  stage is declared apart from it.
+  alike, and they all share its one allowance. No route sets a throttle
+  of its own, and no HTTP API or stage is declared apart from it.
 - The extension replaces the framework's default route settings whole,
   so it repeats DetailedMetricsEnabled: false.
 - A request over the limit gets API Gateway's own 429 and body, and
@@ -24,15 +24,19 @@ in or not. A throttle at API Gateway stops a flood before it is billed.
   not go through.
 - No alarm reads it. The spend alarm is the alert, and the API's Count
   and 4xx metrics show a flood.
-- The arithmetic plans for each route having its own allowance, so
-  the API takes up to 50 a second on each route, until #398 measures
-  which reading holds.
-- A pull request that raises a value, adds a route, or makes the page
-  or an agent call more often, redoes the record's arithmetic: real
-  use against the rate, and what a flood at the rate costs a day.
+- The arithmetic counts the allowance once. A flood held at the cap
+  reaches the function at about 50 a second, about $5 a day in request
+  charges, and up to about $9 where the cap passes more (#398).
+- A pull request that adds a route, or makes the page or an agent call
+  more often, redoes the arithmetic for real use, counting every route
+  together against the one rate. One that raises a value also redoes
+  what a flood at the rate costs a day.
 
 ## Do not
 
+- Give a route, such as the poll's, a throttle of its own: it may get
+  an allowance apart from the shared one, which would raise what a
+  flood costs past the arithmetic. #398 did not measure it.
 - Limit the total rate in the handler or the table: a request the
   function counts has already started the function, which is the cost.
 - Cap the function with reserved concurrency: API Gateway still bills
@@ -44,8 +48,10 @@ in or not. A throttle at API Gateway stops a flood before it is billed.
   bills each line, so a flood's cost would grow past the throttle again.
 
 Judgment: Only the deployed API shows that AWS applies the throttle,
-whether routes share it, and that it counts a throttled request in the
-API's 4xx metric. Whether 50 a second still covers real use is a
+that the routes still share it, and that it counts a throttled request
+in the API's 4xx metric. #398 measured the sharing by sending two
+routes 40 a second each. Both got 429s once the burst ran out. Whether
+50 a second still covers real use on every route together is a
 judgement to make as accounts grow.
 
-History: [ADR 31](../adr/0031-api-throttle.md)
+History: [ADR 31](../adr/0031-api-throttle.md), [ADR 35](../adr/0035-one-throttle-allowance.md)
