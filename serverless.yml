@@ -241,8 +241,8 @@ resources:
     # hosts of Clerk Protect, Clerk's bot protection, which Clerk's own config
     # names for the instance (ADR 30). Its probe tries several ports (ADR 32).
     # The bucket sends none of these headers, so overriding changes nothing
-    # today and keeps it that way. The CSP is report-only until a deploy has
-    # passed the live check with it.
+    # today and keeps it that way. The CSP is enforced, since a deploy passed
+    # the live check with it as report-only.
     WebResponseHeadersPolicy:
       Type: AWS::CloudFront::ResponseHeadersPolicy
       Properties:
@@ -265,23 +265,21 @@ resources:
               Protection: true
               ModeBlock: true
               Override: true
-          CustomHeadersConfig:
-            Items:
-              - Header: Content-Security-Policy-Report-Only
-                Override: true
-                Value: >-
-                  default-src 'self';
-                  script-src 'self' ${env:CLERK_ISSUER}
-                  https://cdn.protect.clerk.com
-                  https://*.client.protect.clerk.com;
-                  connect-src 'self' ${env:CLERK_ISSUER}
-                  https://*.client.protect.clerk.com:*;
-                  img-src 'self' data:;
-                  style-src 'self' 'unsafe-inline';
-                  worker-src 'self' blob:;
-                  frame-ancestors 'none';
-                  object-src 'none';
-                  base-uri 'none'
+            ContentSecurityPolicy:
+              Override: true
+              ContentSecurityPolicy: >-
+                default-src 'self';
+                script-src 'self' ${env:CLERK_ISSUER}
+                https://cdn.protect.clerk.com
+                https://*.client.protect.clerk.com;
+                connect-src 'self' ${env:CLERK_ISSUER}
+                https://*.client.protect.clerk.com:*;
+                img-src 'self' data:;
+                style-src 'self' 'unsafe-inline';
+                worker-src 'self' blob:;
+                frame-ancestors 'none';
+                object-src 'none';
+                base-uri 'none'
 
     WebBucketPolicy:
       Type: AWS::S3::BucketPolicy
