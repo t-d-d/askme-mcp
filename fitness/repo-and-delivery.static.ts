@@ -501,14 +501,15 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line !== "" && !/^[#;]/u.test(line))
-      .map((line) => line.split("=").map((part) => part.trim()));
+      // npm splits at the first "=" and drops a comment after the value.
+      .map((line) => /^([^=]*?)\s*=\s*(.*?)(?:\s+[#;].*)?$/u.exec(line))
+      .map((match) => [match?.[1], match?.[2]]);
     expect(Object.fromEntries(settings)).toMatchObject({
       "ignore-scripts": "true",
     });
   });
 
-  // The flag on the command line wins over .npmrc, and the rollback's
-  // checkout at live-ok may predate that file.
+  // The flag on the command line wins over .npmrc.
   const scriptedInstall = "npm ci --ignore-scripts=false";
 
   it("installs the launcher where it is checked, in the jobs that deploy", () => {
