@@ -75,7 +75,7 @@ Most of Haiku's misses rank a saving passed up, such as a cheaper courier or a s
 
 ## Agents wrote the code
 
-Coding agents wrote every line of code in this repo, in Claude Code sessions. The owner and Claude wrote the PRD, the decision records and the issues, and the owner approved each one. By 14 October 2026, 193 pull requests had merged.
+Coding agents wrote every line of code in this repo, in Claude Code sessions. The owner and Claude wrote the PRD and the decision records, and the owner approved each one. The owner and Claude broke the PRD into issues, and agents raised many more themselves, from work they found in passing. By 14 October 2026, 193 pull requests had merged.
 
 Each change arrived as a pull request. Before every push, the agent ran the gate and a high-effort code review of its branch, and fixed, filed or dismissed each finding. A pull request merges only when the gate passes in CI. The owner reviewed and merged the early pull requests. Once the gate and the reviews had earned enough trust, the owner set agent sessions to land whole trains of issues, refactoring trains among them, and those sessions reviewed and merged each pull request with no person reading it.
 
