@@ -38,7 +38,7 @@ The [PRD](PRD.md), the product requirements document, says what version 1 does, 
 | Delivery | GitHub Actions on standard runners. A green merge to main deploys. |
 | Tests | Vitest, Playwright as a library, and DynamoDB Local in Docker |
 
-Each choice that is hard to reverse has a decision record (ADR) in [docs/adr/](docs/adr/README.md), and the rules they put in force are in [docs/constraints/](docs/constraints/README.md).
+Each choice that is hard to reverse has an architectural decision record (ADR) in [docs/adr/](docs/adr/README.md), and the rules they put in force are in [docs/constraints/](docs/constraints/README.md).
 
 ## How the model is used
 
@@ -80,7 +80,7 @@ Every session starts from the same rules, kept in the repo:
 - [CLAUDE.md](CLAUDE.md) says how to work: one branch per issue, tests first, and the gate before every push.
 - [.claude/skills/](.claude/skills/) holds the steps for picking up an issue, checking the constraints, reviewing a branch before it is pushed, and writing a pull request.
 
-Each issue describes one change, with a label for its type, such as `type: bug`, and one for its mode. An agent takes a `mode: afk` issue, one it can finish without the owner, to a pull request that closes it. Anything only the owner can do, such as setting secrets or connecting a real agent, is a `mode: human` issue, and its closing comment records the result.
+Each issue describes one change, with a label for its type, such as `type: bug`, and one for its mode. An agent takes a `mode: afk` (away from keyboard) issue, one it can finish without a person, to a pull request that closes it. Anything only the owner can do, such as setting secrets or connecting a real agent, is a `mode: human` issue, and its closing comment records the result.
 
 ## How it is tested
 
