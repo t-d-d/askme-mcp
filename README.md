@@ -28,6 +28,10 @@ The page is live at https://d1dqzjjllemayb.cloudfront.net. To try it without an 
 claude mcp add --transport http --scope user askme https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp
 ```
 
+In Cursor, use this button, then sign in when Cursor asks:
+
+[![Add askme to Cursor](https://img.shields.io/badge/Add_askme_to-Cursor-000000)](https://cursor.com/en/install-mcp?name=askme&config=eyJ1cmwiOiJodHRwczovL2Z4MHkyNmM4djAuZXhlY3V0ZS1hcGkudXMtZWFzdC0xLmFtYXpvbmF3cy5jb20vbWNwIn0%3D)
+
 ## What comes next
 
 Version 1 shows asks only while the page is open, and sends no notifications. In rough order of value, the [roadmap](PRD.md#roadmap) adds:
