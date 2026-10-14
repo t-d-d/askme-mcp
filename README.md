@@ -6,7 +6,7 @@ One place where all of a person's AI agents ask for their input, sorted by rules
 
 > **This is a fully functional demo.** Every ask is deleted a month after it is posted. [Demo limits](#demo-limits) says how it differs from a production service.
 
-The page is live at https://d1dqzjjllemayb.cloudfront.net. To try it without an agent, sign up and press Send sample asks. A new account starts with example rules, and each press posts three sample asks, one from each area the rules name, so you can watch them being sorted. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps.
+The page is live at https://d1dqzjjllemayb.cloudfront.net. To try it without an agent, sign up and press Send sample asks. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps.
 
 ## What it is
 
