@@ -24,7 +24,12 @@ ask calling the model at once.
   times the sort function's timeout.
 - The sort function never fails a run for a failed sort. It reports
   the message as failed, and the queue delivers it again. A failure of
-  askme's own is logged at error and reported the same way.
+  askme's own, such as the table failing, is logged at error and
+  reported the same way.
+- A call the model refuses for askme's own key, credit, budget or
+  model ends the sort with no second try. The sort function logs it
+  at error, logs the sort at warn, and lets the message go on any
+  delivery.
 - After the third delivery, the sort function logs at warn and lets
   the message go. A later delivery is let go before any work.
 - A save of unchanged text, whose last reading succeeded, reads
@@ -54,6 +59,9 @@ ask calling the model at once.
   carry none, and at the cap every refused job would write one.
 - Throw from the sort function for a failed sort: it trips the
   function-failure alarm ([alerting.md](alerting.md)).
+- Send a sort the model refused for askme's own key back to the
+  queue, as other failed sorts are: every delivery is refused the
+  same way, and each try counts against the person's cap.
 - Add a dead-letter queue and its alarm: one ask that never parses
   would email the owner.
 - Hold a capped job on the queue until the reset: a FIFO queue cannot
@@ -68,4 +76,4 @@ Judgment: A new reason to sort an ask queues a job through the jobs
 module. A new state for the page comes from what the table holds, not
 from the queue.
 
-History: [ADR 22](../adr/0022-sort-queue.md)
+History: [ADR 22](../adr/0022-sort-queue.md), [ADR 29](../adr/0029-refused-key-is-not-retried.md)
