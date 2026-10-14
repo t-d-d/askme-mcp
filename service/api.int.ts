@@ -863,7 +863,6 @@ describe("an ask that stops mattering", () => {
     const account = newAccount();
     fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
-    await runSorts();
     const summary = `Stops mattering ${randomUUID()}`;
     await post(account, { ...ask, summary, stale_after_minutes: 4321 });
     fakes.model.reply({
@@ -897,7 +896,6 @@ describe("sorting", () => {
     const account = newAccount();
     fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
-    await runSorts();
     const calls = fakes.model.calls.length;
     const id = await post(account);
     expect(fakes.model.calls).toHaveLength(calls);
@@ -928,7 +926,6 @@ describe("sorting", () => {
     const account = newAccount();
     fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
-    await runSorts();
     const id = await post(account);
     fakes.model.reply({
       json: {
@@ -1117,6 +1114,12 @@ describe("saving the rules again", () => {
         sortOf(account, unsorted),
       ]),
     );
+    // Both handed-on jobs run, and each takes a reply, sorted ask or not.
+    fakes.model.reply(
+      { json: { hashtags: ["shop"], level: "low", reason: "Routine." } },
+      { json: { hashtags: ["shop"], level: "low", reason: "Routine." } },
+    );
+    expect(await runSorts()).toBe(2);
   });
 
   it("keeps each ask's old hashtags, in their colours, until it is sorted again", async () => {

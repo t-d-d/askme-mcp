@@ -117,7 +117,6 @@ describe("fitness: a bad reply changes nothing (untrusted-ask-text.md)", () => {
     async (_, reply) => {
       const sub = newAccount();
       await saveRules(sub);
-      await runSorts();
       const posted = idAndStatus.parse(
         (await callTool(sub, "ask", ask)).structuredContent,
       );
@@ -187,7 +186,6 @@ describe("fitness: nothing flows back (untrusted-ask-text.md)", () => {
   it("answers ask and resolve with an id and a status only, whatever the model said", async () => {
     const sub = newAccount();
     await saveRules(sub);
-    await runSorts();
     const summary = `Flows back ${randomUUID()}`;
     const hostile = { ...ask, summary };
     const first = await callTool(sub, "ask", hostile);
