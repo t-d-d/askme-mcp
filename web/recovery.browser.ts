@@ -359,3 +359,54 @@ describe("a poll answer the page cannot read, beside rules it can", () => {
     expect(opened.loads()).toBe(2);
   });
 });
+
+describe("a reload the person cancels", () => {
+  it("does not stop a later reload for an answer the page cannot read", async () => {
+    const list = listAt(new Date());
+    let deployed = false;
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      clock: true,
+      api: {
+        [pagePaths.asks]: new Answering((url) =>
+          deployed ? { version: 4, shape: "new" } : answerPoll(url, list),
+        ),
+        [pagePaths.rules]: rules,
+      },
+    });
+    const opened = view;
+    const { page } = opened;
+    const box = page.getByRole("textbox");
+    await expect.poll(() => box.inputValue()).toBe(rules.text);
+    await box.fill(`${rules.text}\n\n#family is home.`);
+    const asked: string[] = [];
+    page.once("dialog", (dialog) => {
+      asked.push(dialog.type());
+      void dialog.dismiss();
+    });
+    deployed = true;
+    await page.clock.fastForward(pollMs);
+    await expect.poll(() => asked).toEqual(["beforeunload"]);
+    expect(opened.loads()).toBe(1);
+    page.once("dialog", (dialog) => {
+      void dialog.accept();
+    });
+    await expect
+      .poll(async () => {
+        await page.clock.fastForward(pollMs);
+        return opened.loads();
+      })
+      .toBe(2);
+    // The page after the reload finds the first page's mark.
+    const polls = () =>
+      opened.apiCalls.filter(({ path }) => path === pagePaths.asks).length;
+    const after = polls() + 3;
+    await expect
+      .poll(async () => {
+        await page.clock.fastForward(pollMs);
+        return polls();
+      })
+      .toBeGreaterThanOrEqual(after);
+    expect(opened.loads()).toBe(2);
+  });
+});

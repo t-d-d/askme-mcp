@@ -816,10 +816,14 @@ const sortOf = (account: string, askId: string) => ({
   taken: true,
 });
 
-const sentSince = (from: number) =>
-  fakes.queue.sent
-    .slice(from)
-    .map(({ groupId, body, taken }) => ({ groupId, body, taken }));
+const sent = () =>
+  fakes.queue.sent.map(({ groupId, body, taken }) => ({
+    groupId,
+    body,
+    taken,
+  }));
+
+const sentSince = (from: number) => sent().slice(from);
 
 describe("an ask that stops mattering", () => {
   async function lapses(account: string) {
@@ -1028,7 +1032,6 @@ describe("sorting", () => {
       { summary: "Old", area: "Shop", spokenDetail: "Old." },
       storedAt,
     );
-    const from = fakes.queue.sent.length;
     const response = await get(pagePaths.asks, await session(account));
     const { asks } = z
       .object({
@@ -1041,7 +1044,7 @@ describe("sorting", () => {
         sortingUntil: new Date(storedAt.getTime() + sortingMs).toISOString(),
       },
     ]);
-    expect(fakes.queue.sent.slice(from)).toEqual([]);
+    expect(fakes.queue.sent).toEqual([]);
   });
 
   // A replacing ask keeps the old ask's postedAt, but is queued and judged
@@ -1053,10 +1056,9 @@ describe("sorting", () => {
       { summary: "Old", area: "Shop", spokenDetail: "Old." },
       new Date(Date.now() - 40 * 60_000),
     );
-    const from = fakes.queue.sent.length;
     const id = await post(account, { ...ask, replaces: old });
     expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
-    expect(sentSince(from)).toEqual([sortOf(account, id)]);
+    expect(sent()).toEqual([sortOf(account, id)]);
     await runSorts();
   });
 });
@@ -1229,7 +1231,6 @@ describe("saving the rules again", () => {
       { text: "#shop only.", hashtags: ["shop"] },
       savedAt,
     );
-    const from = fakes.queue.sent.length;
     const response = await get(pagePaths.asks, await session(account));
     const { asks } = z
       .object({
@@ -1249,7 +1250,7 @@ describe("saving the rules again", () => {
         sort: { hashtags: ["work"] },
       },
     ]);
-    expect(fakes.queue.sent.slice(from)).toEqual([]);
+    expect(fakes.queue.sent).toEqual([]);
   });
 
   it("sorts again, when saved unchanged, only the asks behind the rules", async () => {
@@ -1324,7 +1325,6 @@ describe("sample asks", () => {
 
   it("are posted one from each of three areas, with no agent connected, and each one's sort is queued", async () => {
     const account = newAccount();
-    const from = fakes.queue.sent.length;
     const response = await sendSamples(account);
     expect(response.status).toBe(204);
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -1334,10 +1334,10 @@ describe("sample asks", () => {
       new Set(sampleAreas.map(({ area }) => area)),
     );
     const { asks } = await list(account);
-    expect(sentSince(from)).toEqual(
+    expect(sent()).toEqual(
       expect.arrayContaining(asks.map(({ id }) => sortOf(account, id))),
     );
-    expect(sentSince(from)).toHaveLength(3);
+    expect(sent()).toHaveLength(3);
     // The sorts run here, so no other test's reply goes to them.
     await runSorts();
   });

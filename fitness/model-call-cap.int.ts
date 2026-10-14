@@ -158,7 +158,6 @@ describe("fitness: a spent cap sends no call (model-call-cap.md)", () => {
     const before = await store.rules(owner);
     await setModelCalls(owner);
     const calls = fakes.model.calls.length;
-    const sent = fakes.queue.sent.length;
     const response = await saveRules(sub, "#home first, then #work.");
     expect(response.status).toBe(429);
     const refusal = refusalSchema.parse(await response.json());
@@ -167,7 +166,7 @@ describe("fitness: a spent cap sends no call (model-call-cap.md)", () => {
     expect(refusal.message).toContain(String(rateLimits.modelCall.limit));
     expect(refusal.message).toContain(nextReset());
     expect(fakes.model.calls).toHaveLength(calls);
-    expect(fakes.queue.sent).toHaveLength(sent);
+    expect(fakes.queue.sent).toEqual([]);
     expect(await store.rules(owner)).toEqual(before);
     expect(lines()).toContainEqual(
       expect.objectContaining({
