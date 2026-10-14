@@ -4,7 +4,7 @@ import {
   samplesPath,
   type AskChange,
 } from "../../shared/page-api";
-import { answerRead, reloadOnce, sessionMarks } from "./reload";
+import { answerRead, pageReloads, reloadOnce, sessionMarks } from "./reload";
 
 export async function load<T>(
   path: string,
@@ -39,7 +39,9 @@ export async function loadDated<T>(
     reloadOnce(
       sessionMarks,
       () => {
-        window.location.reload();
+        pageReloads.reload(() => {
+          window.location.reload();
+        });
       },
       answerPath,
     );
