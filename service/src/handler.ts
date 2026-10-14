@@ -198,20 +198,19 @@ async function serve(
   // fault. So the errors wait for the status, and only a server error logs
   // the first, by its class. A handler for each request keeps one request's
   // errors from another's. The answer itself is passed on as it is (ADR 24).
-  const reported: Error[] = [];
+  let failure: Error | undefined;
   const mcp = createMcpHandler(buildServer, {
     // Every exchange is a short request and response, so a client asking
     // to hold a stream open for change notices is refused at once (ADR 1).
     maxSubscriptions: 0,
     onerror: (error) => {
-      reported.push(error);
+      failure ??= error;
     },
   });
   const response = await mcp.fetch(request, {
     authInfo: { ...authInfo, extra: { ...authInfo.extra, requestId } },
   });
   if (response.status >= 500) {
-    const [failure] = reported;
     log.error("request-failed", {
       status: response.status,
       ...(failure === undefined ? {} : { errorClass: errorClass(failure) }),
