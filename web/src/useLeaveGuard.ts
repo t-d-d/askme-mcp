@@ -1,10 +1,12 @@
 import { useEffect, type MouseEvent } from "react";
+import { pageReloads } from "./reload";
 import type { AskFirst } from "./screen";
 import { elsewhere } from "./toList";
 
 // The screens ask when Back or a typed address changes the fragment, and the
 // browser asks as the tab closes. The screen's own links ask through away,
-// before the address changes, so staying adds nothing to the history.
+// before the address changes, so staying adds nothing to the history. A
+// reload for an answer the page cannot read waits while the guard holds.
 export function useLeaveGuard(
   changed: boolean,
   askFirst: AskFirst,
@@ -17,9 +19,11 @@ export function useLeaveGuard(
       event.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
+    const release = pageReloads.hold();
     return () => {
       askFirst(null);
       window.removeEventListener("beforeunload", warn);
+      release();
     };
   }, [changed, askFirst, leaving]);
   const away = (event: MouseEvent) => {

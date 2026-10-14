@@ -137,6 +137,8 @@ const sentSince = (from: number, sub: string) =>
         z.object({ accountId: z.literal(sub) }).safeParse(message.body).success,
     );
 
+const sentFor = (sub: string) => sentSince(0, sub);
+
 const queueAnswer = z.object({
   batchItemFailures: z.array(z.object({ itemIdentifier: z.string() })),
 });
@@ -164,12 +166,11 @@ describe("fitness: a poll queues nothing (sort-queue.md)", () => {
       { summary: "Sorting", area: "Work", spokenDetail: "Sorting." },
       new Date(Date.now() - 2 * minute),
     );
-    const from = fakes.queue.sent.length;
     const { asks } = await listed(sub);
     expect(asks.map(({ id }) => id).sort()).toEqual([stopped, sorting].sort());
     expect(asks.every(({ sort }) => sort === null)).toBe(true);
     await listed(sub);
-    expect(fakes.queue.sent.slice(from)).toEqual([]);
+    expect(fakes.queue.sent).toEqual([]);
   });
 });
 
@@ -215,10 +216,9 @@ describe("fitness: each send has its own id (sort-queue.md)", () => {
 
   it("gives a repeat of one send the same id, so the queue drops it", async () => {
     const sub = newAccount();
-    const from = fakes.queue.sent.length;
     fakes.queue.loseAnswers(1);
     const id = await post(sub);
-    const sends = sentSince(from, sub);
+    const sends = sentFor(sub);
     expect(sends.map(({ groupId, taken }) => ({ groupId, taken }))).toEqual([
       { groupId: id, taken: true },
       { groupId: id, taken: false },
@@ -240,12 +240,10 @@ describe("fitness: each send has its own id (sort-queue.md)", () => {
         ),
       );
     }
-    const calls = fakes.queue.calls.length;
-    const from = fakes.queue.sent.length;
     await saveRead(sub, "#work, then #home.", ["work", "home"]);
-    expect(fakes.queue.calls.slice(calls).sort()).toEqual([10, 2].sort());
+    expect([...fakes.queue.calls].sort()).toEqual([10, 2].sort());
     expect(
-      sentSince(from, sub)
+      sentFor(sub)
         .map(({ groupId }) => groupId)
         .sort(),
     ).toEqual(ids.sort());
@@ -426,14 +424,13 @@ describe("fitness: an unchanged save calls no model (sort-queue.md)", () => {
     );
     const rulesBefore = await store.rules(owner);
     await setModelCalls(owner);
-    const from = fakes.queue.sent.length;
     const response = await saveRules(sub, "#work first.");
     expect(response.status).toBe(429);
     expect(z.object({ code: z.string() }).parse(await response.json())).toEqual(
       { code: "cap_reached" },
     );
     expect(await store.rules(owner)).toEqual(rulesBefore);
-    expect(sentSince(from, sub)).toEqual([]);
+    expect(sentFor(sub)).toEqual([]);
   });
 
   it("still queues the asks behind the rules while the cap is spent when the text is empty", async () => {
@@ -446,11 +443,8 @@ describe("fitness: an unchanged save calls no model (sort-queue.md)", () => {
       new Date(Date.now() - 40 * minute),
     );
     await setModelCalls(accountId(sub));
-    const from = fakes.queue.sent.length;
     expect((await saveRules(sub, "")).status).toBe(200);
-    expect(sentSince(from, sub).map(({ groupId }) => groupId)).toEqual([
-      behind,
-    ]);
+    expect(sentFor(sub).map(({ groupId }) => groupId)).toEqual([behind]);
   });
 
   it("reads the rules again when their last reading failed, as Try again does", async () => {

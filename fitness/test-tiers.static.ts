@@ -186,7 +186,7 @@ describe("fitness: conformance runs daily and only reads (test-tiers.md)", () =>
     expect(triggers(workflow)).toEqual(["schedule", "workflow_dispatch"]);
     expect(Object.keys(workflow.jobs)).toEqual(["conformance"]);
     expect(runsIn(workflow.jobs.conformance)).toEqual([
-      "npm ci",
+      "npm ci --ignore-scripts",
       "npm run conformance",
     ]);
   });

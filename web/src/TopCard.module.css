@@ -17,8 +17,8 @@
   user-select: none;
 }
 
-.card[data-opened] {
-  opacity: var(--opacity-opened);
+.card[data-opened] .summary {
+  color: var(--text-2);
 }
 
 .meta {

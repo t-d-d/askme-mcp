@@ -4,6 +4,7 @@ import {
   samplesPath,
   type AskChange,
 } from "../../shared/page-api";
+import { answerRead, pageReloads, reloadOnce, sessionMarks } from "./reload";
 
 export async function load<T>(
   path: string,
@@ -29,7 +30,25 @@ export async function loadDated<T>(
     throw new Error(`The API answered ${String(response.status)}.`);
   }
   const ahead = serviceAhead(response, Date.now());
-  return { answer: schema.parse(await response.json()), serviceAhead: ahead };
+  const answer = schema.safeParse(await response.json());
+  // The poll's path carries the version it asks from.
+  const [answerPath = path] = path.split("?");
+  if (!answer.success) {
+    // An answer in a shape the page does not know means a deploy has
+    // changed it, and a newer page can read it.
+    reloadOnce(
+      sessionMarks,
+      () => {
+        pageReloads.reload(() => {
+          window.location.reload();
+        });
+      },
+      answerPath,
+    );
+    throw answer.error;
+  }
+  answerRead(sessionMarks, answerPath);
+  return { answer: answer.data, serviceAhead: ahead };
 }
 
 export class Refusal extends Error {
@@ -145,14 +164,18 @@ async function sendJson(
   return response;
 }
 
+// Null when askme took the save but the page cannot read its answer, as
+// after a deploy that changes it. The save went through, so it is not an
+// error.
 export async function send<T>(
   path: string,
   body: unknown,
   schema: z.ZodType<T>,
   getToken: () => Promise<string | null>,
-): Promise<T> {
+): Promise<T | null> {
   const response = await sendJson("PUT", path, body, getToken);
-  return schema.parse(await response.json());
+  const answer = schema.safeParse(await response.json());
+  return answer.success ? answer.data : null;
 }
 
 export async function changeAsk(

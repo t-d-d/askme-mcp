@@ -68,6 +68,11 @@
   overflow-wrap: anywhere;
 }
 
+/* Focus comes here only from the page, and the heading is not a control. */
+.summary:focus {
+  outline: none;
+}
+
 .listen {
   display: flex;
   align-items: center;

@@ -20,10 +20,10 @@ import {
 } from "../shared/page-api";
 import { noon, stopClockAt } from "../test/clock";
 import { storedItems } from "../test/dynamodb";
-import { fakes, testModelKey } from "../test/fakes";
+import { fakes, modelKeyParameter, testModelKey } from "../test/fakes";
 import { runSorts } from "../test/sorts";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
-import { invoke } from "../test/lambda";
+import { invoke, type LambdaHandler } from "../test/lambda";
 import { captureLogs, lineText } from "../test/logs";
 import { connect, origin } from "../test/mcp";
 import { handler } from "./src/handler";
@@ -465,9 +465,13 @@ describe.each(Object.values(pagePaths))("a call to %s", (path) => {
 const session = (account: string) =>
   issuer.sessionToken({ claims: { sub: account } });
 
-const saveRules = async (account: string, body: unknown) =>
+const saveRules = async (
+  account: string,
+  body: unknown,
+  using: LambdaHandler = handler,
+) =>
   invoke(
-    handler,
+    using,
     new Request(`${origin}${pagePaths.rules}`, {
       method: "PUT",
       headers: {
@@ -488,7 +492,6 @@ const officeHours = {
 
 describe("the rules", () => {
   it("are the example rules for a new account, with the hashtags read from them", async () => {
-    const calls = fakes.model.calls.length;
     const response = await get(pagePaths.rules, await session(newAccount()));
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -497,14 +500,16 @@ describe("the rules", () => {
       hashtags: exampleHashtags,
       readFailed: false,
     });
-    expect(fakes.model.calls).toHaveLength(calls);
+    expect(fakes.model.calls).toEqual([]);
   });
 
   it("are saved, with the hashtags the model read from them, each with its colour", async () => {
+    // A handler loaded afresh has not read the key, whatever ran before.
+    vi.resetModules();
+    const fresh = (await import("./src/handler")).handler;
     const account = newAccount();
-    const calls = fakes.model.calls.length;
     fakes.model.reply({ json: { hashtags: ["shop", "work"], hours: [] } });
-    const response = await saveRules(account, { text: rulesText });
+    const response = await saveRules(account, { text: rulesText }, fresh);
     expect(response.status).toBe(200);
     const saved = {
       text: rulesText,
@@ -518,10 +523,10 @@ describe("the rules", () => {
     expect(
       await (await get(pagePaths.rules, await session(account))).json(),
     ).toEqual(saved);
-    expect(fakes.model.calls.slice(calls)).toEqual([
+    expect(fakes.model.calls).toEqual([
       expect.objectContaining({ authorization: `Bearer ${testModelKey}` }),
     ]);
-    expect(fakes.parameters.asked).toContain("/askme/openrouter/api-key");
+    expect(fakes.parameters.asked).toEqual([modelKeyParameter]);
   });
 
   it("are saved with the time zone sent, and each hashtag's hours, which the list carries too", async () => {
@@ -811,10 +816,14 @@ const sortOf = (account: string, askId: string) => ({
   taken: true,
 });
 
-const sentSince = (from: number) =>
-  fakes.queue.sent
-    .slice(from)
-    .map(({ groupId, body, taken }) => ({ groupId, body, taken }));
+const sent = () =>
+  fakes.queue.sent.map(({ groupId, body, taken }) => ({
+    groupId,
+    body,
+    taken,
+  }));
+
+const sentSince = (from: number) => sent().slice(from);
 
 describe("an ask that stops mattering", () => {
   async function lapses(account: string) {
@@ -949,9 +958,8 @@ describe("sorting", () => {
     const account = newAccount();
     await saveRules(account, { text: "" });
     const id = await post(account);
-    const calls = fakes.model.calls.length;
     await runSorts();
-    expect(fakes.model.calls).toHaveLength(calls);
+    expect(fakes.model.calls).toEqual([]);
     expect(await sorted(account)).toEqual({
       hashtags: [],
       formerHashtags: [],
@@ -962,12 +970,8 @@ describe("sorting", () => {
   it("posts the ask when the queue cannot take its sort, and it waits unsorted", async () => {
     const account = newAccount();
     fakes.queue.failing = true;
-    try {
-      const id = await post(account);
-      expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
-    } finally {
-      fakes.queue.failing = false;
-    }
+    const id = await post(account);
+    expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
   });
 
   it("posts the ask when the queue answers but takes none of it, and it waits unsorted", async () => {
@@ -995,15 +999,11 @@ describe("sorting", () => {
   it(`posts the ask, waiting at most ${String(sortRequestTimeoutMs)}ms on a queue that does not answer, and it waits unsorted`, async () => {
     const account = newAccount();
     fakes.queue.hanging = true;
-    try {
-      const started = Date.now();
-      const id = await post(account);
-      // The rest of the post, on loopback, takes well under a second.
-      expect(Date.now() - started).toBeLessThan(sortRequestTimeoutMs + 1000);
-      expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
-    } finally {
-      fakes.queue.hanging = false;
-    }
+    const started = Date.now();
+    const id = await post(account);
+    // The rest of the post, on loopback, takes well under a second.
+    expect(Date.now() - started).toBeLessThan(sortRequestTimeoutMs + 1000);
+    expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
   });
 
   it("leaves the ask unsorted when the model fails, and the queue delivers it again, with no poll", async () => {
@@ -1032,7 +1032,6 @@ describe("sorting", () => {
       { summary: "Old", area: "Shop", spokenDetail: "Old." },
       storedAt,
     );
-    const from = fakes.queue.sent.length;
     const response = await get(pagePaths.asks, await session(account));
     const { asks } = z
       .object({
@@ -1045,7 +1044,7 @@ describe("sorting", () => {
         sortingUntil: new Date(storedAt.getTime() + sortingMs).toISOString(),
       },
     ]);
-    expect(fakes.queue.sent.slice(from)).toEqual([]);
+    expect(fakes.queue.sent).toEqual([]);
   });
 
   // A replacing ask keeps the old ask's postedAt, but is queued and judged
@@ -1057,10 +1056,9 @@ describe("sorting", () => {
       { summary: "Old", area: "Shop", spokenDetail: "Old." },
       new Date(Date.now() - 40 * 60_000),
     );
-    const from = fakes.queue.sent.length;
     const id = await post(account, { ...ask, replaces: old });
     expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
-    expect(sentSince(from)).toEqual([sortOf(account, id)]);
+    expect(sent()).toEqual([sortOf(account, id)]);
     await runSorts();
   });
 });
@@ -1233,7 +1231,6 @@ describe("saving the rules again", () => {
       { text: "#shop only.", hashtags: ["shop"] },
       savedAt,
     );
-    const from = fakes.queue.sent.length;
     const response = await get(pagePaths.asks, await session(account));
     const { asks } = z
       .object({
@@ -1253,7 +1250,7 @@ describe("saving the rules again", () => {
         sort: { hashtags: ["work"] },
       },
     ]);
-    expect(fakes.queue.sent.slice(from)).toEqual([]);
+    expect(fakes.queue.sent).toEqual([]);
   });
 
   it("sorts again, when saved unchanged, only the asks behind the rules", async () => {
@@ -1328,7 +1325,6 @@ describe("sample asks", () => {
 
   it("are posted one from each of three areas, with no agent connected, and each one's sort is queued", async () => {
     const account = newAccount();
-    const from = fakes.queue.sent.length;
     const response = await sendSamples(account);
     expect(response.status).toBe(204);
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -1338,10 +1334,10 @@ describe("sample asks", () => {
       new Set(sampleAreas.map(({ area }) => area)),
     );
     const { asks } = await list(account);
-    expect(sentSince(from)).toEqual(
+    expect(sent()).toEqual(
       expect.arrayContaining(asks.map(({ id }) => sortOf(account, id))),
     );
-    expect(sentSince(from)).toHaveLength(3);
+    expect(sent()).toHaveLength(3);
     // The sorts run here, so no other test's reply goes to them.
     await runSorts();
   });
@@ -1350,15 +1346,12 @@ describe("sample asks", () => {
     const account = newAccount();
     await runSorts();
     await sendSamples(account);
-    const calls = fakes.model.calls.length;
     const reply = {
       json: { hashtags: ["shop"], level: "high", reason: "A customer waits." },
     };
     fakes.model.reply(reply, reply, reply);
     expect(await runSorts()).toBe(3);
-    const prompts = fakes.model.calls
-      .slice(calls)
-      .map(({ body }) => JSON.stringify(body));
+    const prompts = fakes.model.calls.map(({ body }) => JSON.stringify(body));
     expect(prompts).toHaveLength(3);
     for (const prompt of prompts) {
       expect(prompt).toContain("#work is my day job.");
