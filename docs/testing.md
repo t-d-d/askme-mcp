@@ -21,7 +21,7 @@ A test's file name sets its tier, and its tier sets what it may touch. An assert
 
 Vitest runs every tier. The browser tier drives headless Chromium with Playwright, used as a library inside Vitest.
 
-If the live check fails, the deploy run puts back the last build that passed it, and the run still fails, so the owner reverts the pull request ([ADR 25](adr/0025-roll-back-to-live-ok.md)).
+If a deploy fails partway, or its live check fails, the run puts back the last build that passed the live check. The run still fails, so the owner reverts the pull request ([ADR 25](adr/0025-roll-back-to-live-ok.md), [ADR 33](adr/0033-roll-back-a-partial-deploy.md)).
 
 ## Stand-ins for outside services
 
