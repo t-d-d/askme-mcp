@@ -2,6 +2,7 @@
 // stand-ins for the model and Parameter Store (ADR 9).
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
+import { newAccount } from "../test/caller";
 import { fakes, modelKeyParameter, testModelKey } from "../test/fakes";
 import { captureLogs } from "../test/logs";
 import { jobAccount } from "./src/identity";
@@ -48,7 +49,7 @@ const runFor = (
 it("reads the model's key on its first sort, and keeps it for the runs after", async () => {
   vi.resetModules();
   const fresh = (await import("./src/sorter")).handler;
-  const sub = `user_${randomUUID().slice(0, 8)}`;
+  const sub = newAccount();
   const account = jobAccount(sub);
   await store.saveRules(
     account,
@@ -104,7 +105,7 @@ describe("a sort the model refuses on the last delivery", () => {
     [500, "warn"],
     [503, "warn"],
   ])("logs a %i at %s", async (status, level) => {
-    const sub = `user_${randomUUID().slice(0, 8)}`;
+    const sub = newAccount();
     const account = jobAccount(sub);
     await store.saveRules(
       account,

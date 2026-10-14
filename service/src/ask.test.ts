@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { agentAsk } from "../../test/asks";
+import { testCaller } from "../../test/caller";
 import { fakeStore } from "../../test/fake-store";
 import { captureLogs, lineText } from "../../test/logs";
 import { askTool, limits } from "./ask";
 import { Refused, retryBudget } from "./errors";
-import { callerOf } from "./identity";
 import type { SortRequests } from "./jobs";
 import { createLogger } from "./log";
 import { rateLimits } from "./rate";
@@ -108,18 +109,7 @@ const storeAnswering = (
         : Promise.reject(new Error(`Counted against ${limit}.`)),
   });
 
-const input = {
-  summary: "Approve the plan",
-  area: "Home",
-  spoken_detail: "The electrician needs a yes or no.",
-};
-
-const caller = callerOf({
-  token: "test",
-  clientId: "test",
-  scopes: ["asks:create"],
-  extra: { accountId: "user_1", requestId: "req-1" },
-});
+const caller = testCaller();
 
 const sorter = (refuses = false) => {
   const handed: { account: string; askIds: readonly string[] }[] = [];
@@ -141,7 +131,7 @@ const run = (
   counted: Counted = { counted: true },
   sorts: SortRequests = sorter().sorts,
 ) =>
-  askTool.run(input, {
+  askTool.run(agentAsk, {
     caller,
     log: createLogger(caller.requestId),
     store: storeAnswering(posting, counted),
@@ -263,7 +253,7 @@ describe("the ask tool's stale_after_minutes", () => {
   const most = limits.staleAfterMinutes;
   const refusal = `must be a whole number of minutes from 1 to ${String(most)}`;
   const parse = (minutes: unknown) =>
-    askTool.input.safeParse({ ...input, stale_after_minutes: minutes });
+    askTool.input.safeParse({ ...agentAsk, stale_after_minutes: minutes });
 
   it("allows at most 30 days, as an ask is deleted a month after it is posted", () => {
     expect(most).toBe(30 * 24 * 60);
@@ -287,7 +277,7 @@ describe("the ask tool's stale_after_minutes", () => {
 
   it("hands the store the minutes as the agent sent them, and none when left out", async () => {
     const sent: NewAsk[] = [];
-    for (const args of [{ ...input, stale_after_minutes: 45 }, input]) {
+    for (const args of [{ ...agentAsk, stale_after_minutes: 45 }, agentAsk]) {
       await askTool.run(args, {
         caller,
         log: createLogger(caller.requestId),

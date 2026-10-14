@@ -6,6 +6,7 @@ import {
   type ConnectionAnswer,
   type PageAsk,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import { openPage, Status, type OpenPage } from "../test/browser";
 
 type Page = OpenPage["page"];
@@ -13,14 +14,12 @@ type Page = OpenPage["page"];
 const phone = { width: 390, height: 844 };
 const minute = 60_000;
 
-const ask = (index: number): PageAsk => ({
-  id: `ask${String(index)}`,
-  summary: `Ask number ${String(index + 1)}`,
-  spokenDetail: `The spoken detail of ask number ${String(index + 1)}`,
-  postedAt: new Date(Date.now() - (60 - index) * minute).toISOString(),
-  opened: false,
-  sort: null,
-});
+const ask = (index: number): PageAsk =>
+  pageAsk({
+    id: `ask${String(index)}`,
+    summary: `Ask number ${String(index + 1)}`,
+    postedAt: new Date(Date.now() - (60 - index) * minute).toISOString(),
+  });
 
 // Longer than the screen: the top card and nineteen rows.
 const list: AsksAnswer = {

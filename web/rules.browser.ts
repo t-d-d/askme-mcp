@@ -4,6 +4,7 @@ import {
   type AsksAnswer,
   type RulesAnswer,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import {
   Answering,
   computedColour,
@@ -66,15 +67,14 @@ const list: AsksAnswer = {
 const behindUntil = (
   sortingUntil: string,
   postedAt = new Date(Date.parse(sortingUntil) - 30 * minute).toISOString(),
-): AsksAnswer["asks"][number] => ({
-  id: "a",
-  summary: "Renew the shop's domain?",
-  spokenDetail: "The domain lapses on Friday.",
-  postedAt,
-  opened: false,
-  sortingUntil,
-  sort: null,
-});
+): AsksAnswer["asks"][number] =>
+  pageAsk({
+    id: "a",
+    summary: "Renew the shop's domain?",
+    spokenDetail: "The domain lapses on Friday.",
+    postedAt,
+    sortingUntil,
+  });
 
 const behind = (offset: number): AsksAnswer => ({
   ...list,

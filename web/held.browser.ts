@@ -7,6 +7,7 @@ import {
   type Hashtag,
   type Level,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import {
   allClearGaps,
   answerPoll,
@@ -49,14 +50,13 @@ const ask = (
   summary: string,
   postedAt: Date,
   sort: { hashtags: string[]; level: Level },
-) => ({
-  id,
-  summary,
-  spokenDetail: `The spoken detail of ${summary}`,
-  postedAt: new Date(postedAt.getTime() - 30 * minute).toISOString(),
-  opened: false,
-  sort: { ...sort, reason: "Sorted for the test." },
-});
+) =>
+  pageAsk({
+    id,
+    summary,
+    postedAt: new Date(postedAt.getTime() - 30 * minute).toISOString(),
+    sort: { ...sort, reason: "Sorted for the test." },
+  });
 
 const asksAt = (time: Date) => [
   ask("a", "Merge the fix for checkout rounding?", time, {

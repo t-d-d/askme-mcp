@@ -1,6 +1,5 @@
 // The local DynamoDB runs one transaction at a time and never cancels one
 // for a conflict, so a recorder in front of it cancels the ones a test names.
-import { randomUUID } from "node:crypto";
 import type { Client } from "@modelcontextprotocol/client";
 import {
   afterAll,
@@ -13,15 +12,17 @@ import {
   vi,
 } from "vitest";
 import { z } from "zod";
+import { agentAsk } from "../test/asks";
+import { accountId, newAccount } from "../test/caller";
 import {
   recordDatabase,
   storedItems,
   type DatabaseRecorder,
 } from "../test/dynamodb";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
+import { useFakeIssuer } from "../test/identity";
 import { connect, refusalOf } from "../test/mcp";
 import { handler } from "./src/handler";
-import { callerOf, type AccountId } from "./src/identity";
+import type { AccountId } from "./src/identity";
 import { keys } from "./src/store/keys";
 import { createStore, writeTries, type Resolution } from "./src/store/store";
 
@@ -31,12 +32,10 @@ const tableName = inject("tableName");
 // The other writer, which bypasses the recorder.
 const elsewhere = createStore({ tableName, endpoint });
 
-let issuer: FakeIssuer;
+const issuer = useFakeIssuer();
 let database: DatabaseRecorder;
 beforeAll(async () => {
-  issuer = await startFakeIssuer();
   database = await recordDatabase(endpoint);
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
   vi.stubEnv("DYNAMODB_ENDPOINT", database.endpoint);
 });
 afterEach(() => {
@@ -46,28 +45,17 @@ afterAll(async () => {
   vi.unstubAllEnvs();
   elsewhere.close();
   await database.close();
-  await issuer.close();
 });
 
-function newAccount(): { sub: string; owner: AccountId } {
-  const sub = `user_${randomUUID().slice(0, 8)}`;
-  const { accountId } = callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: sub, requestId: "r" },
-  });
-  return { sub, owner: accountId };
+function newOwner(): { sub: string; owner: AccountId } {
+  const sub = newAccount();
+  return { sub, owner: accountId(sub) };
 }
 
 const agentFor = async (sub: string) =>
   connect(handler, { token: await issuer.token({ claims: { sub } }) });
 
-const ask = {
-  summary: "Approve the plan for the kitchen rewiring",
-  area: "Home renovation",
-  spoken_detail: "The electrician needs a yes or no before Friday.",
-};
+const ask = agentAsk;
 
 const post = async (agent: Client) =>
   z
@@ -91,7 +79,7 @@ const itemsOf = async (owner: AccountId, id: string) =>
 
 describe("a write that meets another transaction", () => {
   it("posts the ask once when its first try is cancelled", async () => {
-    const { sub, owner } = newAccount();
+    const { sub, owner } = newOwner();
     const agent = await agentFor(sub);
     try {
       database.conflict(1);
@@ -108,7 +96,7 @@ describe("a write that meets another transaction", () => {
   });
 
   it("resolves the ask once when its first try is cancelled", async () => {
-    const { sub, owner } = newAccount();
+    const { sub, owner } = newOwner();
     const agent = await agentFor(sub);
     try {
       const id = await post(agent);
@@ -133,7 +121,7 @@ describe("a write that meets another transaction", () => {
   });
 
   it("answers resolved when another resolve closed the ask while it waited", async () => {
-    const { sub, owner } = newAccount();
+    const { sub, owner } = newOwner();
     const agent = await agentFor(sub);
     try {
       const id = await post(agent);
@@ -166,7 +154,7 @@ describe("a write that meets another transaction", () => {
 
   // DynamoDB can name a failed condition and a conflict in one answer.
   it("does not try again when a condition failed as well", async () => {
-    const { sub, owner } = newAccount();
+    const { sub, owner } = newOwner();
     const agent = await agentFor(sub);
     try {
       const id = await post(agent);
@@ -187,7 +175,7 @@ describe("a write that meets another transaction", () => {
   });
 
   it("answers service_unavailable when every try is cancelled, and posts nothing", async () => {
-    const { sub, owner } = newAccount();
+    const { sub, owner } = newOwner();
     const agent = await agentFor(sub);
     try {
       database.conflict(Infinity);

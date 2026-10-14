@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
 import type { Client } from "@modelcontextprotocol/client";
 import { McpServer } from "@modelcontextprotocol/server";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
+import { agentAsk } from "../test/asks";
+import { newAccount } from "../test/caller";
+import { useFakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, lineText } from "../test/logs";
 import { connect, eras, mcpUrl, metadataUrl, refusalOf } from "../test/mcp";
@@ -16,21 +17,10 @@ const posted = z.strictObject({
   status: z.literal("posted"),
 });
 
-const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
-
-let issuer: FakeIssuer;
-beforeAll(async () => {
-  issuer = await startFakeIssuer();
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
-});
-afterAll(async () => {
-  vi.unstubAllEnvs();
-  await issuer.close();
-});
+const issuer = useFakeIssuer();
 
 const ask = {
-  summary: "Approve the plan for the kitchen rewiring",
-  area: "Home renovation",
+  ...agentAsk,
   spoken_detail:
     "The electrician needs a yes or no on the rewiring plan before Friday.",
   action_link: "https://github.com/t-d-d/askme-mcp/pull/1",

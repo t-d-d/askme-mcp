@@ -5,6 +5,7 @@ import {
   type AsksAnswer,
   type PageAsk,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import {
   Answering,
   answerPoll,
@@ -15,14 +16,7 @@ import { pollMs } from "../web/src/poll";
 
 const phone = { width: 390, height: 844 };
 
-const ask = (id: string, summary: string): PageAsk => ({
-  id,
-  summary,
-  spokenDetail: `The spoken detail of ${summary}`,
-  postedAt: new Date().toISOString(),
-  opened: false,
-  sort: null,
-});
+const ask = (id: string, summary: string): PageAsk => pageAsk({ id, summary });
 
 const first = ask("a", "Merge the fix for checkout rounding? Tests pass.");
 const second = ask("b", "Which date format should the export use?");

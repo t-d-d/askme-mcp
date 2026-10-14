@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { askTool } from "../service/src/ask";
@@ -6,8 +5,9 @@ import { handler } from "../service/src/handler";
 import { events } from "../service/src/log";
 import { handler as sorter, sortDeliveries } from "../service/src/sorter";
 import { askChangePaths, pagePaths } from "../shared/page-api";
+import { newAccount } from "../test/caller";
 import { fakes } from "../test/fakes";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
+import { useFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, lineText } from "../test/logs";
 import { connect, eras, mcpUrl, origin, refusalOf } from "../test/mcp";
@@ -25,7 +25,7 @@ const ask = {
   replaces: `ask-${marker}`,
 };
 
-let issuer: FakeIssuer;
+const issuer = useFakeIssuer();
 let capture: ReturnType<typeof captureLogs>;
 const tokens: string[] = [];
 const token = async (...args: Parameters<FakeIssuer["token"]>) => {
@@ -34,15 +34,11 @@ const token = async (...args: Parameters<FakeIssuer["token"]>) => {
   return value;
 };
 
-beforeAll(async () => {
-  issuer = await startFakeIssuer();
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
+beforeAll(() => {
   capture = captureLogs();
 });
-afterAll(async () => {
+afterAll(() => {
   capture.restore();
-  vi.unstubAllEnvs();
-  await issuer.close();
 });
 
 describe("fitness: no content reaches the output (logging.md)", () => {
@@ -154,7 +150,7 @@ describe("fitness: no content reaches the output (logging.md)", () => {
 
   it("runs the paths that save the rules and sort an ask", async () => {
     // An account of its own, so its rules reach no other test file.
-    const sub = `user_${randomUUID().slice(0, 8)}`;
+    const sub = newAccount();
     const agent = await connect(handler, {
       token: await token({ claims: { sub } }),
     });
@@ -198,7 +194,7 @@ describe("fitness: no content reaches the output (logging.md)", () => {
   });
 
   it("runs the paths that open and dismiss an ask from the page", async () => {
-    const sub = `user_${randomUUID().slice(0, 8)}`;
+    const sub = newAccount();
     const agent = await connect(handler, {
       token: await token({ claims: { sub } }),
     });

@@ -1,27 +1,25 @@
-import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { handler, routes } from "../service/src/handler";
 import { asksAnswer, pagePaths } from "../shared/page-api";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
+import { agentAsk } from "../test/asks";
+import { newAccount } from "../test/caller";
+import {
+  startFakeIssuer,
+  useFakeIssuer,
+  type FakeIssuer,
+} from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, mcpUrl, metadataUrl, origin, refusalOf } from "../test/mcp";
 
-const ask = {
-  summary: "Approve the plan for the kitchen rewiring",
-  area: "Home renovation",
-  spoken_detail: "The electrician needs a yes or no before Friday.",
-};
+const ask = agentAsk;
 
-let issuer: FakeIssuer;
+const issuer = useFakeIssuer();
+// An issuer the service does not trust, so CLERK_ISSUER never names it.
 let otherIssuer: FakeIssuer;
 beforeAll(async () => {
-  issuer = await startFakeIssuer();
   otherIssuer = await startFakeIssuer();
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
 });
 afterAll(async () => {
-  vi.unstubAllEnvs();
-  await issuer.close();
   await otherIssuer.close();
 });
 
@@ -142,10 +140,8 @@ describe("fitness: the metadata is served (identity.md)", () => {
 });
 
 describe("fitness: the account comes from the token (identity.md)", () => {
-  const sub = () => `user_${randomUUID().slice(0, 8)}`;
-
   it("lists the caller's own asks, whatever account the request names", async () => {
-    const [owner, caller] = [sub(), sub()];
+    const [owner, caller] = [newAccount(), newAccount()];
     const agent = await connect(handler, {
       token: await issuer.token({ claims: { sub: owner } }),
     });
@@ -166,7 +162,7 @@ describe("fitness: the account comes from the token (identity.md)", () => {
   });
 
   it("refuses an ask that names an account, and stores nothing for it", async () => {
-    const [owner, caller] = [sub(), sub()];
+    const [owner, caller] = [newAccount(), newAccount()];
     const agent = await connect(handler, {
       token: await issuer.token({ claims: { sub: caller } }),
     });

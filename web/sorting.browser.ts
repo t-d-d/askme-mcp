@@ -5,6 +5,7 @@ import {
   type AsksAnswer,
   type Hashtag,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import {
   allClearGaps,
   answerPoll,
@@ -41,17 +42,15 @@ const hashtags: Hashtag[] = [
   },
 ];
 
-const ask = (id: string, hashtag: string, sortingUntil?: Date) => ({
-  id,
-  summary: `Ask ${id}`,
-  spokenDetail: `The spoken detail of ask ${id}`,
-  postedAt: new Date(evening.getTime() - 30 * minute).toISOString(),
-  opened: false,
-  sort: { hashtags: [hashtag], level: "normal" as const, reason: "Sorted." },
-  ...(sortingUntil === undefined
-    ? {}
-    : { sortingUntil: sortingUntil.toISOString() }),
-});
+const ask = (id: string, hashtag: string, sortingUntil?: Date) =>
+  pageAsk({
+    id,
+    postedAt: new Date(evening.getTime() - 30 * minute).toISOString(),
+    sort: { hashtags: [hashtag], level: "normal", reason: "Sorted." },
+    ...(sortingUntil === undefined
+      ? {}
+      : { sortingUntil: sortingUntil.toISOString() }),
+  });
 
 const listOf = (asks: AsksAnswer["asks"]): AsksAnswer => ({
   version: 3,

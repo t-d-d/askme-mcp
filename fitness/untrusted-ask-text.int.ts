@@ -1,29 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
+import { describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
 import { reasonLimit } from "../service/src/sort";
 import { sortAttempts } from "../service/src/sorter";
 import { sortKeys } from "../service/src/store/keys";
 import { pagePaths } from "../shared/page-api";
+import { newAccount } from "../test/caller";
 import { storedItems } from "../test/dynamodb";
 import { fakes, type ModelCall } from "../test/fakes";
 import { runSorts } from "../test/sorts";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
+import { useFakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, origin } from "../test/mcp";
 
-let issuer: FakeIssuer;
-beforeAll(async () => {
-  issuer = await startFakeIssuer();
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
-});
-afterAll(async () => {
-  vi.unstubAllEnvs();
-  await issuer.close();
-});
-
-const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
+const issuer = useFakeIssuer();
 
 const rules = "#work is my day job.\n\n#shop is my online shop.";
 

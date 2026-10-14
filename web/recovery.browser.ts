@@ -6,6 +6,7 @@ import {
   type AsksAnswer,
   type RulesAnswer,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import {
   Answering,
   answerPoll,
@@ -25,18 +26,17 @@ const ask = (
   summary: string,
   postedAt: Date,
   hashtag: string,
-): AsksAnswer["asks"][number] => ({
-  id,
-  summary,
-  spokenDetail: `The spoken detail of ${summary}`,
-  postedAt: new Date(postedAt.getTime() - 30 * minute).toISOString(),
-  opened: false,
-  sort: {
-    hashtags: [hashtag],
-    level: "normal",
-    reason: "Sorted for the test.",
-  },
-});
+): AsksAnswer["asks"][number] =>
+  pageAsk({
+    id,
+    summary,
+    postedAt: new Date(postedAt.getTime() - 30 * minute).toISOString(),
+    sort: {
+      hashtags: [hashtag],
+      level: "normal",
+      reason: "Sorted for the test.",
+    },
+  });
 
 const listAt = (time: Date): AsksAnswer => ({
   version: 3,

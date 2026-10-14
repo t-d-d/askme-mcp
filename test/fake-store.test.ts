@@ -1,13 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { callerOf } from "../service/src/identity";
+import { accountId } from "./caller";
 import { fakeStore } from "./fake-store";
 
-const { accountId: account } = callerOf({
-  token: "test",
-  clientId: "test",
-  scopes: [],
-  extra: { accountId: "user_1", requestId: "req-1" },
-});
+const account = accountId("user_1");
 const now = new Date("2026-10-13T09:30:00.000Z");
 
 describe("a fake store", () => {

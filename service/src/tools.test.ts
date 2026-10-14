@@ -2,10 +2,10 @@ import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { testCaller } from "../../test/caller";
 import { fakeStore } from "../../test/fake-store";
 import { captureLogs, lineText } from "../../test/logs";
 import { refusalOf } from "../../test/mcp";
-import { callerOf } from "./identity";
 import type { SortRequests } from "./jobs";
 import { addTool, type ToolDefinition } from "./tools";
 
@@ -39,17 +39,7 @@ const brokenTool: ToolDefinition<typeof input, typeof output> = {
 describe("a tool whose answer breaks its own schema", () => {
   it("is refused as service_unavailable, and logged as a failure", async () => {
     const server = new McpServer({ name: "askme", version: "1.0.0" });
-    addTool(
-      server,
-      brokenTool,
-      callerOf({
-        token: "test",
-        clientId: "test",
-        scopes: ["asks:create"],
-        extra: { accountId: "user_1", requestId: "req-1" },
-      }),
-      { store, sorts },
-    );
+    addTool(server, brokenTool, testCaller(), { store, sorts });
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     await server.connect(serverSide);
     const client = new Client({ name: "askme-test", version: "1.0.0" });
@@ -71,17 +61,7 @@ describe("a tool whose answer breaks its own schema", () => {
 describe("a tool called without the asks:create scope", () => {
   it("is refused in words that fit resolve as well as ask", async () => {
     const server = new McpServer({ name: "askme", version: "1.0.0" });
-    addTool(
-      server,
-      brokenTool,
-      callerOf({
-        token: "test",
-        clientId: "test",
-        scopes: [],
-        extra: { accountId: "user_1", requestId: "req-1" },
-      }),
-      { store, sorts },
-    );
+    addTool(server, brokenTool, testCaller({ scopes: [] }), { store, sorts });
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     await server.connect(serverSide);
     const client = new Client({ name: "askme-test", version: "1.0.0" });

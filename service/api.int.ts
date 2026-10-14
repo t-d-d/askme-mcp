@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import {
   afterAll,
   afterEach,
-  beforeAll,
   describe,
   expect,
   inject,
@@ -18,16 +17,17 @@ import {
   samplesPath,
   timeZoneLimit,
 } from "../shared/page-api";
+import { agentAsk } from "../test/asks";
+import { accountId, newAccount } from "../test/caller";
 import { noon, stopClockAt } from "../test/clock";
 import { storedItems } from "../test/dynamodb";
 import { fakes, modelKeyParameter, testModelKey } from "../test/fakes";
 import { runSorts } from "../test/sorts";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
+import { useFakeIssuer } from "../test/identity";
 import { invoke, type LambdaHandler } from "../test/lambda";
 import { captureLogs, lineText } from "../test/logs";
 import { connect, origin } from "../test/mcp";
 import { handler } from "./src/handler";
-import { callerOf } from "./src/identity";
 import { sortRequestTimeoutMs } from "./src/jobs";
 import { rateLimits } from "./src/rate";
 import { exampleRules } from "./src/rules";
@@ -41,18 +41,7 @@ import {
 } from "./src/store/store";
 import { sortingMs } from "./src/view";
 
-let issuer: FakeIssuer;
-beforeAll(async () => {
-  issuer = await startFakeIssuer();
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
-});
-afterAll(async () => {
-  vi.unstubAllEnvs();
-  await issuer.close();
-});
-
-// Every test file shares the table, so each test makes its own account.
-const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
+const issuer = useFakeIssuer();
 
 const get = (path: string, token?: string) =>
   invoke(
@@ -63,9 +52,7 @@ const get = (path: string, token?: string) =>
   );
 
 const ask = {
-  summary: "Approve the plan for the kitchen rewiring",
-  area: "Home renovation",
-  spoken_detail: "The electrician needs a yes or no before Friday.",
+  ...agentAsk,
   action_link: "https://github.com/t-d-d/askme-mcp/pull/1",
 };
 
@@ -781,14 +768,6 @@ async function sorted(account: string) {
     .parse(await response.json());
 }
 
-const ownerOf = (account: string) =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: account, requestId: "r" },
-  }).accountId;
-
 // For writing past the service.
 const store = createStore({
   tableName: inject("tableName"),
@@ -805,7 +784,7 @@ async function postEarlier(
   newAsk: NewAsk,
   at: Date,
 ): Promise<string> {
-  const posting = await store.postAsk(ownerOf(account), newAsk, at);
+  const posting = await store.postAsk(accountId(account), newAsk, at);
   if (posting.kind !== "posted") throw new Error("Not posted.");
   return posting.id;
 }
@@ -1058,7 +1037,7 @@ describe("sorting", () => {
 });
 
 async function sortedEarlier(account: string, at: Date): Promise<string> {
-  const owner = ownerOf(account);
+  const owner = accountId(account);
   const { version } = await store.saveRules(
     owner,
     { text: "#work first.", hashtags: ["work"] },
@@ -1222,7 +1201,7 @@ describe("saving the rules again", () => {
     // Rules saved ten minutes ago, whose sort of the ask has not landed.
     const savedAt = new Date(Date.now() - 10 * 60_000);
     await store.saveRules(
-      ownerOf(account),
+      accountId(account),
       { text: "#shop only.", hashtags: ["shop"] },
       savedAt,
     );
@@ -1378,7 +1357,7 @@ describe("sample asks", () => {
   it(`are refused at the rate limit with rate_limited, which says how long to wait`, async () => {
     const account = newAccount();
     for (let n = 1; n <= rateLimits.ask.limit; n += 1) {
-      await store.countCall(ownerOf(account), "ask", noon);
+      await store.countCall(accountId(account), "ask", noon);
     }
     stopClockAt(noon);
     const response = await sendSamples(account);
@@ -1401,7 +1380,7 @@ describe("sample asks", () => {
     // over its rate.
     for (let n = 1; n <= dailyAskCap; n += 1) {
       await store.postAsk(
-        ownerOf(account),
+        accountId(account),
         {
           summary: `Ask ${String(n)}`,
           area: "Home",
@@ -1435,11 +1414,11 @@ describe("the list while the cap on model calls is spent", () => {
   it("carries when the cap resets while that time is ahead, and drops it once it has passed", async () => {
     const ahead = newAccount();
     const resets = new Date(Date.now() + 60 * 60_000);
-    await store.recordModelCapReset(ownerOf(ahead), resets);
+    await store.recordModelCapReset(accountId(ahead), resets);
     expect(await capResetsAt(ahead)).toBe(resets.toISOString());
     const passed = newAccount();
     await store.recordModelCapReset(
-      ownerOf(passed),
+      accountId(passed),
       new Date(Date.now() - 60_000),
     );
     expect(await capResetsAt(passed)).toBeUndefined();

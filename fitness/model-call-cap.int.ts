@@ -1,39 +1,29 @@
-import { randomUUID } from "node:crypto";
 import {
   afterAll,
   afterEach,
-  beforeAll,
   beforeEach,
   describe,
   expect,
   inject,
   it,
-  vi,
 } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
-import { callerOf, type AccountId } from "../service/src/identity";
 import { rateLimits } from "../service/src/rate";
 import { handler as sorter } from "../service/src/sorter";
 import { createStore } from "../service/src/store/store";
 import { pagePaths } from "../shared/page-api";
+import { agentAsk } from "../test/asks";
+import { accountId, newAccount } from "../test/caller";
 import { fakes } from "../test/fakes";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
+import { useFakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, type Captured } from "../test/logs";
 import { connect, origin } from "../test/mcp";
 import { noon, startClockAt } from "../test/clock";
 import { modelCallsMade, nextReset, setModelCalls } from "../test/model-cap";
 
-let issuer: FakeIssuer;
-beforeAll(async () => {
-  issuer = await startFakeIssuer();
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
-});
-afterAll(async () => {
-  vi.unstubAllEnvs();
-  await issuer.close();
-});
+const issuer = useFakeIssuer();
 
 // Noon UTC keeps each test far from the end of the day the cap counts in.
 beforeEach(() => {
@@ -54,24 +44,10 @@ const lines = () =>
     ...z.record(z.string(), z.unknown()).parse(args[0]),
   }));
 
-const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
-
-const accountId = (sub: string): AccountId =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: sub, requestId: "r" },
-  }).accountId;
-
 const deliver = () =>
   fakes.queue.deliver((event) => sorter(event, { awsRequestId: "sort-1" }));
 
-const ask = {
-  summary: "Approve the plan for the kitchen rewiring",
-  area: "Home renovation",
-  spoken_detail: "The electrician needs a yes or no before Friday.",
-};
+const ask = agentAsk;
 
 async function post(sub: string, summary = ask.summary) {
   const client = await connect(handler, {
