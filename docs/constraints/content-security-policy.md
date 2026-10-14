@@ -29,9 +29,10 @@ loading more code, or sending what it reads, anywhere else.
 - No directive allows 'unsafe-eval', and script-src does not allow
   'unsafe-inline'.
 - The page sets zod's jitless option before it makes any schema.
-- The policy is sent as Content-Security-Policy. A new or narrower
-  policy may go out first as Content-Security-Policy-Report-Only, until
-  a deploy has passed the live check with it.
+- The policy is sent as Content-Security-Policy, with no
+  Content-Security-Policy-Report-Only header. A pull request that
+  narrows the policy sends it enforcing. If the live check then fails,
+  the run rolls the deploy back (repo-and-delivery.md).
 - The browser tier serves the built page with the policy and fails on
   any violation. The live check records every violation on the page's
   address during its signed-in run, and fails on any.
@@ -50,8 +51,12 @@ loading more code, or sending what it reads, anywhere else.
   someone edited it.
 - Add 'unsafe-eval', or 'unsafe-inline' in script-src, to quiet a
   violation. Change what needs it instead, as jitless does for zod.
-- Put the CSP in a meta tag: a meta tag cannot carry frame-ancestors or
-  report-only.
+- Put the CSP in a meta tag: a meta tag cannot carry frame-ancestors.
+- Send a Content-Security-Policy-Report-Only header to try a narrower
+  policy, in place of the enforcing one or beside it. In its place,
+  nothing is enforced while the trial runs. Beside it, every CSP check
+  would have to change, for a narrowing that a failed live check
+  already rolls back (ADR 34).
 - Add the header with a CloudFront Function or Lambda@Edge: hosting.md
   puts no code in front of the page.
 - Add a route for report-uri or report-to: it would take writes without
@@ -66,4 +71,4 @@ challenge, and a challenge may load more.
 The checks listen on each page, not in workers, so a pull request that
 adds a worker which loads anything checks those loads against the policy
 by hand.
-History: [ADR 28](../adr/0028-page-csp.md), [ADR 30](../adr/0030-csp-allows-clerk-protect.md), [ADR 32](../adr/0032-clerk-protect-probe-ports.md)
+History: [ADR 28](../adr/0028-page-csp.md), [ADR 30](../adr/0030-csp-allows-clerk-protect.md), [ADR 32](../adr/0032-clerk-protect-probe-ports.md), [ADR 34](../adr/0034-csp-always-enforced.md)
