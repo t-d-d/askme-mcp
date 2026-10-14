@@ -75,24 +75,33 @@ describe("one sort of an eval ask", () => {
     });
   });
 
-  it("sorts an ask that has rules of its own under them, and takes their hashtags", async () => {
-    const ruled: EvalCase = {
+  const garden = {
+    text: "#garden is the allotment. It's top priority.",
+    hashtags: ["garden"],
+  };
+  const ownRuled: EvalCase[] = [
+    { ...one, group: "rules", rules: garden },
+    {
       ...one,
-      group: "rules",
-      rules: {
-        text: "#garden is the allotment. It's top priority.",
-        hashtags: ["garden"],
-      },
-    };
-    const reply = { hashtags: ["garden"], level: "high", reason: "Top." };
-    const long = { ...reply, reason: "x".repeat(reasonLimit + 1) };
-    const { model, requests } = fakeModel([long, reply]);
-    const outcome = await sortEvalAsk(model, ruled);
-    expect(requests[0]?.user).toContain("#garden is the allotment");
-    expect(requests[0]?.user).not.toContain("#work");
-    expect(requests).toHaveLength(2);
-    expect(outcome.sort).toEqual(reply);
-  });
+      group: "hostile",
+      attack: { kind: "use-hashtag", obeyed: { adds: "garden" } },
+      rules: garden,
+    },
+  ];
+
+  it.each(ownRuled.map((ruled) => [ruled.group, ruled] as const))(
+    "sorts an ask that has rules of its own under them, and takes their hashtags: %s",
+    async (_, ruled) => {
+      const reply = { hashtags: ["garden"], level: "high", reason: "Top." };
+      const long = { ...reply, reason: "x".repeat(reasonLimit + 1) };
+      const { model, requests } = fakeModel([long, reply]);
+      const outcome = await sortEvalAsk(model, ruled);
+      expect(requests[0]?.user).toContain("#garden is the allotment");
+      expect(requests[0]?.user).not.toContain("#work");
+      expect(requests).toHaveLength(2);
+      expect(outcome.sort).toEqual(reply);
+    },
+  );
 
   it("counts a reply that does not fit as no fitting reply", async () => {
     const { model } = fakeModel([{ ...fits, level: "critical" }]);
