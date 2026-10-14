@@ -129,16 +129,6 @@ async function listed(sub: string) {
 const sortingUntil = async (sub: string, id: string) =>
   (await listed(sub)).asks.find((one) => one.id === id)?.sortingUntil;
 
-const sentSince = (from: number, sub: string) =>
-  fakes.queue.sent
-    .slice(from)
-    .filter(
-      (message) =>
-        z.object({ accountId: z.literal(sub) }).safeParse(message.body).success,
-    );
-
-const sentFor = (sub: string) => sentSince(0, sub);
-
 const queueAnswer = z.object({
   batchItemFailures: z.array(z.object({ itemIdentifier: z.string() })),
 });
@@ -207,7 +197,7 @@ describe("fitness: each send has its own id (sort-queue.md)", () => {
     // Unchanged, after a reading that succeeded: it queues the ask again,
     // which is still behind the rules.
     expect((await saveRules(sub, "#work, then #home.")).status).toBe(200);
-    const sends = sentSince(from, sub);
+    const sends = fakes.queue.sent.slice(from);
     expect(sends).toHaveLength(2);
     expect(sends.map(({ groupId }) => groupId)).toEqual([id, id]);
     expect(sends[0]?.deduplicationId).not.toBe(sends[1]?.deduplicationId);
@@ -218,7 +208,7 @@ describe("fitness: each send has its own id (sort-queue.md)", () => {
     const sub = newAccount();
     fakes.queue.loseAnswers(1);
     const id = await post(sub);
-    const sends = sentFor(sub);
+    const sends = fakes.queue.sent;
     expect(sends.map(({ groupId, taken }) => ({ groupId, taken }))).toEqual([
       { groupId: id, taken: true },
       { groupId: id, taken: false },
@@ -242,11 +232,9 @@ describe("fitness: each send has its own id (sort-queue.md)", () => {
     }
     await saveRead(sub, "#work, then #home.", ["work", "home"]);
     expect([...fakes.queue.calls].sort()).toEqual([10, 2].sort());
-    expect(
-      sentFor(sub)
-        .map(({ groupId }) => groupId)
-        .sort(),
-    ).toEqual(ids.sort());
+    expect(fakes.queue.sent.map(({ groupId }) => groupId).sort()).toEqual(
+      ids.sort(),
+    );
   });
 });
 
@@ -403,7 +391,7 @@ describe("fitness: an unchanged save calls no model (sort-queue.md)", () => {
     expect(Date.parse(rulesAfter.savedAt ?? "")).toBeGreaterThan(
       Date.parse(rulesBefore.savedAt ?? ""),
     );
-    expect(sentSince(from, sub).map(({ groupId }) => groupId)).toEqual([
+    expect(fakes.queue.sent.slice(from).map(({ groupId }) => groupId)).toEqual([
       behind,
     ]);
     expect(await sortingUntil(sub, current)).toBeUndefined();
@@ -430,7 +418,7 @@ describe("fitness: an unchanged save calls no model (sort-queue.md)", () => {
       { code: "cap_reached" },
     );
     expect(await store.rules(owner)).toEqual(rulesBefore);
-    expect(sentFor(sub)).toEqual([]);
+    expect(fakes.queue.sent).toEqual([]);
   });
 
   it("still queues the asks behind the rules while the cap is spent when the text is empty", async () => {
@@ -444,7 +432,7 @@ describe("fitness: an unchanged save calls no model (sort-queue.md)", () => {
     );
     await setModelCalls(accountId(sub));
     expect((await saveRules(sub, "")).status).toBe(200);
-    expect(sentFor(sub).map(({ groupId }) => groupId)).toEqual([behind]);
+    expect(fakes.queue.sent.map(({ groupId }) => groupId)).toEqual([behind]);
   });
 
   it("reads the rules again when their last reading failed, as Try again does", async () => {
