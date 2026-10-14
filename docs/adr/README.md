@@ -37,6 +37,7 @@ Each technical decision that is hard to reverse is recorded here, one file per d
 | [31](0031-api-throttle.md) | API Gateway throttles the API before askme's code runs | [api-throttle.md](../constraints/api-throttle.md), [error-contract.md](../constraints/error-contract.md) |
 | [32](0032-clerk-protect-probe-ports.md) | The page's CSP lets Clerk Protect's probe use any port | [content-security-policy.md](../constraints/content-security-policy.md) |
 | [33](0033-roll-back-a-partial-deploy.md) | A deploy that fails once its stack deploy has started rolls back too | [repo-and-delivery.md](../constraints/repo-and-delivery.md) |
+| [34](0034-one-throttle-allowance.md) | The API's routes share one throttle allowance, and no route has its own | [api-throttle.md](../constraints/api-throttle.md) |
 
 ## How a decision is recorded
 

@@ -124,3 +124,12 @@ describe("fitness: the API's stage has a throttle (api-throttle.md)", () => {
     ).toEqual([`rate ${String(rate + 0.5)}`, "burst 1.5"]);
   });
 });
+
+// Every route draws on the default's one allowance (ADR 34). A route's own
+// settings could give it a second, so the total would grow past the
+// record's arithmetic.
+describe("fitness: no route has a throttle of its own (api-throttle.md)", () => {
+  it("gives no route settings of its own", () => {
+    expect(Object.keys(stage()?.RouteSettings ?? {})).toEqual([]);
+  });
+});

@@ -94,8 +94,9 @@ functions:
 
 resources:
   # The framework sets no throttle on the HTTP API's stage, so it is set here
-  # (ADR 31). It applies to each route, for every account, and a request
-  # over it gets API Gateway's own 429 and starts no function. This block
+  # (ADR 31). Every route and account shares its one allowance, so no route
+  # has settings of its own (ADR 34). A request over it gets API Gateway's
+  # own 429 and starts no function. This block
   # takes the place of the framework's DefaultRouteSettings whole, so it
   # repeats the one setting the framework writes there, and
   # provider.httpApi.metrics would have no effect.
