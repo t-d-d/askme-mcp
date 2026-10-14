@@ -37,7 +37,7 @@ In Cursor or VS Code, use its button, then sign in when it asks:
 
 Version 1 shows asks only while the page is open, and sends no notifications. In rough order of value, the [roadmap](PRD.md#roadmap) adds:
 
-- **Quick replies.** Answer in the app, with the answer returned to the agent.
+- **Answers in the app.** The person answers on the card, and the answer goes back to the agent.
 - **Pings.** Push notifications on the phone, driven by the same rules, so the person decides what interrupts them and when.
 - **Widgets.** The top of the list on a phone or desktop widget.
 - **Rules by conversation.** Set rules by talking to an agent, with a permission only the person holds.
