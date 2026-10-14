@@ -212,10 +212,9 @@ describe("fitness: a spent cap sends no call (model-call-cap.md)", () => {
     const id = (await post(sub)).id;
     fakes.queue.purge();
     await setModelCalls(accountId(sub));
-    const calls = fakes.model.calls.length;
     expect((await saveRules(sub, "")).status).toBe(200);
     await deliver();
-    expect(fakes.model.calls).toHaveLength(calls);
+    expect(fakes.model.calls).toEqual([]);
     expect((await listed(sub)).asks).toEqual([{ id, sort: { hashtags: [] } }]);
   });
 });
@@ -223,7 +222,6 @@ describe("fitness: a spent cap sends no call (model-call-cap.md)", () => {
 describe("fitness: each call counts once (model-call-cap.md)", () => {
   it("counts as many calls as the model received, after posts, saves, a sort whose first try fails, and jobs skipped as up to date", async () => {
     const sub = newAccount();
-    const calls = fakes.model.calls.length;
     await saveRead(sub, "#work first.", ["work"]);
     await post(sub, "First");
     await post(sub, "Second");
@@ -237,7 +235,7 @@ describe("fitness: each call counts once (model-call-cap.md)", () => {
     expect(await deliver()).toBe(4);
     // Three readings, the first ask's two tries, the second ask's one, and
     // one try for each ask after the saves.
-    const received = fakes.model.calls.length - calls;
+    const received = fakes.model.calls.length;
     expect(received).toBe(8);
     expect(await modelCallsMade(accountId(sub))).toBe(received);
   });
