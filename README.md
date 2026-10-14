@@ -75,7 +75,9 @@ Most of Haiku's misses rank a saving passed up, such as a cheaper courier or a s
 
 ## Agents wrote the code
 
-Coding agents wrote every line of code in this repo, in Claude Code sessions. The owner and Claude wrote the PRD, the decision records and the issues, and the owner approved each one. Each change arrived as a pull request that the owner merged. By 14 October 2026, 193 pull requests had merged.
+Coding agents wrote every line of code in this repo, in Claude Code sessions. The owner and Claude wrote the PRD, the decision records and the issues, and the owner approved each one. By 14 October 2026, 193 pull requests had merged.
+
+Each change arrived as a pull request. Before every push, the agent ran the gate and a high-effort code review of its branch, and fixed, filed or dismissed each finding. A pull request merges only when the gate passes in CI. The owner reviewed and merged the early pull requests. Once the gate and the reviews had earned enough trust, the owner set agent sessions to land whole trains of issues, refactoring trains among them, and those sessions reviewed and merged each pull request with no person reading it.
 
 The agents work to rules kept in the repo, so each session starts from the same instructions.
 
@@ -125,7 +127,7 @@ Some things only a person, or an agent looking at a screenshot, can check.
 - **Rules are plain English, read by a model.** There is no compile step, and no fixed rule sits behind a sort. The eval set and the reason on each card are the checks on it.
 - **One environment.** There is no staging, so nothing deployed is tested before it merges. A live check signs in on the deployed page after each deploy, and a failed one puts back the last build that passed it ([ADR 4](docs/adr/0004-repo-and-delivery.md), [ADR 16](docs/adr/0016-live-sign-in.md), [ADR 25](docs/adr/0025-roll-back-to-live-ok.md)).
 - **A Clerk development instance.** It needs no domain, but it holds 100 accounts and uses Clerk's shared Google and GitHub credentials. DCR is on, though Clerk marks it deprecated, because MCP clients still use it. That opens a public registration endpoint and puts Clerk's consent screen on every agent sign-in. Clerk's tokens carry no audience, so the service does not check one. The instance issues tokens for askme alone ([ADR 6](docs/adr/0006-identity.md)). askme has not run on a production instance.
-- **The deploy role is an administrator.** The AWS account holds only askme, and a role that must create roles for its functions could make itself an administrator anyway. The guards are that only main can assume it, only the owner merges, and every merge needs the gate.
+- **The deploy role is an administrator.** The AWS account holds only askme, and a role that must create roles for its functions could make itself an administrator anyway. The guards are that only main can assume it and every merge needs the gate. Merges are the owner's, or an agent session's that the owner set to land a train.
 - **One table, with no index and no scan.** Every read is one account's. A question across accounts needs a new decision ([ADR 13](docs/adr/0013-table-design.md)).
 - **The sort queue costs a little when idle.** Lambda polls the SQS queue whether or not it holds jobs, and AWS bills those requests. Everything else scales to zero ([ADR 22](docs/adr/0022-sort-queue.md)).
 - **Daily caps.** An account that reaches 2,000 model calls in a day stops being sorted until the next UTC day, and its asks that were left out wait until the rules are saved again ([ADR 21](docs/adr/0021-model-call-cap.md)).
