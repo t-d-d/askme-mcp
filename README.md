@@ -91,7 +91,7 @@ A score counts the asks whose hashtags and level were both right. Core asks come
 
 Coding agents wrote every line of code in this repo, in Claude Code sessions, over a few days. The owner and Claude wrote the PRD and the decision records, and the owner approved each one. The owner and Claude broke the PRD into issues, and agents raised many more from work they found in passing. By 14 October 2026, 202 pull requests had merged.
 
-Before every push, the agent ran the gate, the repo's offline checks, and a high-effort code review of its branch, and fixed, filed or dismissed each finding. A pull request merges only when the gate passes in CI. The owner reviewed and merged the early pull requests. Once the gate and the reviews had earned enough trust, the owner set agent sessions to land whole trains, runs of linked issues worked in order, refactors among them, and those sessions reviewed and merged each pull request with no person reading it.
+Before every push, the agent ran the gate, the repo's offline checks, and a high-effort code review of its branch, and fixed, filed or dismissed each finding. A pull request merges only when the gate passes in CI. The owner reviewed and merged the early pull requests. Once the gate and the reviews had earned enough trust, the owner set agent sessions to land whole trains, runs of linked issues worked in order, refactors among them, and those sessions reviewed and merged each pull request with no person reading it. The owner told them to override the default in [CLAUDE.md](CLAUDE.md), which says the owner merges.
 
 Every session starts from the same rules, kept in the repo:
 
