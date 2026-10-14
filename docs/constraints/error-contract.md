@@ -12,8 +12,11 @@ refusal, so a vague one causes a loop or a lost ask.
 - A refusal is a tool result marked as an error: code, class, message.
 - A call that fails before a tool runs gets no tool result.
 - A call without a valid token gets a 401 that points to the metadata.
-- A failure before the token is checked gets a 503 whose body is the
-  service_unavailable refusal: code, class, message.
+- A failure in the handler before the token is checked gets a 503
+  whose body is the service_unavailable refusal: code, class, message.
+- A request over the API's total rate gets API Gateway's own 429 and
+  never reaches the handler. askme adds nothing to it
+  (api-throttle.md).
 - A failure while the SDK holds the call, after the token is checked
   and before a tool runs, keeps the SDK's 500 and JSON-RPC error
   -32603. This includes askme's code that the SDK calls to build the
@@ -46,9 +49,13 @@ refusal, so a vague one causes a loop or a lost ask.
 - Rewrite the SDK's answer to its own failure as a 503 or a tool
   result: it is the protocol's internal error, and a retry is unlikely
   to fix a fault in the code.
+- Shape API Gateway's 429 into a refusal: an HTTP API cannot change
+  an answer it sends itself, and a REST API costs three and a half
+  times as much per request.
 
 Judgment: A failure that fits no code is service_unavailable until
-the ADR changes. An unknown tool name is not such a failure, and nor
-is a failure while the SDK holds the call.
+the ADR changes. An unknown tool name is not such a failure, nor is a
+failure while the SDK holds the call, nor a request API Gateway
+throttles.
 
-History: [ADR 11](../adr/0011-error-contract.md), [ADR 19](../adr/0019-unknown-tool-name.md), [ADR 24](../adr/0024-failure-before-a-tool-runs.md)
+History: [ADR 11](../adr/0011-error-contract.md), [ADR 19](../adr/0019-unknown-tool-name.md), [ADR 24](../adr/0024-failure-before-a-tool-runs.md), [ADR 29](../adr/0029-api-throttle.md)
