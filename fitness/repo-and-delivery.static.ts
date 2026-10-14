@@ -26,6 +26,11 @@ const allJobs = (): [string, Job][] =>
     ]),
   );
 
+const isCredentials = (step: Step): boolean =>
+  step.uses?.startsWith("aws-actions/configure-aws-credentials@") ?? false;
+const isStackDeploy = (step: Step): boolean =>
+  step.run === "node_modules/.bin/serverless deploy";
+
 const deployCommand = /\b(?:serverless|sls)\b|\baws\s/u;
 const namesAStage = /\b(?:serverless|sls)\b[^\n]*\s(?:--stage|-s)\b/u;
 
@@ -460,14 +465,8 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
   it("checks them before the job holds credentials, and so before the deploy", () => {
     const steps = deploySteps();
     const check = steps.findIndex((step) => step.name === checkName);
-    const credentials = steps.findIndex(
-      (step) =>
-        step.uses?.startsWith("aws-actions/configure-aws-credentials@") ??
-        false,
-    );
-    const deploy = steps.findIndex(
-      (step) => step.run === "node_modules/.bin/serverless deploy",
-    );
+    const credentials = steps.findIndex(isCredentials);
+    const deploy = steps.findIndex(isStackDeploy);
     expect(check).toBeGreaterThan(-1);
     expect(check).toBeLessThan(credentials);
     expect(check).toBeLessThan(deploy);
@@ -554,10 +553,6 @@ const needsOf = (id: string): string[] => {
 };
 const stepIndex = (job: Job, found: (step: Step) => boolean): number =>
   (job.steps ?? []).findIndex(found);
-const isCredentials = (step: Step): boolean =>
-  step.uses?.startsWith("aws-actions/configure-aws-credentials@") ?? false;
-const isStackDeploy = (step: Step): boolean =>
-  step.run === "node_modules/.bin/serverless deploy";
 
 // The deploy's step that records its stack deploy has started, and the
 // rollback's step that lets the stack settle before its own (ADR 33).
@@ -804,12 +799,21 @@ describe("fitness: the rollback deploys over a settled stack (repo-and-delivery.
     ).toBe(false);
   });
 
-  it("skips no resource and forces no rollback in any workflow", () => {
+  // A step can run a script, or read its arguments from a file, so this
+  // reads every file but the docs and these checks.
+  it("skips no resource and forces no rollback in any workflow, or any file a step could run", () => {
+    const self = "fitness/repo-and-delivery.static.ts";
+    const workflows = workflowPaths();
     // Parsed, so a comment that warns against either drops out.
-    const parsed = (path: string) =>
-      JSON.stringify(readYaml(path, z.unknown()));
-    expect(
-      workflowPaths().filter((path) => forcing.test(parsed(path))),
-    ).toEqual([]);
+    const text = (path: string): string =>
+      workflows.includes(path)
+        ? JSON.stringify(readYaml(path, z.unknown()))
+        : readRepoFile(path);
+    const forced = repoFiles()
+      .filter((path) => !path.startsWith("docs/") && !path.endsWith(".md"))
+      .filter((path) => path !== self)
+      .filter((path) => forcing.test(text(path)));
+    expect(workflows.length).toBeGreaterThan(0);
+    expect(forced).toEqual([]);
   });
 });
