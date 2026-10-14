@@ -4,7 +4,7 @@ One place where all of a person's AI agents ask for their input, sorted by rules
 
 Built by [Thomas Dickinson](https://github.com/t-d-d) with Claude.
 
-<!-- Demo video goes here. -->
+https://github.com/user-attachments/assets/d2a93713-7bff-421b-b1c0-ae12cac9d028
 
 > **This is a fully functional demo.** Every ask is deleted a month after it is posted. [Demo limits](#demo-limits) says how it differs from a production service.
 
