@@ -557,6 +557,7 @@ describe("fitness: a failed live check redeploys the last good build (repo-and-d
     return named === undefined ? [] : [named].flat();
   };
   const lastGood = "${{ needs.find-live-ok.outputs.sha }}";
+  const didNotFinish = "Say the rollback did not finish";
   const isCheckout = (step: Step): boolean =>
     step.uses?.startsWith("actions/checkout@") ?? false;
   // The job's steps, with its checkout taken back to the commit the run built.
@@ -623,7 +624,11 @@ describe("fitness: a failed live check redeploys the last good build (repo-and-d
     const rollback = job("rollback");
     const checkout = (rollback.steps ?? []).find(isCheckout);
     expect(checkout?.with).toEqual({ ref: lastGood });
-    expect(checkingOutRun(rollback.steps)).toEqual(
+    expect(
+      checkingOutRun(rollback.steps).filter(
+        (step) => step.name !== didNotFinish,
+      ),
+    ).toEqual(
       checkingOutRun(deploy.steps).filter(
         (step) => !step.run?.includes("infra/github-oidc.cfn.yml"),
       ),
@@ -631,6 +636,30 @@ describe("fitness: a failed live check redeploys the last good build (repo-and-d
     expect(JSON.stringify(rollback)).not.toContain("github-oidc");
     expect(rollback.permissions).toEqual(deploy.permissions);
     expect(rollback.outputs).toEqual(deploy.outputs);
+  });
+
+  // find-live-ok has already said live-ok is being redeployed, so a rollback
+  // that stops partway has to say so (#412).
+  it("says in the run summary when it does not finish, naming the step that failed", () => {
+    const steps = job("rollback").steps ?? [];
+    const last = steps.at(-1);
+    expect(last?.name).toBe(didNotFinish);
+    expect(last?.env).toEqual({ STEPS: "${{ toJSON(steps) }}" });
+    expect(last?.run).toMatch(
+      /select\(\.value\.outcome == "failure"\)[\s\S]*did not finish[\s\S]*GITHUB_STEP_SUMMARY/u,
+    );
+    // The steps context holds only the steps that have an id.
+    const ids = steps.slice(0, -1).map((step) => step.id);
+    expect(ids).not.toContain(undefined);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("writes no such line when it finishes", () => {
+    const steps = job("rollback").steps ?? [];
+    expect(steps.at(-1)?.if).toBe("failure()");
+    expect(
+      steps.slice(0, -1).filter((step) => step.run?.includes("did not finish")),
+    ).toEqual([]);
   });
 
   it("runs live-ok's own live tier against what it put back", () => {
