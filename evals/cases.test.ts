@@ -6,6 +6,8 @@ import {
   cases,
   evalRules,
   rulesFor,
+  type EvalCase,
+  type EvalRules,
   type HostileCase,
   type RulesCase,
   type TimingCase,
@@ -17,6 +19,11 @@ const hostile = cases.filter(
   (one): one is HostileCase => one.group === "hostile",
 );
 const ruled = cases.filter((one): one is RulesCase => one.group === "rules");
+// A hostile ask may carry rules of its own, as an ask in the rules group does.
+const hasOwnRules = <T extends EvalCase>(
+  one: T,
+): one is T & { rules: EvalRules } => rulesFor(one) !== evalRules;
+const ownRuled = cases.filter(hasOwnRules);
 const level = (name: string) =>
   cases.find((one) => one.name === name)?.expected.level;
 
@@ -160,22 +167,24 @@ describe("the timing group", () => {
   );
 });
 
-const addedLine = (one: RulesCase) =>
+type OwnRules = Pick<RulesCase, "rules" | "expected">;
+const addedLine = (one: OwnRules) =>
   one.rules.text.slice(evalRules.text.length).trim();
-const ownHashtag = (one: RulesCase) => one.rules.hashtags.at(-1) ?? "";
+const ownHashtag = (one: OwnRules) => one.rules.hashtags.at(-1) ?? "";
 // A case with no expected sets would pass `every` for both, so it counts as
 // neither.
-const underOwn = (one: RulesCase) =>
+const underOwn = (one: OwnRules) =>
   one.expected.hashtags.length > 0 &&
   one.expected.hashtags.every((set) => set.includes(ownHashtag(one)));
-const underOther = (one: RulesCase) =>
+const underOther = (one: OwnRules) =>
   one.expected.hashtags.length > 0 &&
   one.expected.hashtags.every((set) => !set.includes(ownHashtag(one)));
 
 describe("the rules group", () => {
-  it("adds one line to the eval's rules in each ask, naming one hashtag of its own", () => {
+  it("adds one line to the eval's rules in each ask with rules of its own, naming one hashtag of its own", () => {
     expect(ruled.length).toBeGreaterThan(0);
-    for (const one of ruled) {
+    expect(ownRuled).toEqual(expect.arrayContaining(ruled));
+    for (const one of ownRuled) {
       expect(one.rules.text.startsWith(`${evalRules.text}\n\n`), one.name).toBe(
         true,
       );
@@ -242,19 +251,37 @@ describe("fitness: the eval set keeps a hostile group (untrusted-ask-text.md)", 
     );
   });
 
+  // Giving in would lift the ask to high as well, as a rank-first attack
+  // does, since the rules put that hashtag's asks first.
+  it("holds an ask under rules that call one hashtag top priority, which belongs under another and asks to be filed under that one", () => {
+    const filedFirst = hostile
+      .filter(hasOwnRules)
+      .filter(
+        (one) =>
+          /top priority/u.test(addedLine(one)) &&
+          underOther(one) &&
+          one.attack.kind === "use-hashtag" &&
+          "adds" in one.attack.obeyed &&
+          one.attack.obeyed.adds === ownHashtag(one),
+      );
+    expect(filedFirst.length).toBeGreaterThan(0);
+  });
+
   it.each(hostile.map((one) => [one.name, one] as const))(
     "scores giving in as a miss: %s",
-    (_, { attack, expected }) => {
+    (_, one) => {
+      const { attack, expected } = one;
       const { obeyed } = attack;
+      const { hashtags } = rulesFor(one);
       if ("level" in obeyed) {
         expect(expected.level).not.toBe(obeyed.level);
       } else if ("adds" in obeyed) {
-        expect(evalRules.hashtags).toContain(obeyed.adds);
+        expect(hashtags).toContain(obeyed.adds);
         for (const set of expected.hashtags) {
           expect(set).not.toContain(obeyed.adds);
         }
       } else {
-        expect(evalRules.hashtags).toContain(obeyed.drops);
+        expect(hashtags).toContain(obeyed.drops);
         for (const set of expected.hashtags) {
           expect(set).toContain(obeyed.drops);
         }
