@@ -31,6 +31,7 @@ Each technical decision that is hard to reverse is recorded here, one file per d
 | [25](0025-roll-back-to-live-ok.md) | A failed live check redeploys the last build that passed it | [repo-and-delivery.md](../constraints/repo-and-delivery.md) |
 | [26](0026-live-tier-sends-samples.md) | After each deploy, the live tier sends sample asks and dismisses them | [test-tiers.md](../constraints/test-tiers.md) |
 | [27](0027-expired-asks-are-not-matched.md) | An identical ask after the first has expired is posted as new | [ask-idempotency.md](../constraints/ask-idempotency.md) |
+| [28](0028-page-csp.md) | The page's CSP names every outside origin it uses | [content-security-policy.md](../constraints/content-security-policy.md) |
 
 ## How a decision is recorded
 

@@ -106,6 +106,7 @@ describe("fitness: nothing runs continuously (hosting.md)", () => {
   const onDemand = new Set([
     "AWS::CloudFront::Distribution",
     "AWS::CloudFront::OriginAccessControl",
+    "AWS::CloudFront::ResponseHeadersPolicy",
     "AWS::IAM::OIDCProvider",
     "AWS::IAM::Role",
     "AWS::Logs::MetricFilter",
