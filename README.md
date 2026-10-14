@@ -10,9 +10,10 @@ Built by [Thomas Dickinson](https://github.com/t-d-d) with Claude.
 
 ## What it is
 
-People now run several AI agents at once, at work and at home, and each one asks for their input in its own app, at any hour. askme gives every agent one place to ask, and puts the person in charge of that channel. Any agent that can connect to an MCP server can post to it. The person's rules, written in plain English, decide how each ask is sorted, what shows first and what waits for its hours. Every area of their life ends up in one list on their phone.
+People now run several AI agents at once, at work and at home, and each one stops to ask the person for input in its own app, at any hour. askme gives every agent one place to ask, and puts the person in charge of that channel. Any agent that can connect to an MCP server can post to it. The person's rules, written in plain English, decide how each ask is sorted, what shows first and what waits for its hours. Every area of their life ends up in one list on their phone.
 
-- An agent calls the `ask` tool with a summary, the area of work, a version written to be heard, and up to two links: where the person should act, and the agent's own session.
+- The MCP server's instructions tell an agent to post an ask whenever its work stops to wait for the person.
+- The agent calls the `ask` tool with a summary, the area of work, a version to be read aloud, and up to two links: where the person should act, and the agent's own session.
 - The service sorts the ask against the person's rules into their hashtags and one of three levels: high, normal or low.
 - The rules can limit a hashtag to certain hours, such as "#work only on weekdays, 8am to 6pm". An ask outside its hashtag's hours is held back until then. Each hashtag has its own tab.
 - The page shows the list on a phone, with the first ask shown large. A card can be read aloud, and its main button opens the place to act, such as a pull request or the agent's session.
@@ -41,7 +42,7 @@ Version 1 shows asks only while the page is open, and sends no notifications. In
 - **Widgets.** The top of the list on a phone or desktop widget.
 - **Rules by conversation.** Set rules by talking to an agent, with a permission only the person holds.
 - **Hands-free use.** The whole list read aloud in order, and answers by voice.
-- **A skill alongside the MCP server.** Guidance so agents know when to ask and how to write a good ask.
+- **A skill alongside the MCP server.** The server's guidance on when to ask and how to write a good ask, packaged for agents whose environment does not pass server instructions on.
 
 ## Stack
 
@@ -152,7 +153,7 @@ The eval set measures sorting against the real model, on demand. The model may s
 ## Lessons learned
 
 - **Keep decisions and their amendments in issues, and only the constraints in the repo.** The repo holds 35 decision records, about 42,900 words, against 8,100 lines of application code. A merged record cannot be edited, so each amendment is a new record. Fifteen of the 35 amend an earlier one, and a reader follows the chain to learn what holds. That history belongs in issues. The repo needs only the constraint files, about 7,800 words, which are what an agent reads before a change.
-- **Decide whether follow-up work is worth doing before anyone builds it.** Any work found in passing became an issue, about 60 of the 211. Too many were raised, and some were turned down only at pull request review, after the work was done. Next time each would be weighed when it is raised, its value against the complexity it adds, and closed then if it does not pay its way.
+- **Decide whether follow-up work is worth doing before anyone builds it.** Any work found in passing became an issue, about 60 of the 211 issues. Too many were raised, and some were turned down only at pull request review, after the work was done. Next time each would be weighed when it is raised, its value against the complexity it adds, and closed then if it does not pay its way.
 - **Catch an agent's bad habits early, and turn each into a rule.** The agents made most design choices well unprompted, but a few habits went wrong and spread unnoticed. Logic went into the page's components, where unit tests caught none of its mutants (0 of 101, 0 of 88 and 0 of 100) until the refactoring train moved it out. Five test files each wrote their own fake of the store until one helper replaced them ([#308](https://github.com/t-d-d/askme-mcp/pull/308)). A long list of design rules up front would not have helped. Faster feedback would: mutation testing from the first days, and scheduled reviews of the whole code base outside the merge cycle. Either finds a pattern while it is in one or two places, when a rule costs little.
 - **Set the repo up for agents working in parallel.** Many agents worked at once against one main branch. 202 pull requests merged, and branches caught up with main 176 times. Catching up is normal. What cost time was the files every change touches, such as the README and the decision record index, which conflicted again and again, and two branches once took the same record number. Shared files should be few, and laid out so that git can merge them by itself: one file per entry instead of one shared table, numbers taken from the issue or given at merge, and indexes built by a script.
 
