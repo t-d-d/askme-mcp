@@ -4,7 +4,9 @@ One place where all of a person's AI agents ask for their input, sorted by rules
 
 Built by [Thomas Dickinson](https://github.com/t-d-d) with Claude.
 
-https://github.com/user-attachments/assets/d2a93713-7bff-421b-b1c0-ae12cac9d028
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/d2a93713-7bff-421b-b1c0-ae12cac9d028" width="360" controls></video>
+</p>
 
 > **This is a fully functional demo.** Every ask is deleted a month after it is posted. [Demo limits](#demo-limits) says how it differs from a production service.
 
@@ -37,7 +39,7 @@ In Cursor or VS Code, use its button, then sign in when it asks:
 
 Version 1 shows asks only while the page is open, and sends no notifications. In rough order of value, the [roadmap](PRD.md#roadmap) adds:
 
-- **Real approvals.** Answer in the app, with the answer returned to the agent.
+- **Answers in the app.** Reply on the card, and it goes back to the agent.
 - **Pings.** Push notifications on the phone, driven by the same rules, so the person decides what interrupts them and when.
 - **Widgets.** The top of the list on a phone or desktop widget.
 - **Rules by conversation.** Set rules by talking to an agent, with a permission only the person holds.

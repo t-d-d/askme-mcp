@@ -136,7 +136,7 @@ Each of these was considered and left out on purpose.
 
 In rough order of value. None of this is built in version 1.
 
-1. **Real approvals.** Answer in the app, with the answer returned to the agent. MCP allows a path back in some cases. This needs care over what exactly is being approved.
+1. **Answers in the app.** Reply on the card, and it goes back to the agent. MCP allows a path back in some cases. This needs care over what exactly a reply agrees to.
 2. **Pings.** Push notifications on the phone, driven by the same rules, so the user decides what interrupts them and at what time of day. A ping can also use the time an ask lapses.
 3. **Widgets.** A phone and desktop widget showing the top of the list with held asks left out.
 4. **Rules by conversation.** A second, admin permission on the MCP server, held only by the user, so they can set rules by talking to an agent. Other agents still cannot see or change them.
