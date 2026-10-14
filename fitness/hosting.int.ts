@@ -14,6 +14,7 @@ import { storedItems } from "../test/dynamodb";
 import { useFakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, origin } from "../test/mcp";
+import { storeAsk } from "../test/store-ask";
 
 const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
@@ -61,11 +62,7 @@ describe("fitness: expiry holds on read (hosting.md)", () => {
   it("makes a new ask when the identical one's dedupe record is past its expiry, though still in the table", async () => {
     const sub = newAccount();
     const owner = accountId(sub);
-    const ask = {
-      summary: "Approve the plan",
-      area: "Home",
-      spokenDetail: "The electrician needs a yes or no.",
-    };
+    const ask = storeAsk();
     const earlier = await store.postAsk(
       owner,
       ask,

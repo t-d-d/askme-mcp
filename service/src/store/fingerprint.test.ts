@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { storeAsk } from "../../../test/store-ask";
 import { fingerprint } from "./fingerprint";
 import type { NewAsk } from "./store";
 
 const ask: Required<NewAsk> = {
-  summary: "Approve the plan for the kitchen rewiring",
-  area: "Home renovation",
-  spokenDetail: "The electrician needs a yes or no before Friday.",
+  ...storeAsk(),
   actionLink: "https://github.com/t-d-d/askme-mcp/pull/1",
   sessionLink: "https://claude.ai/code/session_1",
   replaces: "AAAAAAAAAAAAAAAAAAAAAAAA",

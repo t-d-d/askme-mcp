@@ -14,6 +14,7 @@ import { accountId, newAccount } from "../test/caller";
 import { noon, stopClockAt } from "../test/clock";
 import { useFakeIssuer, type TokenOptions } from "../test/identity";
 import { connect, eras, refusalOf } from "../test/mcp";
+import { storeAsk } from "../test/store-ask";
 
 const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
@@ -29,11 +30,7 @@ afterAll(() => {
 
 const ask = agentAsk;
 
-const numbered = (n: number) => ({
-  summary: `Ask ${String(n)}`,
-  area: "Home renovation",
-  spokenDetail: "The electrician needs a yes or no.",
-});
+const numbered = (n: number) => storeAsk({ summary: `Ask ${String(n)}` });
 
 async function call(
   sub: string,
