@@ -235,9 +235,6 @@ describe("fitness: every change raises the version (table-design.md)", () => {
       token: await issuer.token({ claims: { sub } }),
     });
     try {
-      // Sorts other tests queued run first, with the example rules their
-      // new accounts start with, so the reply below goes to this ask.
-      await runSorts();
       await saveRules(sub, "#home is the house.", ["home"]);
       const id = await postWith(client, ask);
       expect(await version(sub)).toBe(2);
