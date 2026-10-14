@@ -61,6 +61,23 @@ const faults = (settings: Settings | undefined): string[] => [
   ...fault("burst", settings?.ThrottlingBurstLimit, burst, true),
 ];
 
+// The framework's own logical ids for the HTTP API and its stage. An entry
+// under Resources with either id, even with no Type, is merged into the
+// framework's resource, so it could set the stage's throttle outside the
+// extension.
+const frameworkIds = ["HttpApi", stageId];
+const apiTypes = ["AWS::ApiGatewayV2::Api", "AWS::ApiGatewayV2::Stage"];
+
+const ownApis = (
+  resources: Record<string, z.infer<typeof resourceSchema>>,
+): string[] =>
+  Object.entries(resources)
+    .filter(
+      ([id, resource]) =>
+        frameworkIds.includes(id) || apiTypes.includes(resource.Type ?? ""),
+    )
+    .map(([id]) => id);
+
 describe("fitness: the API's stage has a throttle (api-throttle.md)", () => {
   it("throttles every route of the framework's stage by default", () => {
     expect(faults(stage()?.DefaultRouteSettings)).toEqual([]);
@@ -80,15 +97,18 @@ describe("fitness: the API's stage has a throttle (api-throttle.md)", () => {
   it("declares no HTTP API or stage of its own", () => {
     const { provider, resources } = definition();
     expect(provider.httpApi?.id).toBeUndefined();
+    expect(ownApis(resources.Resources ?? {})).toEqual([]);
+  });
+
+  it("finds an API or stage of the file's own", () => {
     expect(
-      Object.entries(resources.Resources ?? {})
-        .filter(([, resource]) =>
-          ["AWS::ApiGatewayV2::Api", "AWS::ApiGatewayV2::Stage"].includes(
-            resource.Type ?? "",
-          ),
-        )
-        .map(([id]) => id),
-    ).toEqual([]);
+      ownApis({
+        Api: { Type: "AWS::ApiGatewayV2::Api" },
+        Stage: { Type: "AWS::ApiGatewayV2::Stage" },
+        [stageId]: { Properties: {} },
+        Table: { Type: "AWS::DynamoDB::Table" },
+      }),
+    ).toEqual(["Api", "Stage", stageId]);
   });
 
   it("finds each way a throttle fails", () => {

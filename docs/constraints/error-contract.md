@@ -14,7 +14,7 @@ refusal, so a vague one causes a loop or a lost ask.
 - A call without a valid token gets a 401 that points to the metadata.
 - A failure in the handler before the token is checked gets a 503
   whose body is the service_unavailable refusal: code, class, message.
-- A request over the API's total rate gets API Gateway's own 429 and
+- A request over the API's throttle gets API Gateway's own 429 and
   never reaches the handler. askme adds nothing to it
   (api-throttle.md).
 - A failure while the SDK holds the call, after the token is checked

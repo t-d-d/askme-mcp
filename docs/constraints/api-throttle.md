@@ -1,6 +1,6 @@
 # API throttle
-Relevance: The API's total request rate, the API Gateway stage, a new route, or how often the page or an agent calls: the deployment definition, web/src/poll.ts, the README's demo notice
-Decision: API Gateway throttles the whole API at 50 requests a second, bursts of 100. A request over it gets API Gateway's bare 429 and starts no function.
+Relevance: The API's request rate, the API Gateway stage, a new route, or how often the page or an agent calls: the deployment definition, web/src/poll.ts, the README's demo notice
+Decision: API Gateway throttles each route at 50 requests a second, bursts of 100, for all accounts. A request over it gets API Gateway's bare 429 and starts no function.
 
 Why: Every other limit counts one account's requests inside the
 function, and a request that reaches the function costs money, signed
@@ -24,9 +24,12 @@ in or not. A throttle at API Gateway stops a flood before it is billed.
   not go through.
 - No alarm reads it. The spend alarm is the alert, and the API's Count
   and 4xx metrics show a flood.
-- A pull request that raises a value, or makes the page or an agent
-  call more often, redoes the record's arithmetic: real use against
-  the rate, and what a flood at the rate costs a day.
+- The arithmetic plans for each route having its own allowance, so
+  the API takes up to 50 a second on each route, until #398 measures
+  which reading holds.
+- A pull request that raises a value, adds a route, or makes the page
+  or an agent call more often, redoes the record's arithmetic: real
+  use against the rate, and what a flood at the rate costs a day.
 
 ## Do not
 
@@ -41,8 +44,8 @@ in or not. A throttle at API Gateway stops a flood before it is billed.
   bills each line, so a flood's cost would grow past the throttle again.
 
 Judgment: Only the deployed API shows that AWS applies the throttle,
-and that it counts a throttled request in the API's 4xx metric. Whether
-50 a second still covers real use is a judgement to make as accounts
-grow.
+whether routes share it, and that it counts a throttled request in the
+API's 4xx metric. Whether 50 a second still covers real use is a
+judgement to make as accounts grow.
 
 History: [ADR 30](../adr/0030-api-throttle.md)
