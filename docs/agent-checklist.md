@@ -18,6 +18,6 @@ Then, for each agent:
 
 ## Results
 
-On 12 October 2026 the whole checklist passed for a Claude cloud session and a local Cursor agent. On 11 October, Claude Code on a laptop and in the Claude desktop app connected and called `ask`. On 14 October, VS Code connected through its install link, once [#417](https://github.com/t-d-d/askme-mcp/issues/417) was fixed.
+On 12 October 2026 the whole checklist passed for a Claude cloud session and a local Cursor agent. On 11 October, Claude Code on a laptop and in the Claude desktop app connected and called `ask`. On 14 October, once [#417](https://github.com/t-d-d/askme-mcp/issues/417) was fixed, VS Code connected through its install link, posted an ask and resolved it.
 
 The checklist has not been run with a Cursor cloud agent. Those need a paid plan, which the owner does not have, so nobody has seen whether a Cursor cloud agent's session link opens. The demo works without it, because a card with no link opens its detail.
