@@ -3,12 +3,15 @@
 import type { PageAsk } from "../shared/page-api";
 
 // A valid ask with only the fields the tool requires. A test that needs more
-// spreads it: { ...agentAsk, action_link: "https://..." }.
-export const agentAsk = {
+// spreads it: { ...agentAsk, action_link: "https://..." }. Frozen, as files
+// use it as it is, so one test cannot change it for the tests after it.
+export const agentAsk: Readonly<
+  Record<"summary" | "area" | "spoken_detail", string>
+> = Object.freeze({
   summary: "Approve the plan for the kitchen rewiring",
   area: "Home renovation",
   spoken_detail: "The electrician needs a yes or no before Friday.",
-};
+});
 
 // An unsorted ask, just posted, unless more says otherwise.
 export function pageAsk(more: Partial<PageAsk> = {}): PageAsk {

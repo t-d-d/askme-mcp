@@ -115,7 +115,8 @@ export async function startFakeIssuer(): Promise<FakeIssuer> {
 }
 
 // Starts the fake issuer before a file's tests and points CLERK_ISSUER at it.
-// After them, puts back every variable the file stubbed and stops the issuer.
+// After them, puts back every variable the file stubbed and stops the issuer,
+// so it is called at the top of a file, never inside a describe.
 export function useFakeIssuer(): Omit<FakeIssuer, "close"> {
   let started: FakeIssuer | undefined;
   beforeAll(async () => {

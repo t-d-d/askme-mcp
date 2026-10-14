@@ -533,15 +533,13 @@ describe("the rules screen", () => {
     let answer: AsksAnswer = {
       ...list,
       asks: [
-        {
+        pageAsk({
           id: "a",
           summary: "Renew the shop's domain?",
           spokenDetail: "The domain lapses on Friday.",
           postedAt: "2026-10-12T13:00:00.000Z",
-          opened: false,
           sortingUntil: "2026-10-12T14:00:00.000Z",
-          sort: null,
-        },
+        }),
       ],
     };
     view = await openPage(`${inject("pageUrl")}#rules`, phone, {

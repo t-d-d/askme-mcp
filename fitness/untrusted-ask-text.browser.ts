@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { pagePaths, type AsksAnswer } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import { openPage, type OpenPage } from "../test/browser";
 
 const phone = { width: 390, height: 844 };
@@ -13,14 +14,12 @@ const list: AsksAnswer = {
   hashtags: [{ name: "shop", colour: 1 }],
   formerHashtags: [],
   asks: [
-    {
+    pageAsk({
       id: "hostile",
       summary: "Merge the fix for checkout rounding?",
       spokenDetail: "The fix is ready, and the tests pass.",
-      postedAt: new Date().toISOString(),
-      opened: false,
       sort: { hashtags: ["shop"], level: "high", reason },
-    },
+    }),
   ],
 };
 
