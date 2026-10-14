@@ -63,3 +63,45 @@ export function answerRead(marks: Marks, answer: string): void {
     // Kept or not, the page carries on.
   }
 }
+
+export interface Reloads {
+  // Returns the call that ends this hold.
+  hold: () => () => void;
+  reload: (run: () => void) => void;
+}
+
+// While a screen holds unsaved work, a reload asks "Leave site?". It is
+// tried once, and if the person stays it waits for the hold to end, when
+// the work is saved or thrown away. A poll falls due every few seconds, so
+// otherwise the person who stays would be asked at each one.
+export function heldReloads(): Reloads {
+  let holds = 0;
+  // Set once the one try has been made, until the hold ends.
+  let waiting: (() => void) | null = null;
+  return {
+    hold: () => {
+      holds += 1;
+      let ended = false;
+      return () => {
+        if (ended) return;
+        ended = true;
+        holds -= 1;
+        if (holds > 0) return;
+        const run = waiting;
+        waiting = null;
+        run?.();
+      };
+    },
+    reload: (run) => {
+      if (holds === 0) {
+        run();
+        return;
+      }
+      const tried = waiting !== null;
+      waiting = run;
+      if (!tried) run();
+    },
+  };
+}
+
+export const pageReloads = heldReloads();
