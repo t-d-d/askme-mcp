@@ -61,10 +61,6 @@ function buildServer(context: McpRequestContext): McpServer {
   return server;
 }
 
-// Every exchange is a short request and response, so a client asking to
-// hold a stream open for change notices is refused at once (ADR 1).
-const mcp = createMcpHandler(buildServer, { maxSubscriptions: 0 });
-
 interface Services {
   issuer: string;
   verifier: OAuthTokenVerifier;
@@ -196,14 +192,30 @@ async function serve(
       resourceMetadataUrl,
     });
   }
+  // The SDK answers a failure of its own with a server error and logs
+  // nothing. It hands onerror the error it caught, and also each request it
+  // refuses, such as one with the wrong content type, which is not askme's
+  // fault. So the errors wait for the status, and only a server error logs
+  // the first, by its class. A handler for each request keeps one request's
+  // errors from another's. The answer itself is passed on as it is (ADR 24).
+  const reported: Error[] = [];
+  const mcp = createMcpHandler(buildServer, {
+    // Every exchange is a short request and response, so a client asking
+    // to hold a stream open for change notices is refused at once (ADR 1).
+    maxSubscriptions: 0,
+    onerror: (error) => {
+      reported.push(error);
+    },
+  });
   const response = await mcp.fetch(request, {
     authInfo: { ...authInfo, extra: { ...authInfo.extra, requestId } },
   });
-  // The SDK answers a failure of its own with a server error and logs
-  // nothing, so it is logged here, by status only. The answer itself is
-  // passed on as it is (ADR 24).
   if (response.status >= 500) {
-    log.error("request-failed", { status: response.status });
+    const [failure] = reported;
+    log.error("request-failed", {
+      status: response.status,
+      ...(failure === undefined ? {} : { errorClass: errorClass(failure) }),
+    });
   }
   return response;
 }
