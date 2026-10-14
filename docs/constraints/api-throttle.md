@@ -29,8 +29,8 @@ in or not. A throttle at API Gateway stops a flood before it is billed.
   charges, and up to about $9 where the cap passes more (#398).
 - A pull request that adds a route, or makes the page or an agent call
   more often, redoes the arithmetic for real use, counting every route
-  together against the one rate. One that raises a value also redoes what a
-  flood at the rate costs a day.
+  together against the one rate. One that raises a value also redoes
+  what a flood at the rate costs a day.
 
 ## Do not
 
