@@ -375,6 +375,8 @@ const stayedWithUnsavedRules = async () => {
       [pagePaths.rules]: rules,
     },
   });
+  // Set at once, so the page closes even if a step below fails.
+  view = opened;
   const { page } = opened;
   const box = page.getByRole("textbox");
   await expect.poll(() => box.inputValue()).toBe(rules.text);
@@ -405,14 +407,12 @@ const stayedWithUnsavedRules = async () => {
 describe("a reload the person cancels", () => {
   it("does not ask again while the rules hold unsaved text", async () => {
     const { opened, asked } = await stayedWithUnsavedRules();
-    view = opened;
     expect(asked).toEqual(["beforeunload"]);
     expect(opened.loads()).toBe(1);
   });
 
   it("reloads once the text is saved, and not again after", async () => {
     const { opened, asked, polls } = await stayedWithUnsavedRules();
-    view = opened;
     const { page } = opened;
     await page.getByRole("button", { name: "Save rules" }).click();
     await expect.poll(() => opened.loads()).toBe(2);
@@ -430,7 +430,6 @@ describe("a reload the person cancels", () => {
 
   it("reloads once the text is thrown away", async () => {
     const { opened, asked } = await stayedWithUnsavedRules();
-    view = opened;
     const { page } = opened;
     page.removeAllListeners("dialog");
     page.on("dialog", (dialog) => {

@@ -76,7 +76,7 @@ export interface Reloads {
 // otherwise the person who stays would be asked at each one.
 export function heldReloads(): Reloads {
   let holds = 0;
-  let tried = false;
+  // Set once the one try has been made, until the hold ends.
   let waiting: (() => void) | null = null;
   return {
     hold: () => {
@@ -87,7 +87,6 @@ export function heldReloads(): Reloads {
         ended = true;
         holds -= 1;
         if (holds > 0) return;
-        tried = false;
         const run = waiting;
         waiting = null;
         run?.();
@@ -98,10 +97,9 @@ export function heldReloads(): Reloads {
         run();
         return;
       }
+      const tried = waiting !== null;
       waiting = run;
-      if (tried) return;
-      tried = true;
-      run();
+      if (!tried) run();
     },
   };
 }
