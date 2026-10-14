@@ -1,21 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { Hashtag } from "../shared/page-api";
-import { callerOf, type AccountId } from "../service/src/identity";
 import {
   sortingPrompt,
   type SortingAsk,
   type SortingRules,
 } from "../service/src/sort";
+import { accountId } from "../test/caller";
 import { heldAsks } from "../web/src/hours";
-
-const accountId = (sub: string): AccountId =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: sub, requestId: "r" },
-  }).accountId;
 
 const owner = accountId("user_owner");
 

@@ -4,9 +4,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { askTool, limits } from "../service/src/ask";
 import { resolveTool } from "../service/src/resolve";
-import { callerOf } from "../service/src/identity";
 import type { SortRequests } from "../service/src/jobs";
 import { addTool } from "../service/src/tools";
+import { agentAsk } from "../test/asks";
+import { testCaller } from "../test/caller";
 import { fakeStore } from "../test/fake-store";
 import { captureLogs } from "../test/logs";
 import { refusalOf } from "../test/mcp";
@@ -23,12 +24,7 @@ let capture: ReturnType<typeof captureLogs>;
 beforeAll(async () => {
   capture = captureLogs();
   const server = new McpServer({ name: "askme", version: "1.0.0" });
-  const caller = callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: ["asks:create"],
-    extra: { accountId: "user_1", requestId: "req-1" },
-  });
+  const caller = testCaller();
   addTool(server, askTool, caller, { store, sorts });
   addTool(server, resolveTool, caller, { store, sorts });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
@@ -66,11 +62,7 @@ async function advertised(name: string, field: string) {
 }
 
 const valid: Record<string, Record<string, string>> = {
-  ask: {
-    summary: "Approve the plan",
-    area: "Home",
-    spoken_detail: "The electrician needs a yes or no.",
-  },
+  ask: agentAsk,
   resolve: {},
 };
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { callerOf, type AccountId } from "./identity";
+import { accountId } from "../../test/caller";
 import {
   followUpForLongReason,
   levels,
@@ -10,14 +10,6 @@ import {
   type SortingAsk,
   type SortingRules,
 } from "./sort";
-
-const accountId = (sub: string): AccountId =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: sub, requestId: "r" },
-  }).accountId;
 
 const owner = accountId("user_owner");
 

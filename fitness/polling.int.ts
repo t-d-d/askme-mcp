@@ -1,11 +1,11 @@
-import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
-import { callerOf, type AccountId } from "../service/src/identity";
 import { rateLimits } from "../service/src/rate";
 import { keys } from "../service/src/store/keys";
 import { pagePaths } from "../shared/page-api";
+import { agentAsk } from "../test/asks";
+import { accountId, newAccount } from "../test/caller";
 import { stopClockAt } from "../test/clock";
 import {
   readActions,
@@ -13,39 +13,22 @@ import {
   storedItems,
   type DatabaseRecorder,
 } from "../test/dynamodb";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
+import { useFakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, origin } from "../test/mcp";
 
-let issuer: FakeIssuer;
+const issuer = useFakeIssuer();
 let recorder: DatabaseRecorder;
 beforeAll(async () => {
-  issuer = await startFakeIssuer();
   recorder = await recordDatabase(inject("databaseEndpoint"));
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
   vi.stubEnv("DYNAMODB_ENDPOINT", recorder.endpoint);
 });
 afterAll(async () => {
   vi.unstubAllEnvs();
   await recorder.close();
-  await issuer.close();
 });
 
-const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
-
-const accountId = (sub: string): AccountId =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: sub, requestId: "r" },
-  }).accountId;
-
-const ask = {
-  summary: "Approve the plan for the kitchen rewiring",
-  area: "Home renovation",
-  spoken_detail: "The electrician needs a yes or no before Friday.",
-};
+const ask = agentAsk;
 
 async function post(sub: string): Promise<{ isError?: unknown }> {
   const client = await connect(handler, {

@@ -2,6 +2,7 @@
 // stand-ins for the model and Parameter Store (ADR 9).
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
+import { newAccount } from "../test/caller";
 import { fakes, modelKeyParameter, testModelKey } from "../test/fakes";
 import { captureLogs } from "../test/logs";
 import { jobAccount } from "./src/identity";
@@ -48,7 +49,7 @@ const runFor = (
 it("reads the model's key on its first sort, and keeps it for the runs after", async () => {
   vi.resetModules();
   const fresh = (await import("./src/sorter")).handler;
-  const sub = `user_${randomUUID().slice(0, 8)}`;
+  const sub = newAccount();
   const account = jobAccount(sub);
   await store.saveRules(
     account,
@@ -94,17 +95,18 @@ it("reads the model's key on its first sort, and keeps it for the runs after", a
 
 // OpenRouter answers 401 for a refused key and 402 for spent credit, which
 // alert. A 403 can come from moderation of a hostile ask, so it must not.
-// The failed sort itself stays at warn (ADR 22).
+// The failed sort itself stays at warn (ADR 22). A refusal of askme's own
+// gets no second try (ADR 29).
 describe("a sort the model refuses on the last delivery", () => {
   it.each([
-    [401, "error"],
-    [402, "error"],
-    [403, "warn"],
-    [429, "warn"],
-    [500, "warn"],
-    [503, "warn"],
-  ])("logs a %i at %s", async (status, level) => {
-    const sub = `user_${randomUUID().slice(0, 8)}`;
+    [401, "error", 1],
+    [402, "error", 1],
+    [403, "warn", sortAttempts],
+    [429, "warn", sortAttempts],
+    [500, "warn", sortAttempts],
+    [503, "warn", sortAttempts],
+  ])("logs a %i at %s after %i tries", async (status, level, tries) => {
+    const sub = newAccount();
     const account = jobAccount(sub);
     await store.saveRules(
       account,
@@ -117,9 +119,7 @@ describe("a sort the model refuses on the last delivery", () => {
       new Date(),
     );
     if (posting.kind !== "posted") throw new Error("Not posted.");
-    fakes.model.reply(
-      ...Array.from({ length: sortAttempts }, () => ({ status })),
-    );
+    fakes.model.reply(...Array.from({ length: tries }, () => ({ status })));
     const capture = captureLogs();
     try {
       expect(await runFor(sub, posting.id, sortDeliveries)).toEqual({

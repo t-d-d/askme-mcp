@@ -4,6 +4,7 @@ import {
   type AsksAnswer,
   type ConnectionAnswer,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import {
   allClearGaps,
   Answering,
@@ -28,14 +29,8 @@ const connection: ConnectionAnswer = {
   mcpUrl: "https://abc123.execute-api.us-east-1.amazonaws.com/mcp",
 };
 
-const ask = (id: string, summary: string, waited: number) => ({
-  id,
-  summary,
-  spokenDetail: `The spoken detail of ${summary}`,
-  postedAt: ago(waited),
-  opened: false,
-  sort: null,
-});
+const ask = (id: string, summary: string, waited: number) =>
+  pageAsk({ id, summary, postedAt: ago(waited) });
 
 // In no order: the oldest goes on the top card.
 const five: AsksAnswer = {

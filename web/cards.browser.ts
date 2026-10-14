@@ -7,6 +7,7 @@ import {
   type AsksAnswer,
   type PageAsk,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import {
   allClearGaps,
   Answering,
@@ -47,19 +48,18 @@ const ask = (
   summary: string,
   waited: number,
   more: Partial<PageAsk> = {},
-): PageAsk => ({
-  id,
-  summary,
-  spokenDetail: `The spoken detail of ${summary}`,
-  postedAt: ago(waited),
-  opened: false,
-  sort: {
-    hashtags: ["shop"],
-    level: "normal",
-    reason: `The reason for ${summary}`,
-  },
-  ...more,
-});
+): PageAsk =>
+  pageAsk({
+    id,
+    summary,
+    postedAt: ago(waited),
+    sort: {
+      hashtags: ["shop"],
+      level: "normal",
+      reason: `The reason for ${summary}`,
+    },
+    ...more,
+  });
 
 const listOf = (...asks: PageAsk[]): AsksAnswer => ({
   version: 3,

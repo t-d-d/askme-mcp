@@ -1,67 +1,45 @@
-import { randomUUID } from "node:crypto";
 import {
   afterAll,
   afterEach,
-  beforeAll,
   beforeEach,
   describe,
   expect,
   inject,
   it,
-  vi,
 } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
-import { callerOf, type AccountId } from "../service/src/identity";
 import { handler as sorter, sortDeliveries } from "../service/src/sorter";
 import { sortKeys } from "../service/src/store/keys";
 import { createStore, type NewAsk } from "../service/src/store/store";
 import { sortingMs } from "../service/src/view";
 import { pagePaths } from "../shared/page-api";
+import { agentAsk } from "../test/asks";
+import { accountId, newAccount } from "../test/caller";
 import { storedItems } from "../test/dynamodb";
 import { fakes, type SentMessage } from "../test/fakes";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
+import { useFakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, type Captured } from "../test/logs";
 import { connect, origin } from "../test/mcp";
 import { noon, startClockAt } from "../test/clock";
-import { setModelCalls } from "../test/model-cap";
+import { modelCallsMade, setModelCalls } from "../test/model-cap";
 
 const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
 const store = createStore({ tableName, endpoint });
 
-let issuer: FakeIssuer;
-beforeAll(async () => {
-  issuer = await startFakeIssuer();
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
-});
-afterAll(async () => {
-  vi.unstubAllEnvs();
+const issuer = useFakeIssuer();
+afterAll(() => {
   store.close();
-  await issuer.close();
 });
-
-const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
-
-const accountId = (sub: string): AccountId =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: sub, requestId: "r" },
-  }).accountId;
 
 const minute = 60_000;
 
 const deliver = () =>
   fakes.queue.deliver((event) => sorter(event, { awsRequestId: "sort-1" }));
 
-const ask = {
-  summary: "Approve the plan for the kitchen rewiring",
-  area: "Home renovation",
-  spoken_detail: "The electrician needs a yes or no before Friday.",
-};
+const ask = agentAsk;
 
 async function post(sub: string, args: Record<string, string> = ask) {
   const client = await connect(handler, {
@@ -139,6 +117,23 @@ const expectJobsNamed = (sub: string, sends: SentMessage[]) => {
 const queueAnswer = z.object({
   batchItemFailures: z.array(z.object({ itemIdentifier: z.string() })),
 });
+
+// Captures the log lines of each test in the describe it is called in, and
+// gives them with their level.
+function logsEachTest() {
+  let capture: { lines: Captured[]; restore(): void };
+  beforeEach(() => {
+    capture = captureLogs();
+  });
+  afterEach(() => {
+    capture.restore();
+  });
+  return () =>
+    capture.lines.map(({ method, args }) => ({
+      level: method,
+      ...z.record(z.string(), z.unknown()).parse(args[0]),
+    }));
+}
 
 const sorted = (hashtags: string[]) => ({
   json: { hashtags, level: "normal", reason: "Routine." },
@@ -249,18 +244,7 @@ describe("fitness: each send has its own id (sort-queue.md)", () => {
 });
 
 describe("fitness: a failed sort never fails the run (sort-queue.md)", () => {
-  let capture: { lines: Captured[]; restore(): void };
-  beforeEach(() => {
-    capture = captureLogs();
-  });
-  afterEach(() => {
-    capture.restore();
-  });
-  const lines = () =>
-    capture.lines.map(({ method, args }) => ({
-      level: method,
-      ...z.record(z.string(), z.unknown()).parse(args[0]),
-    }));
+  const lines = logsEachTest();
 
   it("reports the message as failed and does not throw, then lets it go on the third delivery with one warn line", async () => {
     const sub = newAccount();
@@ -296,6 +280,59 @@ describe("fitness: a failed sort never fails the run (sort-queue.md)", () => {
       expect.objectContaining({ id, sort: null }),
     ]);
   });
+});
+
+// OpenRouter answers 401 for a refused key, 402 for spent credit and 404
+// for a withdrawn model. Each would fail every try the same way (ADR 29).
+describe("fitness: a refused key is tried once (sort-queue.md)", () => {
+  const lines = logsEachTest();
+
+  it.each([401, 402, 404])(
+    "calls the model once for a %i, counts that call, and lets the job go on its first delivery",
+    async (status) => {
+      const sub = newAccount();
+      await saveRead(sub, "#work first.", ["work"]);
+      const id = await post(sub);
+      const reading = fakes.model.calls.length;
+      fakes.model.reply({ status });
+      const answers: unknown[] = [];
+      expect(
+        await fakes.queue.deliver((event) =>
+          sorter(event, { awsRequestId: "sort-1" }).then((answer) => {
+            answers.push(answer);
+            return answer;
+          }),
+        ),
+      ).toBe(1);
+      expect(fakes.queue.waiting()).toBe(0);
+      expect(answers.map((answer) => queueAnswer.parse(answer))).toEqual([
+        { batchItemFailures: [] },
+      ]);
+      expect(fakes.model.calls.length - reading).toBe(1);
+      expect(await modelCallsMade(accountId(sub))).toBe(
+        fakes.model.calls.length,
+      );
+      expect(
+        lines().filter(({ level }) => level === "error" || level === "warn"),
+      ).toEqual([
+        expect.objectContaining({
+          level: "error",
+          event: "request-failed",
+          errorClass: `status-${String(status)}`,
+        }),
+        expect.objectContaining({
+          level: "warn",
+          event: "sort-failed",
+          accountId: sub,
+          askId: id,
+          errorClass: `status-${String(status)}`,
+        }),
+      ]);
+      expect((await listed(sub)).asks).toEqual([
+        expect.objectContaining({ id, sort: null }),
+      ]);
+    },
+  );
 });
 
 describe("fitness: stopped is worked out, not written (sort-queue.md)", () => {

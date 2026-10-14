@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, inject, it } from "vitest";
 import { pagePaths, type AsksAnswer } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import {
   Answering,
   answerPoll,
@@ -23,14 +24,12 @@ const list: AsksAnswer = {
   hashtags: [{ name: "work", colour: 0 }],
   formerHashtags: [],
   asks: [
-    {
+    pageAsk({
       id: "a",
       summary,
-      spokenDetail: `The spoken detail of ${summary}`,
       postedAt: new Date(Date.now() - 31 * 60_000).toISOString(),
-      opened: false,
       sort: { hashtags: ["work"], level: "normal", reason: "It is work." },
-    },
+    }),
   ],
 };
 

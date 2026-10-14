@@ -6,6 +6,7 @@ import {
   type AsksAnswer,
   type PageAsk,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import {
   Answering,
   answerPoll,
@@ -22,19 +23,14 @@ const phone = { width: 390, height: 844 };
 const session = "test-session-token";
 const waits = { stepMs: 10_000, sortMs: 20_000 };
 
-const ask = (id: string, summary: string, sorted: boolean): PageAsk => ({
-  id,
-  summary,
-  spokenDetail: `The spoken detail of ${summary}`,
-  postedAt: new Date().toISOString(),
-  opened: false,
-  ...(sorted
-    ? { sort: { hashtags: ["work"], level: "normal", reason: "It is work." } }
-    : {
-        sort: null,
-        sortingUntil: new Date(Date.now() + 30 * 60_000).toISOString(),
-      }),
-});
+const ask = (id: string, summary: string, sorted: boolean): PageAsk =>
+  pageAsk({
+    id,
+    summary,
+    ...(sorted
+      ? { sort: { hashtags: ["work"], level: "normal", reason: "It is work." } }
+      : { sortingUntil: new Date(Date.now() + 30 * 60_000).toISOString() }),
+  });
 
 const older = ask("old", "Review the open pull request", true);
 

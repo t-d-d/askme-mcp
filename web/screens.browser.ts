@@ -5,20 +5,20 @@ import {
   type PageAsk,
   type RulesAnswer,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import { openPage, type OpenPage } from "../test/browser";
 
 const phone = { width: 390, height: 844 };
 const minute = 60_000;
 
-const ask = (id: string, summary: string, waited: number): PageAsk => ({
-  id,
-  summary,
-  spokenDetail: `The spoken detail of ${summary}`,
-  postedAt: new Date(Date.now() - waited).toISOString(),
-  opened: false,
-  sort: { hashtags: ["shop"], level: "normal", reason: "Routine." },
-  sessionLink: "https://claude.ai/code/session_01AbC",
-});
+const ask = (id: string, summary: string, waited: number): PageAsk =>
+  pageAsk({
+    id,
+    summary,
+    postedAt: new Date(Date.now() - waited).toISOString(),
+    sort: { hashtags: ["shop"], level: "normal", reason: "Routine." },
+    sessionLink: "https://claude.ai/code/session_01AbC",
+  });
 
 const list: AsksAnswer = {
   version: 1,

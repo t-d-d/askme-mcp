@@ -6,6 +6,7 @@ import {
   type ConnectionAnswer,
   type Hashtag,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import {
   Answering,
   answerPoll,
@@ -43,14 +44,7 @@ const newAccount: AsksAnswer = {
   asks: [],
 };
 
-const sample = (id: string, summary: string) => ({
-  id,
-  summary,
-  spokenDetail: `The spoken detail of ${summary}`,
-  postedAt: new Date().toISOString(),
-  opened: false,
-  sort: null,
-});
+const sample = (id: string, summary: string) => pageAsk({ id, summary });
 
 const withSamples: AsksAnswer = {
   ...newAccount,

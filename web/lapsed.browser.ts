@@ -8,6 +8,7 @@ import {
   type Level,
   type PageAsk,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import {
   allClearGaps,
   answerPoll,
@@ -52,17 +53,16 @@ const ask = (
   summary: string,
   sort: { hashtags: string[]; level: Level },
   lapsesIn?: number,
-): PageAsk => ({
-  id,
-  summary,
-  spokenDetail: `The spoken detail of ${summary}`,
-  postedAt: new Date(evening.getTime() - 30 * minute).toISOString(),
-  ...(lapsesIn === undefined
-    ? {}
-    : { lapsesAt: new Date(evening.getTime() + lapsesIn).toISOString() }),
-  opened: false,
-  sort: { ...sort, reason: "Sorted for the test." },
-});
+): PageAsk =>
+  pageAsk({
+    id,
+    summary,
+    postedAt: new Date(evening.getTime() - 30 * minute).toISOString(),
+    ...(lapsesIn === undefined
+      ? {}
+      : { lapsesAt: new Date(evening.getTime() + lapsesIn).toISOString() }),
+    sort: { ...sort, reason: "Sorted for the test." },
+  });
 
 const shop = (level: Level) => ({ hashtags: ["shop"], level });
 const work = (level: Level) => ({ hashtags: ["work"], level });

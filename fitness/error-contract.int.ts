@@ -4,8 +4,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
 import { pagePaths } from "../shared/page-api";
+import { agentAsk } from "../test/asks";
+import { useFakeIssuer } from "../test/identity";
 import { captureLogs, lineText } from "../test/logs";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, eras, mcpUrl, origin, refusalOf } from "../test/mcp";
 
@@ -26,11 +27,9 @@ function portOf(address: string | AddressInfo | null): AddressInfo {
   return address;
 }
 
-let issuer: FakeIssuer;
+const issuer = useFakeIssuer();
 let capture: ReturnType<typeof captureLogs>;
 beforeAll(async () => {
-  issuer = await startFakeIssuer();
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
   // The store cannot be reached, which the service does not expect.
   vi.stubEnv(
     "DYNAMODB_ENDPOINT",
@@ -38,10 +37,9 @@ beforeAll(async () => {
   );
   capture = captureLogs();
 });
-afterAll(async () => {
+afterAll(() => {
   capture.restore();
   vi.unstubAllEnvs();
-  await issuer.close();
 });
 
 // A stack frame, a socket error, or the address the store was at.
@@ -109,11 +107,7 @@ describe("fitness: unknown failures are contained (error-contract.md)", () => {
     try {
       const result = await client.callTool({
         name: "ask",
-        arguments: {
-          summary: "Approve the plan",
-          area: "Home",
-          spoken_detail: "The electrician needs a yes or no.",
-        },
+        arguments: agentAsk,
       });
       const refusal = refusalOf(result);
       expect(refusal.code).toBe("service_unavailable");

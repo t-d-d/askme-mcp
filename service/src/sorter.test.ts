@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { accountId } from "../../test/caller";
 import { captureLogs } from "../../test/logs";
-import { callerOf, type AccountId } from "./identity";
+import type { AccountId } from "./identity";
 import { createLogger } from "./log";
 import { CapReached, ModelFailed, type ModelRequest } from "./model";
 import { parseSortReply, reasonAsked, reasonLimit } from "./sort";
@@ -17,14 +18,6 @@ import {
   sortTimeoutMs,
   type SortContext,
 } from "./sorter";
-
-const accountId = (sub: string): AccountId =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: sub, requestId: "r" },
-  }).accountId;
 
 const owner = accountId("user_owner");
 
@@ -329,6 +322,20 @@ describe("sorting an ask", () => {
     expect(memory.recorded).toEqual([]);
   });
 
+  // Each try counts against the cap, and a second fails the same way
+  // (ADR 29).
+  it.each(["status-401", "status-402", "status-403-budget", "status-404"])(
+    "tries no more after a %s, a refusal of askme's own, and says why to the job that asked",
+    async (reason) => {
+      const memory = memoryStore({ ask, rules });
+      const { model, asked } = memoryModel([new ModelFailed(reason), good]);
+      expect(await run(memory, model)).toEqual({ failed: reason });
+      expect(asked).toHaveLength(1);
+      expect(memory.recorded).toEqual([]);
+      expect(logged()).toEqual([]);
+    },
+  );
+
   it("tries no more when a call fails for a reason that is not the model's, and passes the error on to the job", async () => {
     const memory = memoryStore({ ask, rules });
     const { model, asked } = memoryModel([
@@ -403,49 +410,33 @@ describe("a job from the queue", () => {
     ]);
   });
 
-  it.each(["status-401", "status-402"])(
-    `logs %s at error as askme's own, and still lets the job go on the delivery numbered ${String(sortDeliveries)} with a warn line`,
+  // A later delivery would be refused the same way, and its call would
+  // count against the cap (ADR 29).
+  it.each(["status-401", "status-402", "status-403-budget", "status-404"])(
+    "logs %s at error as askme's own, and lets the job go on any delivery with a warn line",
     async (reason) => {
-      const refused = memoryModel([
-        new ModelFailed(reason),
-        new ModelFailed(reason),
-      ]).model;
-      expect(
-        await deliver(sortDeliveries, memoryStore({ ask, rules }), refused),
-      ).toBe(false);
-      expect(logged()).toEqual([
-        expect.objectContaining({
-          level: "error",
-          event: "request-failed",
-          errorClass: reason,
-        }),
-        expect.objectContaining({
-          level: "warn",
-          event: "sort-failed",
-          accountId: owner,
-          askId: ask.id,
-          errorClass: reason,
-        }),
-      ]);
-    },
-  );
-
-  it.each(["status-401", "status-402"])(
-    `logs %s at error on a delivery before the one numbered ${String(sortDeliveries)}, and still sends the job back`,
-    async (reason) => {
-      const refused = memoryModel([
-        new ModelFailed(reason),
-        new ModelFailed(reason),
-      ]).model;
-      expect(await deliver(1, memoryStore({ ask, rules }), refused)).toBe(true);
-      expect(logged()).toEqual([
-        expect.objectContaining({
-          level: "error",
-          event: "request-failed",
-          errorClass: reason,
-        }),
-        expect.objectContaining({ level: "info", event: "sort-retried" }),
-      ]);
+      for (const receives of [1, sortDeliveries]) {
+        capture.lines.length = 0;
+        const { model, asked } = memoryModel([new ModelFailed(reason)]);
+        expect(
+          await deliver(receives, memoryStore({ ask, rules }), model),
+        ).toBe(false);
+        expect(asked).toHaveLength(1);
+        expect(logged()).toEqual([
+          expect.objectContaining({
+            level: "error",
+            event: "request-failed",
+            errorClass: reason,
+          }),
+          expect.objectContaining({
+            level: "warn",
+            event: "sort-failed",
+            accountId: owner,
+            askId: ask.id,
+            errorClass: reason,
+          }),
+        ]);
+      }
     },
   );
 
@@ -510,14 +501,13 @@ describe("a job from the queue", () => {
     ]);
   });
 
-  it("logs a refused key on the try before the cap at error, and the failed sort still at warn", async () => {
-    expect(
-      await deliver(
-        1,
-        memoryStore({ ask, rules }),
-        memoryModel([new ModelFailed("status-402"), capped()]).model,
-      ),
-    ).toBe(false);
+  it("makes no second try after a refused key, so the cap never comes into it", async () => {
+    const { model, asked } = memoryModel([
+      new ModelFailed("status-402"),
+      capped(),
+    ]);
+    expect(await deliver(1, memoryStore({ ask, rules }), model)).toBe(false);
+    expect(asked).toHaveLength(1);
     expect(logged()).toEqual([
       expect.objectContaining({
         level: "error",
@@ -529,7 +519,6 @@ describe("a job from the queue", () => {
         event: "sort-failed",
         errorClass: "status-402",
       }),
-      expect.objectContaining({ level: "info", event: "sort-capped" }),
     ]);
   });
 
