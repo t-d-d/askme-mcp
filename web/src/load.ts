@@ -172,7 +172,7 @@ export async function send<T>(
   getToken: () => Promise<string | null>,
 ): Promise<T | null> {
   const response = await sendJson("PUT", path, body, getToken);
-  const answer = schema.safeParse(await response.json().catch(() => null));
+  const answer = schema.safeParse(await response.json());
   return answer.success ? answer.data : null;
 }
 

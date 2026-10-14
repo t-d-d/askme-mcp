@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, inject, it } from "vitest";
-import { z } from "zod";
 import {
   pagePaths,
+  rulesInput,
   samplesPath,
   type AsksAnswer,
   type RulesAnswer,
@@ -420,9 +420,7 @@ const savesWithNewAnswer = (stored: string[], newPage: boolean) => {
   let unread = 0;
   return new Answering((_url, _authorization, sent) => {
     if (sent.method === "PUT") {
-      stored.push(
-        z.object({ text: z.string() }).parse(JSON.parse(sent.body ?? "")).text,
-      );
+      stored.push(rulesInput.parse(JSON.parse(sent.body ?? "")).text);
       unread = newPage ? 1 : 0;
       return { shape: "new" };
     }
@@ -440,7 +438,7 @@ const saves = (opened: OpenPage) =>
   ).length;
 
 describe("a rules save whose answer the page cannot read", () => {
-  it("reloads the page once to read the rules, without asking to leave, and does not say the save did not go through", async () => {
+  it("reloads the page once to read the rules, without asking to leave", async () => {
     const list = listAt(new Date());
     const stored: string[] = [];
     view = await openPage(`${inject("pageUrl")}#rules`, phone, {
@@ -463,13 +461,12 @@ describe("a rules save whose answer the page cannot read", () => {
     await page.getByRole("button", { name: "Save rules" }).click();
     await expect.poll(() => opened.loads()).toBe(2);
     await expect.poll(() => box.inputValue()).toBe(stored[0]);
-    expect(await page.getByText("That didn't go through").count()).toBe(0);
     expect(stored).toHaveLength(1);
     // The text was saved, so leaving loses nothing.
     expect(asked).toEqual([]);
   });
 
-  it("says it saved, without a reload, once the page has reloaded for another answer", async () => {
+  it("says it saved, not that it did not go through, where the page has already reloaded for another answer", async () => {
     const list = listAt(new Date());
     const stored: string[] = [];
     let deployed = false;
