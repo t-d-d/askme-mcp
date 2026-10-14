@@ -2,12 +2,9 @@
 
 One place where all of a person's AI agents ask for their input, sorted by rules the person writes in plain English.
 
-> **This is a fully functional demo.** Every ask is deleted a month after it is posted. It differs from a production service in a few ways:
->
-> - There is one deploy environment, with no staging. A green merge to main deploys straight to the live site.
-> - Clerk runs as a development instance. It holds at most 100 accounts, so sign-up stops at the hundredth, and it signs people in with Clerk's shared Google and GitHub credentials.
-> - Limits are per account: 100 asks and 2,000 model calls a day, and per-minute limits on polling, posting and saving rules. None of these limits one address, or a request without a valid token. Across all accounts, the whole API takes about 50 requests a second, with bursts of 100, and refuses the rest ([ADR 31](docs/adr/0031-api-throttle.md), [ADR 35](docs/adr/0035-one-throttle-allowance.md)), so a flood on any route shuts every account out while it lasts. 100 accounts could make 200,000 model calls a day, and the model key's own spending limit is what stops them.
-> - There is no web application firewall. AWS WAF cannot attach to this kind of API, and agents call API Gateway's own address, which bypasses CloudFront. A firewall on CloudFront would need a custom domain first. Until then, AWS's standard DDoS protection and the rate limit slow a flood, and the spend alarm and API Gateway's request counts show one.
+<!-- Demo video goes here. -->
+
+> **This is a fully functional demo.** Every ask is deleted a month after it is posted. [Demo limits](#demo-limits) says how it differs from a production service.
 
 The page is live at https://d1dqzjjllemayb.cloudfront.net. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps.
 
@@ -111,6 +108,14 @@ The eval set measures sorting against the real model, on demand. The model may s
 - **The page against the design.** Before pushing a change to the page, the coding agent compares it with the mockup at phone width, by eye. The gate checks the design's colours and font sizes, the contrast of the hashtag colours and the tap size of the controls the browser tests measure, but not the layout.
 - **The AWS account and the alert email.** While [bootstrapping](docs/bootstrap.md), the owner keeps the AWS account to askme alone, switches on billing alerts and confirms the alert email. A test alarm shows that the email arrives.
 
+## Demo limits
+
+- There is one deploy environment, with no staging. A green merge to main deploys straight to the live site.
+- Clerk runs as a development instance. It holds at most 100 accounts, so sign-up stops at the hundredth, and it signs people in with Clerk's shared Google and GitHub credentials.
+- Limits are per account: 100 asks and 2,000 model calls a day, and per-minute limits on polling, posting and saving rules. None of these limits one address, or a request without a valid token. Across all accounts, the whole API takes about 50 requests a second, with bursts of 100, and refuses the rest ([ADR 31](docs/adr/0031-api-throttle.md), [ADR 35](docs/adr/0035-one-throttle-allowance.md)), so a flood on any route shuts every account out while it lasts. 100 accounts could make 200,000 model calls a day, and the model key's own spending limit is what stops them.
+- There is no web application firewall. AWS WAF cannot attach to this kind of API, and agents call API Gateway's own address, which bypasses CloudFront. A firewall on CloudFront would need a custom domain first. Until then, AWS's standard DDoS protection and the rate limit slow a flood, and the spend alarm and API Gateway's request counts show one.
+- askme has run with no more than a handful of people, and a new AWS account may run only 10 Lambda functions at once ([bootstrapping](docs/bootstrap.md), step 1).
+
 ## Design choices
 
 - **The page polls.** It asks for changes every few seconds while it is open, and not at all while hidden. This keeps the service fully serverless, with no open connection and nothing running while nobody looks. A new ask can take a few seconds to show ([ADR 1](docs/adr/0001-polling.md)).
@@ -121,7 +126,6 @@ The eval set measures sorting against the real model, on demand. The model may s
 - **One table, with no index and no scan.** Every read is one account's. A question across accounts needs a new decision ([ADR 13](docs/adr/0013-table-design.md)).
 - **Daily caps.** Every model call shares one key, so an account that reaches 2,000 calls in a day stops being sorted until the next UTC day. That stops one scripted account spending the key's limit for everyone ([ADR 21](docs/adr/0021-model-call-cap.md)).
 - **Everything scales to zero but the sort queue.** Lambda polls the SQS queue whether or not it holds jobs, and AWS bills those requests ([ADR 22](docs/adr/0022-sort-queue.md)).
-- **Sized for a demo.** askme has run with no more than a handful of people, and a new AWS account may run only 10 Lambda functions at once ([bootstrapping](docs/bootstrap.md), step 1).
 
 ## Lessons learned
 
