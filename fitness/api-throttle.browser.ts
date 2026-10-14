@@ -18,7 +18,7 @@ const session = "test-session-token";
 const notConnected = "Not connected. Trying again.";
 
 // What API Gateway answers, itself, to a request over the stage's throttle
-// (ADR 29). It carries none of askme's refusal codes.
+// (ADR 30). It carries none of askme's refusal codes.
 const throttled = () => new Status(429, { message: "Too Many Requests" });
 
 const list: AsksAnswer = {

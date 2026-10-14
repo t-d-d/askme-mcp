@@ -45,4 +45,4 @@ and that it counts a throttled request in the API's 4xx metric. Whether
 50 a second still covers real use is a judgement to make as accounts
 grow.
 
-History: [ADR 29](../adr/0029-api-throttle.md)
+History: [ADR 30](../adr/0030-api-throttle.md)

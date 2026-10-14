@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { readYaml } from "../test/repo";
 
-// The most the record allows: requests a second, and the burst (ADR 29).
+// The most the record allows: requests a second, and the burst (ADR 30).
 const rate = 50;
 const burst = 100;
 

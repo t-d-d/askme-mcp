@@ -58,4 +58,4 @@ the ADR changes. An unknown tool name is not such a failure, nor is a
 failure while the SDK holds the call, nor a request API Gateway
 throttles.
 
-History: [ADR 11](../adr/0011-error-contract.md), [ADR 19](../adr/0019-unknown-tool-name.md), [ADR 24](../adr/0024-failure-before-a-tool-runs.md), [ADR 29](../adr/0029-api-throttle.md)
+History: [ADR 11](../adr/0011-error-contract.md), [ADR 19](../adr/0019-unknown-tool-name.md), [ADR 24](../adr/0024-failure-before-a-tool-runs.md), [ADR 30](../adr/0030-api-throttle.md)

@@ -1,4 +1,4 @@
-# ADR 29: API Gateway caps the API's total request rate
+# ADR 30: API Gateway caps the API's total request rate
 
 Decided on 14 October 2026: API Gateway throttles every request to the API, across all accounts and routes, at 50 a second with bursts of 100. A request over the limit gets API Gateway's own 429 and starts no function, so it reaches no tool and carries none of askme's six refusal codes. The page treats it as any failed request. No alarm reads it. The spend alarm stays the alert for a flood, and API Gateway's request and 4xx counts are where the owner sees one. Issue #392 asked for it.
 
