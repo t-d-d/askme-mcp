@@ -125,7 +125,7 @@ describe("fitness: the API's stage has a throttle (api-throttle.md)", () => {
   });
 });
 
-// Every route draws on the default's one allowance (ADR 34). A route's own
+// Every route draws on the default's one allowance (ADR 35). A route's own
 // settings could give it a second, so the total would grow past the
 // record's arithmetic.
 describe("fitness: no route has a throttle of its own (api-throttle.md)", () => {

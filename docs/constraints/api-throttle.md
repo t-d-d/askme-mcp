@@ -54,4 +54,4 @@ routes 40 a second each. Both got 429s once the burst ran out. Whether
 50 a second still covers real use on every route together is a
 judgement to make as accounts grow.
 
-History: [ADR 31](../adr/0031-api-throttle.md), [ADR 34](../adr/0034-one-throttle-allowance.md)
+History: [ADR 31](../adr/0031-api-throttle.md), [ADR 35](../adr/0035-one-throttle-allowance.md)

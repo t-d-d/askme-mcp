@@ -1,4 +1,4 @@
-# ADR 34: The API's routes share one throttle allowance, and no route has its own
+# ADR 35: The API's routes share one throttle allowance, and no route has its own
 
 Decided on 14 October 2026: the throttle from [ADR 31](0031-api-throttle.md) is one allowance that all the API's routes share, 50 requests a second with bursts of 100 for the whole API. #398 measured this on the deployed API. The values stay. The arithmetic counts the allowance once, and no route sets a throttle of its own, so the one measured allowance is the only one. This amends points 2 and 6 of ADR 31, its rule on a route's own limit, and its consequence that a flood shuts accounts out of one route. Issue #398 asked for it.
 
