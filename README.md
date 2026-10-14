@@ -2,15 +2,11 @@
 
 One place where all of a person's AI agents ask for their input, sorted by rules the person writes in plain English.
 
+Built by [Thomas Dickinson](https://github.com/t-d-d) with Claude.
+
 <!-- Demo video goes here. -->
 
 > **This is a fully functional demo.** Every ask is deleted a month after it is posted. [Demo limits](#demo-limits) says how it differs from a production service.
-
-The page is live at https://d1dqzjjllemayb.cloudfront.net. To try it without an agent, sign up and press Send sample asks. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps. In Claude Code, run this, then choose Authenticate under `/mcp`:
-
-```
-claude mcp add --transport http --scope user askme https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp
-```
 
 ## What it is
 
@@ -23,6 +19,25 @@ People now run several AI agents at once, at work and at home, and each one asks
 - The agent calls `resolve` when its wait is over, and the card clears. The person can also swipe it away.
 
 The [PRD](PRD.md), the product requirements document, says what version 1 does, what it leaves out and what comes next. [docs/design.md](docs/design.md) shows every screen.
+
+## Try it
+
+The page is live at https://d1dqzjjllemayb.cloudfront.net. To try it without an agent, sign up and press Send sample asks. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps. In Claude Code, run this, then choose Authenticate under `/mcp`:
+
+```
+claude mcp add --transport http --scope user askme https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp
+```
+
+## What comes next
+
+Version 1 shows asks only while the page is open, and sends no notifications. In rough order of value, the [roadmap](PRD.md#roadmap) adds:
+
+- **Real approvals.** Answer in the app, with the answer returned to the agent.
+- **Pings.** Push notifications on the phone, driven by the same rules, so the person decides what interrupts them and when.
+- **Widgets.** The top of the list on a phone or desktop widget.
+- **Rules by conversation.** Set rules by talking to an agent, with a permission only the person holds.
+- **Hands-free use.** The whole list read aloud in order, and answers by voice.
+- **A skill alongside the MCP server.** Guidance so agents know when to ask and how to write a good ask.
 
 ## Stack
 
@@ -66,8 +81,6 @@ The eval set holds 48 asks: 32 core, 4 timing and 12 hostile. `npm run eval:cand
 | `qwen/qwen3.5-35b-a3b` | 37/64 (58%) | 3/8 (38%) | 13/24 (54%) | 53/96 (55%) | 1 | 0 | 1.0s |
 
 A score counts the asks whose hashtags and level were both right. Core asks come from three areas of one person's life. Timing asks copy a few core asks with only the time changed, and expect the same level. Hostile asks try to steer their own sorting. Gave in counts the hostile asks whose sort did what the ask demanded. No fitting reply counts replies that did not fit the schema. The scores were saved on 13 October 2026, and there is no pass mark.
-
-Six of Haiku's ten misses rank an ask the eval expects at high as normal, such as a courier change that saves money or a school consent form due next week.
 
 ## Agents wrote the code
 
@@ -134,7 +147,7 @@ The eval set measures sorting against the real model, on demand. The model may s
 
 ## Lessons learned
 
-- **Decision records would be better kept in issues, where they can be amended.** The repo holds 35 decision records, about 42,900 words, against about 8,100 lines of application code. A merged record cannot be edited, so a change of mind means a new record that amends part of an old one. Fifteen of the 35 do, and a reader has to follow the chain. The constraint files already say what is in force, in about 7,800 words, and they are what an agent reads. Next time the reasoning would live in the issue that made the decision, and the repo would keep only the constraints.
+- **Keep decisions and their amendments in issues, and only the constraints in the repo.** The repo holds 35 decision records, about 42,900 words, against about 8,100 lines of application code. A merged record cannot be edited, so every amendment is another record. Fifteen of the 35 amend an earlier one, and a reader follows the chain to learn what holds. That chain is the history of how each decision was made and changed, and an issue and its workflow hold that history better. What the code must keep is in the constraint files, about 7,800 words, and they are what an agent reads before a change. Next time the decisions and their amendments would live in issues, and the repo would keep only the constraints.
 - **Decide whether follow-up work is worth doing before anyone builds it.** Any work found in passing became an issue, about 60 of the 211. Too many were raised, and some were turned down only at pull request review, after the work was done. Next time each would be weighed when it is raised, its value against the complexity it adds, and closed then if it does not pay its way.
 - **Catch an agent's bad habits early, and turn each into a rule.** The agents made most design choices well unprompted, but a few habits went wrong and spread unnoticed. Logic went into the page's components, where unit tests caught none of its mutants (0 of 101, 0 of 88 and 0 of 100) until the refactoring train moved it out. Five test files each wrote their own fake of the store until one helper replaced them ([#308](https://github.com/t-d-d/askme-mcp/pull/308)). A long list of design rules up front would not have helped. Faster feedback would: mutation testing from the first days, and scheduled reviews of the whole code base outside the merge cycle. Either finds a pattern while it is in one or two places, when a rule costs little.
 - **Set the repo up for agents working in parallel.** Many agents worked at once against one main branch. 202 pull requests merged, and branches caught up with main 176 times. Catching up is normal. What cost time was the files every change touches, such as the README and the decision record index, which conflicted again and again, and two branches once took the same record number. Shared files should be few, and laid out so that git can merge them by itself: one file per entry instead of one shared table, numbers taken from the issue or given at merge, and indexes built by a script.
