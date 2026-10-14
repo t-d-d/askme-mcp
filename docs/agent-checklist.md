@@ -7,6 +7,7 @@ Connect each agent:
 - **Claude** (the app, and Claude cloud sessions). Add a custom connector, paste the server address from the Connect screen, and approve askme when Claude asks you to sign in.
 - **Claude Code on its own.** Run `claude mcp add --transport http --scope user askme <MCP endpoint>`, then choose Authenticate under `/mcp`.
 - **Cursor.** On the computer where Cursor is installed, open the Connect screen and click "Add askme to Cursor". Cursor offers to add a server named askme. Sign in to approve it.
+- **VS Code.** Use the "Add askme to VS Code" button in the README, or run `code --add-mcp '{"name":"askme","type":"http","url":"<MCP endpoint>"}'`. Sign in when VS Code asks.
 
 Then, for each agent:
 
@@ -17,6 +18,6 @@ Then, for each agent:
 
 ## Results
 
-On 12 October 2026 the whole checklist passed for a Claude cloud session and a local Cursor agent. On 11 October, Claude Code on a laptop and in the Claude desktop app connected and called `ask`.
+On 12 October 2026 the whole checklist passed for a Claude cloud session and a local Cursor agent. On 11 October, Claude Code on a laptop and in the Claude desktop app connected and called `ask`. On 14 October, VS Code connected through its install link, once [#417](https://github.com/t-d-d/askme-mcp/issues/417) was fixed.
 
 The checklist has not been run with a Cursor cloud agent. Those need a paid plan, which the owner does not have, so nobody has seen whether a Cursor cloud agent's session link opens. The demo works without it, because a card with no link opens its detail.

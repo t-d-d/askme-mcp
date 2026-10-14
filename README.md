@@ -29,9 +29,9 @@ The page is live at https://d1dqzjjllemayb.cloudfront.net. To try it without an 
 claude mcp add --transport http --scope user askme https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp
 ```
 
-In Cursor, use this button, then sign in when Cursor asks:
+In Cursor or VS Code, use its button, then sign in when it asks:
 
-[![Add askme to Cursor](https://img.shields.io/badge/Add_askme_to-Cursor-000000)](https://cursor.com/en/install-mcp?name=askme&config=eyJ1cmwiOiJodHRwczovL2Z4MHkyNmM4djAuZXhlY3V0ZS1hcGkudXMtZWFzdC0xLmFtYXpvbmF3cy5jb20vbWNwIn0%3D)
+[![Add askme to Cursor](https://img.shields.io/badge/Add_askme_to-Cursor-000000)](https://cursor.com/en/install-mcp?name=askme&config=eyJ1cmwiOiJodHRwczovL2Z4MHkyNmM4djAuZXhlY3V0ZS1hcGkudXMtZWFzdC0xLmFtYXpvbmF3cy5jb20vbWNwIn0%3D) [![Add askme to VS Code](https://img.shields.io/badge/Add_askme_to-VS_Code-007ACC)](https://insiders.vscode.dev/redirect/mcp/install?name=askme&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Ffx0y26c8v0.execute-api.us-east-1.amazonaws.com%2Fmcp%22%7D)
 
 ## What comes next
 
