@@ -658,18 +658,21 @@ describe("fitness: a failed live check redeploys the last good build (repo-and-d
   // that stops partway has to say so (#412).
   it("says in the run summary when it does not finish, naming the step that failed", () => {
     const steps = deployJob("rollback").steps ?? [];
-    const last = steps.at(-1);
-    expect(last !== undefined && saysUnfinished(last)).toBe(true);
-    expect(last?.env).toEqual({ STEPS: "${{ toJSON(steps) }}" });
+    // Other checks leave out a step of this name, so there is one, and it
+    // is pinned whole.
+    expect(steps.filter(saysUnfinished)).toHaveLength(1);
     // It only writes to the summary, so it may run after a failure.
-    expect(last?.run).toBe(
-      [
+    expect(steps.at(-1)).toEqual({
+      name: "Say the rollback did not finish",
+      if: "failure()",
+      run: [
         `step=$(jq -r '[to_entries[] | select(.value.outcome == "failure") | .key] | join(", ")' <<< "$STEPS")`,
         'echo "The rollback did not finish: step ${step:-with no id} failed. What is live may not be live-ok." \\',
         '  >> "$GITHUB_STEP_SUMMARY"',
         "",
       ].join("\n"),
-    );
+      env: { STEPS: "${{ toJSON(steps) }}" },
+    });
     // The steps context holds only the steps that have an id.
     const ids = steps.slice(0, -1).map((step) => step.id);
     expect(ids).not.toContain(undefined);
