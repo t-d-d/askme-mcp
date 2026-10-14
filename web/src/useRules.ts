@@ -39,8 +39,9 @@ export function useRules() {
       ),
     onSuccess: (answer: RulesAnswer | null, text: string) => {
       if (answer === null) {
-        // The page did not reload, so it keeps the text saved and reads the
-        // rules again.
+        // The box keeps the text saved, so leaving loses nothing, and the
+        // rules are loaded again. A load that cannot read them either
+        // reloads the page once.
         queries.setQueryData(
           [pagePaths.rules],
           (before: RulesAnswer | undefined) =>

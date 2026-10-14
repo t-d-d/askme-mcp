@@ -164,7 +164,7 @@ async function sendJson(
 
 // Null when askme took the save but the page cannot read its answer, as
 // after a deploy that changes it. The save went through, so it is not an
-// error, and the page reloads once to read the answer, as a load does.
+// error.
 export async function send<T>(
   path: string,
   body: unknown,
@@ -173,17 +173,7 @@ export async function send<T>(
 ): Promise<T | null> {
   const response = await sendJson("PUT", path, body, getToken);
   const answer = schema.safeParse(await response.json().catch(() => null));
-  if (!answer.success) {
-    reloadOnce(
-      sessionMarks,
-      () => {
-        window.location.reload();
-      },
-      path,
-    );
-    return null;
-  }
-  return answer.data;
+  return answer.success ? answer.data : null;
 }
 
 export async function changeAsk(
