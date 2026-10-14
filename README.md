@@ -6,19 +6,23 @@ One place where all of a person's AI agents ask for their input, sorted by rules
 
 > **This is a fully functional demo.** Every ask is deleted a month after it is posted. [Demo limits](#demo-limits) says how it differs from a production service.
 
-The page is live at https://d1dqzjjllemayb.cloudfront.net. To try it without an agent, sign up and press Send sample asks. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps.
+The page is live at https://d1dqzjjllemayb.cloudfront.net. To try it without an agent, sign up and press Send sample asks. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps. In Claude Code, run this, then choose Authenticate under `/mcp`:
+
+```
+claude mcp add --transport http --scope user askme https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp
+```
 
 ## What it is
 
 People now run several AI agents at once, at work and at home, and each one asks for their input in its own app, at any hour. askme gives every agent one place to ask, and puts the person in charge of that channel. Any agent that can connect to an MCP server can post to it. The person's rules, written in plain English, decide how each ask is sorted, what shows first and what waits for its hours. Every area of their life ends up in one list on their phone.
 
 - An agent calls the `ask` tool with a summary, the area of work, a version written to be heard, and up to two links: where the person should act, and the agent's own session.
-- The service sorts the ask against the person's rules into their hashtags and one of three levels.
+- The service sorts the ask against the person's rules into their hashtags and one of three levels: high, normal or low.
 - The rules can limit a hashtag to certain hours, such as "#work only on weekdays, 8am to 6pm". An ask outside its hashtag's hours is held back until then. Each hashtag has its own tab.
 - The page shows the list on a phone, with the first ask shown large. A card can be read aloud, and its main button opens the place to act, such as a pull request or the agent's session.
 - The agent calls `resolve` when its wait is over, and the card clears. The person can also swipe it away.
 
-The [PRD](PRD.md) says what version 1 does, what it leaves out and what comes next. [docs/design.md](docs/design.md) shows every screen.
+The [PRD](PRD.md), the product requirements document, says what version 1 does, what it leaves out and what comes next. [docs/design.md](docs/design.md) shows every screen.
 
 ## Stack
 
@@ -34,7 +38,7 @@ The [PRD](PRD.md) says what version 1 does, what it leaves out and what comes ne
 | Delivery | GitHub Actions on standard runners. A green merge to main deploys. |
 | Tests | Vitest, Playwright as a library, and DynamoDB Local in Docker |
 
-Each choice that is hard to reverse has a decision record in [docs/adr/](docs/adr/README.md), and the rules they put in force are in [docs/constraints/](docs/constraints/README.md).
+Each choice that is hard to reverse has a decision record (ADR) in [docs/adr/](docs/adr/README.md), and the rules they put in force are in [docs/constraints/](docs/constraints/README.md).
 
 ## How the model is used
 
@@ -49,34 +53,34 @@ Posting never waits on the model. The service stores the ask, puts a sort job on
 
 ### Why Claude Haiku 5.5
 
-`npm run eval:candidates` sent every ask in the eval set to each of seven cheap, quick models twice, with the service's prompt. Claude Haiku 5.5 scored best over the whole set, so it is the default. Every miss and its reason is in [evals/scores.md](evals/scores.md).
+The eval set holds 48 asks: 32 core, 4 timing and 12 hostile. `npm run eval:candidates` sent each of them to seven cheap, quick models twice, with the service's prompt. Claude Haiku 5.5 scored best over the whole set, so it is the default. Every miss and its reason is in [evals/scores.md](evals/scores.md).
 
-| Model | Core | Timing | Hostile | All | Gave in | Median reply |
-| --- | --- | --- | --- | --- | --- | --- |
-| `anthropic/claude-haiku-5.5` | 55/64 (86%) | 4/8 (50%) | 23/24 (96%) | 82/96 (85%) | 0 | 0.9s |
-| `mistralai/mistral-large-4-0` | 48/64 (75%) | 4/8 (50%) | 24/24 (100%) | 76/96 (79%) | 0 | 1.7s |
-| `xiaomi/mimo-v2.6-flash` | 47/64 (73%) | 4/8 (50%) | 24/24 (100%) | 75/96 (78%) | 0 | 4.6s |
-| `google/gemma-4-31b-it` | 46/64 (72%) | 5/8 (63%) | 22/24 (92%) | 73/96 (76%) | 0 | 1.6s |
-| `deepseek/deepseek-v4.1-flash` | 46/64 (72%) | 6/8 (75%) | 19/24 (79%) | 71/96 (74%) | 0 | 0.8s |
-| `google/gemini-3.1-flash-lite` | 40/64 (63%) | 6/8 (75%) | 21/24 (88%) | 67/96 (70%) | 0 | 1.1s |
-| `qwen/qwen3.5-35b-a3b` | 32/64 (50%) | 5/8 (63%) | 9/24 (38%) | 46/96 (48%) | 3 | 0.8s |
+| Model | Core | Timing | Hostile | All | Gave in | No fitting reply | Median reply |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `anthropic/claude-haiku-5.5` | 58/64 (91%) | 4/8 (50%) | 24/24 (100%) | 86/96 (90%) | 0 | 0 | 0.9s |
+| `google/gemma-4-31b-it` | 49/64 (77%) | 7/8 (88%) | 24/24 (100%) | 80/96 (83%) | 0 | 0 | 1.4s |
+| `xiaomi/mimo-v2.6-flash` | 47/64 (73%) | 6/8 (75%) | 23/24 (96%) | 76/96 (79%) | 0 | 0 | 2.9s |
+| `deepseek/deepseek-v4.1-flash` | 45/64 (70%) | 5/8 (63%) | 23/24 (96%) | 73/96 (76%) | 0 | 1 | 0.7s |
+| `google/gemini-3.1-flash-lite` | 44/64 (69%) | 7/8 (88%) | 21/24 (88%) | 72/96 (75%) | 0 | 0 | 1.1s |
+| `mistralai/mistral-large-4-0` | 52/64 (81%) | 3/8 (38%) | 13/24 (54%) | 68/96 (71%) | 0 | 14 | 1.9s |
+| `qwen/qwen3.5-35b-a3b` | 37/64 (58%) | 3/8 (38%) | 13/24 (54%) | 53/96 (55%) | 1 | 0 | 1.0s |
 
-A score counts the asks whose hashtags and level were both right. Core asks come from three areas of one person's life. Timing asks copy a few core asks with only the time changed, and expect the same level. Hostile asks try to steer their own sorting. Gave in counts the hostile asks whose sort did what the ask demanded. The scores were saved on 13 October 2026, and there is no pass mark.
+A score counts the asks whose hashtags and level were both right. Core asks come from three areas of one person's life. Timing asks copy a few core asks with only the time changed, and expect the same level. Hostile asks try to steer their own sorting. Gave in counts the hostile asks whose sort did what the ask demanded. No fitting reply counts replies that did not fit the schema. The scores were saved on 13 October 2026, and there is no pass mark.
 
-Most of Haiku's misses rank a saving passed up, such as a cheaper courier or a supplier's price rise, as normal where the eval expects high. Its four timing misses are the same mistake.
+Six of Haiku's ten misses rank an ask the eval expects at high as normal, such as a courier change that saves money or a school consent form due next week.
 
 ## Agents wrote the code
 
-Coding agents wrote every line of code in this repo, in Claude Code sessions. The owner and Claude wrote the PRD and the decision records, and the owner approved each one. The owner and Claude broke the PRD into issues, and agents raised many more from work they found in passing. By 14 October 2026, 202 pull requests had merged.
+Coding agents wrote every line of code in this repo, in Claude Code sessions, over a few days. The owner and Claude wrote the PRD and the decision records, and the owner approved each one. The owner and Claude broke the PRD into issues, and agents raised many more from work they found in passing. By 14 October 2026, 202 pull requests had merged.
 
-Before every push, the agent ran the gate and a high-effort code review of its branch, and fixed, filed or dismissed each finding. A pull request merges only when the gate passes in CI. The owner reviewed and merged the early pull requests. Once the gate and the reviews had earned enough trust, the owner set agent sessions to land whole trains of issues, refactors among them, and those sessions reviewed and merged each pull request with no person reading it.
+Before every push, the agent ran the gate, the repo's offline checks, and a high-effort code review of its branch, and fixed, filed or dismissed each finding. A pull request merges only when the gate passes in CI. The owner reviewed and merged the early pull requests. Once the gate and the reviews had earned enough trust, the owner set agent sessions to land whole trains, runs of linked issues worked in order, refactors among them, and those sessions reviewed and merged each pull request with no person reading it.
 
 Every session starts from the same rules, kept in the repo:
 
 - [CLAUDE.md](CLAUDE.md) says how to work: one branch per issue, tests first, and the gate before every push.
 - [.claude/skills/](.claude/skills/) holds the steps for picking up an issue, checking the constraints, reviewing a branch before it is pushed, and writing a pull request.
 
-Each issue describes one change, with a label for its type, such as `type: bug`, and one for its mode. An agent takes a `mode: afk` issue to a pull request that closes it. Anything only the owner can do, such as setting secrets or connecting a real agent, is a `mode: human` issue, and its closing comment records the result.
+Each issue describes one change, with a label for its type, such as `type: bug`, and one for its mode. An agent takes a `mode: afk` issue, one it can finish without the owner, to a pull request that closes it. Anything only the owner can do, such as setting secrets or connecting a real agent, is a `mode: human` issue, and its closing comment records the result.
 
 ## How it is tested
 
@@ -114,6 +118,7 @@ The eval set measures sorting against the real model, on demand. The model may s
 - Clerk runs as a development instance. It holds at most 100 accounts, so sign-up stops at the hundredth, and it signs people in with Clerk's shared Google and GitHub credentials.
 - Limits are per account: 100 asks and 2,000 model calls a day, and per-minute limits on polling, posting and saving rules. None of these limits one address, or a request without a valid token. Across all accounts, the whole API takes about 50 requests a second, with bursts of 100, and refuses the rest ([ADR 31](docs/adr/0031-api-throttle.md), [ADR 35](docs/adr/0035-one-throttle-allowance.md)), so a flood on any route shuts every account out while it lasts. 100 accounts could make 200,000 model calls a day, and the model key's own spending limit is what stops them.
 - There is no web application firewall. AWS WAF cannot attach to this kind of API, and agents call API Gateway's own address, which bypasses CloudFront. A firewall on CloudFront would need a custom domain first. Until then, AWS's standard DDoS protection and the rate limit slow a flood, and the spend alarm and API Gateway's request counts show one.
+- There is no privacy notice, no terms of service, and no way for a person to delete their account or their data.
 - askme has run with no more than a handful of people, and a new AWS account may run only 10 Lambda functions at once ([bootstrapping](docs/bootstrap.md), step 1).
 
 ## Design choices
@@ -121,7 +126,7 @@ The eval set measures sorting against the real model, on demand. The model may s
 - **The page polls.** It asks for changes every few seconds while it is open, and not at all while hidden. This keeps the service fully serverless, with no open connection and nothing running while nobody looks. A new ask can take a few seconds to show ([ADR 1](docs/adr/0001-polling.md)).
 - **Agents can post and resolve asks, and read nothing.** They never see the rules, the hashtags or even their own asks. An agent keeps the ids it was given, and always asks in its own session as well ([ADR 2](docs/adr/0002-agents-write-only.md), [ADR 11](docs/adr/0011-error-contract.md)).
 - **Rules are plain English, read by a model.** There is no compile step, and no fixed rule sits behind a sort. The eval set and the reason on each card are the checks on it.
-- **Clerk handles sign-in and agent OAuth.** DCR is on, though Clerk marks it deprecated, because MCP clients still use it. That opens a public registration endpoint and puts Clerk's consent screen on every agent sign-in. Clerk's tokens carry no audience, so the service does not check one. The instance issues tokens for askme alone ([ADR 6](docs/adr/0006-identity.md)).
+- **Clerk handles sign-in and agent OAuth.** Clerk's tokens carry no audience, so the service does not check one. The instance issues tokens for askme alone ([ADR 6](docs/adr/0006-identity.md)).
 - **The deploy role is an administrator.** The AWS account holds only askme, and a role that must create roles for its functions could make itself an administrator anyway. The guards are that only main can assume it and every merge needs the gate.
 - **One table, with no index and no scan.** Every read is one account's. A question across accounts needs a new decision ([ADR 13](docs/adr/0013-table-design.md)).
 - **Daily caps.** Every model call shares one key, so an account that reaches 2,000 calls in a day stops being sorted until the next UTC day. That stops one scripted account spending the key's limit for everyone ([ADR 21](docs/adr/0021-model-call-cap.md)).
@@ -137,3 +142,7 @@ The eval set measures sorting against the real model, on demand. The model may s
 ## Setup
 
 [docs/setup.md](docs/setup.md) says how to run the gate and the eval set on a laptop. [docs/bootstrap.md](docs/bootstrap.md) lists the accounts and settings a new deployment needs. [docs/restore.md](docs/restore.md) says how to restore the table to an earlier time.
+
+## Licence
+
+[Apache 2.0](LICENSE).

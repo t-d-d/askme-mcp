@@ -1,6 +1,6 @@
 # How askme is tested
 
-Agents write the code and the owner merges it, so the gate is the reviewer. Whatever the gate cannot see ships. There is one environment, so nothing is tried on a deployed copy before it merges.
+Agents write the code, so the gate is the reviewer. Whatever the gate cannot see ships. There is one environment, so nothing is tried on a deployed copy before it merges.
 
 This page explains how the tests fit together. The rules they follow are in [test-tiers.md](constraints/test-tiers.md), and the reasons are in [ADR 9](adr/0009-test-pyramid.md), [ADR 15](adr/0015-conformance-tier.md), [ADR 16](adr/0016-live-sign-in.md), [ADR 20](adr/0020-live-tier-reads.md) and [ADR 26](adr/0026-live-tier-sends-samples.md).
 
