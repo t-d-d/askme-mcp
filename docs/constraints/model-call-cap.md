@@ -14,6 +14,9 @@ for everyone.
 - One module builds the model client, and it does the counting.
   Nothing else in the service builds one.
 - A call is counted just before it is sent, once for each try.
+- A call the model refuses still counts, one refused for askme's own
+  key included. Such a refusal ends the sort
+  ([sort-queue.md](sort-queue.md)).
 - The count is a rate counter (ADR 18) under MODEL#<window>, where
   the window is one UTC day.
 - The cap is a constant in the rate module. Tuning it needs no new
@@ -46,9 +49,12 @@ for everyone.
   it, so one account reaching it stops sorting for all.
 - Log a capped sort at warn, as a failed sort is: the cap is working
   as designed.
+- Take a refused call back off the count: the counter makes one kind
+  of write, adding one under the limit (ADR 18), and with no retry a
+  refused key costs one call for each job.
 
 Judgment: A model call made for no account is a new decision. The
 cap's value is the owner's call, set against the key's limit across
 every account.
 
-History: [ADR 21](../adr/0021-model-call-cap.md), [ADR 22](../adr/0022-sort-queue.md)
+History: [ADR 21](../adr/0021-model-call-cap.md), [ADR 22](../adr/0022-sort-queue.md), [ADR 29](../adr/0029-refused-key-is-not-retried.md)
