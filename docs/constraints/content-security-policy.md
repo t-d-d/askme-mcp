@@ -17,8 +17,9 @@ loading more code, or sending what it reads, anywhere else.
 - The policy names every outside origin the page loads from or calls, in
   the directive for that kind of load, and no other. Today that is
   Clerk's host, in script-src and connect-src, and Clerk Protect's:
-  https://cdn.protect.clerk.com in script-src, and
-  https://*.client.protect.clerk.com in script-src and connect-src.
+  https://cdn.protect.clerk.com and https://*.client.protect.clerk.com in
+  script-src, and https://*.client.protect.clerk.com:* in connect-src,
+  since its probe tries several ports.
 - Clerk's host is written as ${env:CLERK_ISSUER}, which the deploy fills
   in.
 - A pull request that makes the page reach a new origin adds it to the
@@ -42,6 +43,8 @@ loading more code, or sending what it reads, anywhere else.
   Clerk instance, so a wildcard lets in hosts that are not ours. Clerk
   Protect's https://*.client.protect.clerk.com is the one exception,
   because Clerk names the host under it for each instance (ADR 30).
+- Allow any port, as :* does, on a source other than Clerk Protect's in
+  connect-src. Only its probe picks its own ports (ADR 32).
 - Write Clerk's frontend host into serverless.yml: a move to a Clerk
   production instance on its own domain would break sign-in until
   someone edited it.
@@ -63,4 +66,4 @@ challenge, and a challenge may load more.
 The checks listen on each page, not in workers, so a pull request that
 adds a worker which loads anything checks those loads against the policy
 by hand.
-History: [ADR 28](../adr/0028-page-csp.md), [ADR 30](../adr/0030-csp-allows-clerk-protect.md)
+History: [ADR 28](../adr/0028-page-csp.md), [ADR 30](../adr/0030-csp-allows-clerk-protect.md), [ADR 32](../adr/0032-clerk-protect-probe-ports.md)
