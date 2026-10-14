@@ -558,6 +558,10 @@ const stepIndex = (job: Job, found: (step: Step) => boolean): number =>
 // rollback's step that lets the stack settle before its own (ADR 33).
 const recordsStart = (step: Step): boolean => step.id === "stack";
 const settles = (step: Step): boolean => step.name === "Let the stack settle";
+// The rollback's last step, which says in the run summary when it did not
+// finish (#412).
+const saysUnfinished = (step: Step): boolean =>
+  step.name === "Say the rollback did not finish";
 
 // When the live check fails, the same run puts back the last build that
 // passed it, then still ends failed so the owner reverts (ADR 25).
@@ -626,9 +630,12 @@ describe("fitness: a failed live check redeploys the last good build (repo-and-d
     const checkout = (rollback.steps ?? []).find(isCheckout);
     expect(checkout?.with).toEqual({ ref: lastGood });
     // Only the deploy records that its stack deploy started, and only the
-    // rollback lets the stack settle first (ADR 33).
+    // rollback lets the stack settle first (ADR 33) and says when it did not
+    // finish (#412).
     expect(
-      checkingOutRun(rollback.steps).filter((step) => !settles(step)),
+      checkingOutRun(rollback.steps).filter(
+        (step) => !settles(step) && !saysUnfinished(step),
+      ),
     ).toEqual(
       checkingOutRun(deploy.steps).filter(
         (step) =>
@@ -645,6 +652,39 @@ describe("fitness: a failed live check redeploys the last good build (repo-and-d
         ),
       ),
     );
+  });
+
+  // find-live-ok has already said live-ok is being redeployed, so a rollback
+  // that stops partway has to say so (#412).
+  it("says in the run summary when it does not finish, naming the step that failed", () => {
+    const steps = deployJob("rollback").steps ?? [];
+    // Other checks leave out a step of this name, so there is one, and it
+    // is pinned whole.
+    expect(steps.filter(saysUnfinished)).toHaveLength(1);
+    // It only writes to the summary, so it may run after a failure.
+    expect(steps.at(-1)).toEqual({
+      name: "Say the rollback did not finish",
+      if: "failure()",
+      run: [
+        `step=$(jq -r '[to_entries[] | select(.value.outcome == "failure") | .key] | join(", ")' <<< "$STEPS")`,
+        'echo "The rollback did not finish: step ${step:-with no id} failed. What is live may not be live-ok." \\',
+        '  >> "$GITHUB_STEP_SUMMARY"',
+        "",
+      ].join("\n"),
+      env: { STEPS: "${{ toJSON(steps) }}" },
+    });
+    // The steps context holds only the steps that have an id.
+    const ids = steps.slice(0, -1).map((step) => step.id);
+    expect(ids).not.toContain(undefined);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("writes no such line when it finishes", () => {
+    const steps = deployJob("rollback").steps ?? [];
+    expect(steps.at(-1)?.if).toBe("failure()");
+    expect(
+      steps.slice(0, -1).filter((step) => step.run?.includes("did not finish")),
+    ).toEqual([]);
   });
 
   it("runs live-ok's own live tier against what it put back", () => {
@@ -749,9 +789,12 @@ describe("fitness: the rollback deploys over a settled stack (repo-and-delivery.
     expect(stepIndex(rollback, isCredentials)).toBeGreaterThan(-1);
     expect(settle).toBeGreaterThan(stepIndex(rollback, isCredentials));
     expect(settle).toBe(stepIndex(rollback, isStackDeploy) - 1);
-    // A step with an if can run after a step before it failed.
+    // A step with an if can run after a step before it failed. The one that
+    // says the rollback did not finish only writes to the summary.
     expect(
-      (rollback.steps ?? []).slice(settle).filter((step) => step.if),
+      (rollback.steps ?? [])
+        .slice(settle)
+        .filter((step) => step.if !== undefined && !saysUnfinished(step)),
     ).toEqual([]);
   });
 

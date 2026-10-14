@@ -27,9 +27,13 @@ jobs:
       url: ${{ steps.page.outputs.url }}
       mcp: ${{ steps.page.outputs.mcp }}
       stack: ${{ steps.stack.outputs.stack }}
+    # The rollback repeats these steps, ids and all, and names the one that
+    # failed by its id.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        id: checkout
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        id: node
         with:
           node-version-file: .node-version
           cache: npm
@@ -37,6 +41,7 @@ jobs:
       # launcher, so this install runs them. The flag on the command line wins
       # over .npmrc.
       - run: npm ci --ignore-scripts=false
+        id: install
       # The serverless package only installs a launcher, which fetches the
       # framework and runs it. Serverless publishes no checksum for either, so
       # both must match sums of downloads made when the version was pinned. A
@@ -45,6 +50,7 @@ jobs:
       # where the launcher looks, so it fetches nothing. Then the host is
       # blocked, so nothing unchecked can come from it.
       - name: Check the Serverless launcher and framework
+        id: serverless
         run: |
           version=4.43.0
           archive="$RUNNER_TEMP/serverless-$version.tgz"
@@ -65,14 +71,17 @@ jobs:
       # Build before the job holds any AWS credentials. Clerk's publishable
       # key is public (ADR 6).
       - name: Build the page
+        id: build
         run: npm run build
         env:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        id: credentials
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
       - name: Apply the deploy role's stack
+        id: role-stack
         run: >-
           aws cloudformation deploy
           --stack-name askme
@@ -89,6 +98,7 @@ jobs:
         id: stack
         run: echo "stack=started" >> "$GITHUB_OUTPUT"
       - name: Deploy the stack
+        id: app-stack
         run: node_modules/.bin/serverless deploy
         env:
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }}
@@ -219,9 +229,11 @@ jobs:
       mcp: ${{ steps.page.outputs.mcp }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        id: checkout
         with:
           ref: ${{ needs.find-live-ok.outputs.sha }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        id: node
         with:
           node-version-file: .node-version
           cache: npm
@@ -229,6 +241,7 @@ jobs:
       # launcher, so this install runs them. The flag on the command line wins
       # over .npmrc.
       - run: npm ci --ignore-scripts=false
+        id: install
       # The serverless package only installs a launcher, which fetches the
       # framework and runs it. Serverless publishes no checksum for either, so
       # both must match sums of downloads made when the version was pinned. A
@@ -237,6 +250,7 @@ jobs:
       # where the launcher looks, so it fetches nothing. Then the host is
       # blocked, so nothing unchecked can come from it.
       - name: Check the Serverless launcher and framework
+        id: serverless
         run: |
           version=4.43.0
           archive="$RUNNER_TEMP/serverless-$version.tgz"
@@ -257,10 +271,12 @@ jobs:
       # Build before the job holds any AWS credentials. Clerk's publishable
       # key is public (ADR 6).
       - name: Build the page
+        id: build
         run: npm run build
         env:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        id: credentials
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -269,6 +285,7 @@ jobs:
       # own session, and skips no resource: whether to skip one is the
       # owner's call. A stack still stuck stops the rollback here (ADR 33).
       - name: Let the stack settle
+        id: settle
         run: |
           status() {
             aws cloudformation describe-stacks --stack-name askme-prod \
@@ -295,6 +312,7 @@ jobs:
             fi
           fi
       - name: Deploy the stack
+        id: app-stack
         run: node_modules/.bin/serverless deploy
         env:
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }}
@@ -320,6 +338,17 @@ jobs:
           echo "mcp=$mcp" >> "$GITHUB_OUTPUT"
           echo "The page is live at $url" >> "$GITHUB_STEP_SUMMARY"
           echo "The MCP endpoint is $mcp" >> "$GITHUB_STEP_SUMMARY"
+      # find-live-ok has said live-ok is going back, so a rollback that stops
+      # partway says so. The steps context holds only steps with an id, so
+      # every step above has one.
+      - name: Say the rollback did not finish
+        if: failure()
+        run: |
+          step=$(jq -r '[to_entries[] | select(.value.outcome == "failure") | .key] | join(", ")' <<< "$STEPS")
+          echo "The rollback did not finish: step ${step:-with no id} failed. What is live may not be live-ok." \
+            >> "$GITHUB_STEP_SUMMARY"
+        env:
+          STEPS: ${{ toJSON(steps) }}
 
   # live-ok's own live tier, against what the rollback put back.
   rollback-live:
