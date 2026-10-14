@@ -2,6 +2,7 @@ import { afterAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 import { accountId, newAccount } from "../test/caller";
 import { putItem, storedItems } from "../test/dynamodb";
+import { storeAsk } from "../test/store-ask";
 import type { AccountId } from "./src/identity";
 import { rateLimits } from "./src/rate";
 import { exampleRules, type HashtagWindow } from "./src/rules";
@@ -23,12 +24,9 @@ afterAll(() => {
 
 const account = (): AccountId => accountId(newAccount());
 
-const ask: NewAsk = {
-  summary: "Approve the plan for the kitchen rewiring",
-  area: "Home renovation",
-  spokenDetail: "The electrician needs a yes or no before Friday.",
+const ask = storeAsk({
   actionLink: "https://github.com/t-d-d/askme-mcp/pull/1",
-};
+});
 
 const day = 86_400_000;
 const minute = 60_000;
