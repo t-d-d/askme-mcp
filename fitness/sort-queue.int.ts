@@ -19,7 +19,7 @@ import { createStore, type NewAsk } from "../service/src/store/store";
 import { sortingMs } from "../service/src/view";
 import { pagePaths } from "../shared/page-api";
 import { storedItems } from "../test/dynamodb";
-import { fakes } from "../test/fakes";
+import { fakes, type SentMessage } from "../test/fakes";
 import { startFakeIssuer, type FakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, type Captured } from "../test/logs";
@@ -129,15 +129,12 @@ async function listed(sub: string) {
 const sortingUntil = async (sub: string, id: string) =>
   (await listed(sub)).asks.find((one) => one.id === id)?.sortingUntil;
 
-const sentSince = (from: number, sub: string) =>
-  fakes.queue.sent
-    .slice(from)
-    .filter(
-      (message) =>
-        z.object({ accountId: z.literal(sub) }).safeParse(message.body).success,
-    );
-
-const sentFor = (sub: string) => sentSince(0, sub);
+// Each job names the account and the ask its group is for.
+const expectJobsNamed = (sub: string, sends: SentMessage[]) => {
+  expect(sends.map(({ body }) => body)).toEqual(
+    sends.map(({ groupId }) => ({ accountId: sub, askId: groupId })),
+  );
+};
 
 const queueAnswer = z.object({
   batchItemFailures: z.array(z.object({ itemIdentifier: z.string() })),
@@ -207,23 +204,25 @@ describe("fitness: each send has its own id (sort-queue.md)", () => {
     // Unchanged, after a reading that succeeded: it queues the ask again,
     // which is still behind the rules.
     expect((await saveRules(sub, "#work, then #home.")).status).toBe(200);
-    const sends = sentSince(from, sub);
+    const sends = fakes.queue.sent.slice(from);
     expect(sends).toHaveLength(2);
     expect(sends.map(({ groupId }) => groupId)).toEqual([id, id]);
     expect(sends[0]?.deduplicationId).not.toBe(sends[1]?.deduplicationId);
     expect(sends.every(({ taken }) => taken)).toBe(true);
+    expectJobsNamed(sub, sends);
   });
 
   it("gives a repeat of one send the same id, so the queue drops it", async () => {
     const sub = newAccount();
     fakes.queue.loseAnswers(1);
     const id = await post(sub);
-    const sends = sentFor(sub);
+    const sends = fakes.queue.sent;
     expect(sends.map(({ groupId, taken }) => ({ groupId, taken }))).toEqual([
       { groupId: id, taken: true },
       { groupId: id, taken: false },
     ]);
     expect(sends[1]?.deduplicationId).toBe(sends[0]?.deduplicationId);
+    expectJobsNamed(sub, sends);
     expect(fakes.queue.waiting()).toBe(1);
   });
 
@@ -242,11 +241,10 @@ describe("fitness: each send has its own id (sort-queue.md)", () => {
     }
     await saveRead(sub, "#work, then #home.", ["work", "home"]);
     expect([...fakes.queue.calls].sort()).toEqual([10, 2].sort());
-    expect(
-      sentFor(sub)
-        .map(({ groupId }) => groupId)
-        .sort(),
-    ).toEqual(ids.sort());
+    expect(fakes.queue.sent.map(({ groupId }) => groupId).sort()).toEqual(
+      ids.sort(),
+    );
+    expectJobsNamed(sub, fakes.queue.sent);
   });
 });
 
@@ -403,9 +401,10 @@ describe("fitness: an unchanged save calls no model (sort-queue.md)", () => {
     expect(Date.parse(rulesAfter.savedAt ?? "")).toBeGreaterThan(
       Date.parse(rulesBefore.savedAt ?? ""),
     );
-    expect(sentSince(from, sub).map(({ groupId }) => groupId)).toEqual([
+    expect(fakes.queue.sent.slice(from).map(({ groupId }) => groupId)).toEqual([
       behind,
     ]);
+    expectJobsNamed(sub, fakes.queue.sent.slice(from));
     expect(await sortingUntil(sub, current)).toBeUndefined();
     expect(Date.parse((await sortingUntil(sub, behind)) ?? "")).toBe(
       Date.parse(rulesAfter.savedAt ?? "") + sortingMs,
@@ -430,7 +429,7 @@ describe("fitness: an unchanged save calls no model (sort-queue.md)", () => {
       { code: "cap_reached" },
     );
     expect(await store.rules(owner)).toEqual(rulesBefore);
-    expect(sentFor(sub)).toEqual([]);
+    expect(fakes.queue.sent).toEqual([]);
   });
 
   it("still queues the asks behind the rules while the cap is spent when the text is empty", async () => {
@@ -444,7 +443,8 @@ describe("fitness: an unchanged save calls no model (sort-queue.md)", () => {
     );
     await setModelCalls(accountId(sub));
     expect((await saveRules(sub, "")).status).toBe(200);
-    expect(sentFor(sub).map(({ groupId }) => groupId)).toEqual([behind]);
+    expect(fakes.queue.sent.map(({ groupId }) => groupId)).toEqual([behind]);
+    expectJobsNamed(sub, fakes.queue.sent);
   });
 
   it("reads the rules again when their last reading failed, as Try again does", async () => {

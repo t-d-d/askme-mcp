@@ -863,7 +863,6 @@ describe("an ask that stops mattering", () => {
     const account = newAccount();
     fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
-    await runSorts();
     const summary = `Stops mattering ${randomUUID()}`;
     await post(account, { ...ask, summary, stale_after_minutes: 4321 });
     fakes.model.reply({
@@ -897,13 +896,10 @@ describe("sorting", () => {
     const account = newAccount();
     fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
-    await runSorts();
     const calls = fakes.model.calls.length;
     const id = await post(account);
     expect(fakes.model.calls).toHaveLength(calls);
-    expect(sentSince(fakes.queue.sent.length - 1)).toEqual([
-      sortOf(account, id),
-    ]);
+    expect(sent()).toEqual([sortOf(account, id)]);
     expect(await sorted(account)).toEqual({
       hashtags: [
         { name: "work", colour: 0 },
@@ -930,7 +926,6 @@ describe("sorting", () => {
     const account = newAccount();
     fakes.model.reply({ json: { hashtags: ["work", "shop"], hours: [] } });
     await saveRules(account, { text: rulesText });
-    await runSorts();
     const id = await post(account);
     fakes.model.reply({
       json: {
@@ -1059,7 +1054,6 @@ describe("sorting", () => {
     const id = await post(account, { ...ask, replaces: old });
     expect((await sorted(account)).asks).toEqual([{ id, sort: null }]);
     expect(sent()).toEqual([sortOf(account, id)]);
-    await runSorts();
   });
 });
 
@@ -1120,11 +1114,12 @@ describe("saving the rules again", () => {
         sortOf(account, unsorted),
       ]),
     );
+    // Both handed-on jobs run, and each takes a reply, sorted ask or not.
     fakes.model.reply(
       { json: { hashtags: ["shop"], level: "low", reason: "Routine." } },
       { json: { hashtags: ["shop"], level: "low", reason: "Routine." } },
     );
-    await runSorts();
+    expect(await runSorts()).toBe(2);
   });
 
   it("keeps each ask's old hashtags, in their colours, until it is sorted again", async () => {
@@ -1338,13 +1333,10 @@ describe("sample asks", () => {
       expect.arrayContaining(asks.map(({ id }) => sortOf(account, id))),
     );
     expect(sent()).toHaveLength(3);
-    // The sorts run here, so no other test's reply goes to them.
-    await runSorts();
   });
 
   it("are sorted with the example rules a new account starts with", async () => {
     const account = newAccount();
-    await runSorts();
     await sendSamples(account);
     const reply = {
       json: { hashtags: ["shop"], level: "high", reason: "A customer waits." },
@@ -1381,7 +1373,6 @@ describe("sample asks", () => {
       `in the last ${String(dedupeWindowMinutes)} minutes`,
     );
     expect(await summaries(account)).toHaveLength(3 * presses);
-    await runSorts();
   });
 
   it(`are refused at the rate limit with rate_limited, which says how long to wait`, async () => {
