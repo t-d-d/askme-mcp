@@ -38,6 +38,8 @@ environment doubles sign-in and connection setup.
   and continues a failed CloudFormation rollback once, skipping
   nothing. If the stack is still stuck, it deploys nothing, and the run
   summary says why.
+- The run summary says which failure started the rollback: the live
+  check, or the deploy. A cancelled run starts no rollback.
 - A change to a stored item's shape keeps the previous build able to
   read it, or its pull request says why it cannot.
 

@@ -1,12 +1,12 @@
 # ADR 33: A deploy that fails once its stack deploy has started rolls back too
 
-Decided on 14 October 2026: the rollback to `live-ok` from [ADR 25](0025-roll-back-to-live-ok.md) also starts when the deploy job fails at or after the step that deploys the stack. A failure before that step starts none. Before it deploys, the rollback waits for the stack to settle, and continues a CloudFormation rollback that failed, once, skipping no resource. This amends points 3 and 7 of ADR 25. The owner chose it in #354.
+Decided on 14 October 2026: the rollback to `live-ok` from [ADR 25](0025-roll-back-to-live-ok.md) also starts when the deploy job fails at or after the step that deploys the stack. A failure before that step starts none. Before it deploys, the rollback waits for the stack to settle, and continues a CloudFormation rollback that failed, once, skipping no resource. This amends points 3, 6 and 7 of ADR 25. The owner chose it in #354.
 
 Parent PRD: [PRD](../../PRD.md). Amends [ADR 25](0025-roll-back-to-live-ok.md).
 
 ## Constraint-set delta
 
-Edits [`docs/constraints/repo-and-delivery.md`](../constraints/repo-and-delivery.md): the exception to "Nothing else deploys" and the rollback rule add a deploy that fails once its stack deploy has started. A new rule says the rollback first waits for the stack to settle and continues a failed CloudFormation rollback once. Two new "Do not" entries: no rollback after a failure before the stack deploy, and no CloudFormation rollback that skips resources or is forced.
+Edits [`docs/constraints/repo-and-delivery.md`](../constraints/repo-and-delivery.md): the exception to "Nothing else deploys" and the rollback rule add a deploy that fails once its stack deploy has started. A new rule says the rollback first waits for the stack to settle and continues a failed CloudFormation rollback once. Another says the run summary names which failure started the rollback, and that a cancelled run starts none. Two new "Do not" entries: no rollback after a failure before the stack deploy, and no CloudFormation rollback that skips resources or is forced.
 
 ## Context
 
@@ -17,9 +17,9 @@ Edits [`docs/constraints/repo-and-delivery.md`](../constraints/repo-and-delivery
 
 ## Decision
 
-The deploy run rolls back to `live-ok` whenever it may have changed what is live and the live check has not passed.
+The deploy run rolls back to `live-ok` whenever it may have changed what is live and the live check has not passed, unless the run was cancelled.
 
-1. **When it starts.** The rollback starts when the live check fails, as before, or when the deploy job fails at or after its stack deploy step. Just before that step, the deploy job records that it is starting it, for the jobs after it to read. A failure before that step changes nothing a person uses and starts no rollback. Those steps are the install, the Serverless checksum, the build and the deploy role's stack. A cancelled run starts none either.
+1. **When it starts.** The rollback starts when the live check fails, as before, or when the deploy job fails at or after its stack deploy step. Just before that step, the deploy job records that it is starting it, for the jobs after it to read. A failure before that step changes nothing a person uses and starts no rollback. Those steps are the checkout, the Node setup, the install, the Serverless checksum, the build, the credentials and the deploy role's stack. A cancelled run starts none either.
 2. **The stack settles first.** Before it deploys, the rollback job reads the status of the app's stack, `askme-prod`. While an update or an undo is in progress, it waits. If the status is `UPDATE_ROLLBACK_FAILED`, it calls `ContinueUpdateRollback` once, with its own new session, and waits for `UPDATE_ROLLBACK_COMPLETE`.
 3. **It skips nothing.** The continue names no resource to skip and does not force the rollback. Skipping marks a resource as rolled back when it is not. AWS warns that a later update can then fail and leave the stack unrecoverable. Whether to skip a resource is the owner's call, after reading why it failed.
 4. **A stack still stuck stops the rollback.** If the continue fails, the rollback deploys nothing. The run summary says the stack needs the owner, and gives CloudFormation's reason for each resource that failed.
@@ -38,10 +38,10 @@ The deploy run rolls back to `live-ok` whenever it may have changed what is live
 
 | Check | What it asserts | Where it runs | What it catches |
 | --- | --- | --- | --- |
-| A failed deploy redeploys the last good build | Read as YAML, the deploy workflow looks for `live-ok` when the live check fails, or when the deploy job fails having started its stack deploy, and in no other case. The deploy job records that start in the step just before its stack deploy. | Gate (static) | A rollback after a failure that changed nothing, or none after a deploy that failed partway. |
-| The rollback deploys over a settled stack | Read as YAML, before its stack deploy the rollback job reads the stack's status, waits while it is in progress, and continues a failed rollback. No workflow step skips resources or forces a CloudFormation rollback. | Gate (static) | A deploy over a stuck stack, or a continue that skips resources. |
+| A failed deploy redeploys the last good build | Read as YAML, the deploy workflow looks for `live-ok` when the live check fails, or when the deploy job fails having started its stack deploy, and in no other case. The deploy job records that start in the step just before its stack deploy. The run summary names which of the two started the rollback. | Gate (static) | A rollback after a failure that changed nothing, or none after a deploy that failed partway. |
+| The rollback deploys over a settled stack | Read as YAML, before its stack deploy the rollback job reads the stack's status, waits while it is in progress, and continues a failed rollback once. If the stack is still stuck, it writes each failed resource's reason to the run summary and stops before its stack deploy. No workflow step skips resources or forces a CloudFormation rollback. | Gate (static) | A deploy over a stuck stack, a continue that skips resources or repeats, or a stuck stack that leaves no reason in the summary. |
 
-The first check replaces the part of ADR 25's "A failed live check redeploys the last good build" that says the rollback runs only when the live check failed. The rest of that check stands. Both checks land with #402, which changes the workflow.
+The first check replaces the part of ADR 25's "A failed live check redeploys the last good build" that says the rollback runs only when the live check failed. That check also says the rollback repeats the deploy's steps and outputs, but the role's stack. Its comparison now leaves out the deploy's step and output that record the start, and the rollback's steps that let the stack settle. The rest of that check stands. Both checks land with #402, which changes the workflow.
 
 ## Consequences
 
@@ -54,5 +54,6 @@ The first check replaces the part of ADR 25's "A failed live check redeploys the
 
 - A failed stack update that CloudFormation already undid still costs a rollback: one more build, deploy and live tier.
 - A stack the continue cannot bring back stays stuck. The next merge's deploy fails on it, which starts the rollback and tries the continue once more. This repeats until the owner fixes the stack by hand.
+- A run cancelled once its stack deploy has started leaves what it deployed live and unchecked, and the owner reverts as before ADR 25.
 - A runner lost during the deploy job may pass no outputs on. Then no rollback starts, and the owner reverts as before ADR 25.
-- The rollback job's session lasts an hour at most. A wait for the stack that runs longer fails the rollback.
+- The rollback job's session lasts an hour at most, and the wait, the continue and the rollback's own stack deploy all share it. A wait that runs longer fails the rollback. A wait that leaves too little of the hour can fail the rollback's stack deploy, and CloudFormation's undo of it, which leaves the stack stuck again.
