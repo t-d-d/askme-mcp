@@ -124,6 +124,19 @@ describe.each(eras)(
       await client.close();
     });
 
+    // The tool list never changes, so askme promises no change notices. A
+    // client that is promised them asks to listen for them (polling.md).
+    it("is told the tool list does not change", async () => {
+      const client = await connect(handler, {
+        token: await issuer.token(),
+        era,
+      });
+      expect(client.getServerCapabilities()).toEqual({
+        tools: { listChanged: false },
+      });
+      await client.close();
+    });
+
     it("gets a new id back from each new ask", async () => {
       const client = await connect(handler, {
         token: await issuer.token({ claims: { sub: newAccount() } }),
@@ -487,16 +500,23 @@ describe("a request the handler cannot use", () => {
   });
 });
 
-// The service holds no live connections (polling.md).
+// The service holds no live connections (polling.md). The spec has a server
+// acknowledge only the notices it will send, and end a stream it ends itself
+// with a completion result.
 describe("a modern client that asks to listen for changes", () => {
-  it("is refused at once, with no stream left open", async () => {
+  it("is told nothing will be sent, and the stream ends at once", async () => {
     const client = await connect(handler, {
       token: await issuer.token(),
       era: "modern",
     });
-    await expect(client.listen({ toolsListChanged: true })).rejects.toThrow(
-      /Subscription limit reached/u,
-    );
+    const subscription = await client.listen({
+      toolsListChanged: true,
+      promptsListChanged: true,
+      resourcesListChanged: true,
+      resourceSubscriptions: [mcpUrl],
+    });
+    expect(subscription.honoredFilter).toEqual({});
+    expect(await subscription.closed).toBe("graceful");
     await client.close();
   });
 });
