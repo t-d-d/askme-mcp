@@ -1,8 +1,8 @@
-import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
+import { accountId, newAccount } from "../test/caller";
 import { putItem, storedItems } from "../test/dynamodb";
-import { callerOf, type AccountId } from "./src/identity";
+import type { AccountId } from "./src/identity";
 import { rateLimits } from "./src/rate";
 import { exampleRules, type HashtagWindow } from "./src/rules";
 import { keys } from "./src/store/keys";
@@ -21,13 +21,7 @@ afterAll(() => {
   store.close();
 });
 
-const account = (): AccountId =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: `user_${randomUUID().slice(0, 8)}`, requestId: "r" },
-  }).accountId;
+const account = (): AccountId => accountId(newAccount());
 
 const ask: NewAsk = {
   summary: "Approve the plan for the kitchen rewiring",

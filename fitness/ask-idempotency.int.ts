@@ -1,50 +1,33 @@
-import { randomUUID } from "node:crypto";
 import type { Client } from "@modelcontextprotocol/client";
-import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
+import { afterAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
-import { callerOf, type AccountId } from "../service/src/identity";
+import type { AccountId } from "../service/src/identity";
 import {
   askLifetimeDays,
   createStore,
   dedupeWindowMinutes,
   type Posting,
 } from "../service/src/store/store";
+import { agentAsk } from "../test/asks";
+import { accountId, newAccount } from "../test/caller";
 import { storedItems } from "../test/dynamodb";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
+import { useFakeIssuer } from "../test/identity";
 import { connect, eras, type Era } from "../test/mcp";
 
 const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
 const store = createStore({ tableName, endpoint });
 
-let issuer: FakeIssuer;
-beforeAll(async () => {
-  issuer = await startFakeIssuer();
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
-});
-afterAll(async () => {
-  vi.unstubAllEnvs();
+const issuer = useFakeIssuer();
+afterAll(() => {
   store.close();
-  await issuer.close();
 });
-
-const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
-
-const accountId = (sub: string): AccountId =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: sub, requestId: "r" },
-  }).accountId;
 
 // Every field an agent can send. replaces names no ask, so the ask is
 // posted as new.
 const ask = {
-  summary: "Approve the plan for the kitchen rewiring",
-  area: "Home renovation",
-  spoken_detail: "The electrician needs a yes or no before Friday.",
+  ...agentAsk,
   action_link: "https://github.com/t-d-d/askme-mcp/pull/1",
   session_link: "https://claude.ai/code/session_1",
   replaces: "AAAAAAAAAAAAAAAAAAAAAAAA",

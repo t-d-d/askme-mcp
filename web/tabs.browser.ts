@@ -5,6 +5,7 @@ import {
   type Hashtag,
   type Level,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import {
   Answering,
   answerPoll,
@@ -29,14 +30,13 @@ const ask = (
   summary: string,
   waited: number,
   sort: { hashtags: string[]; level: Level } | null,
-) => ({
-  id,
-  summary,
-  spokenDetail: `The spoken detail of ${summary}`,
-  postedAt: ago(waited),
-  opened: false,
-  sort: sort === null ? null : { ...sort, reason: "Sorted by the rules." },
-});
+) =>
+  pageAsk({
+    id,
+    summary,
+    postedAt: ago(waited),
+    sort: sort === null ? null : { ...sort, reason: "Sorted by the rules." },
+  });
 
 // The rules name shop before work, so shop's tab comes first, though work
 // took the first colour when it first appeared.

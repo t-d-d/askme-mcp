@@ -1,8 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
+import { afterAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
-import { callerOf } from "../service/src/identity";
 import { fingerprint } from "../service/src/store/fingerprint";
 import { keys } from "../service/src/store/keys";
 import {
@@ -11,8 +9,9 @@ import {
   dedupeWindowMinutes,
 } from "../service/src/store/store";
 import { asksAnswer, pagePaths } from "../shared/page-api";
+import { accountId, newAccount } from "../test/caller";
 import { storedItems } from "../test/dynamodb";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
+import { useFakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, origin } from "../test/mcp";
 
@@ -20,15 +19,9 @@ const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
 const store = createStore({ tableName, endpoint });
 
-let issuer: FakeIssuer;
-beforeAll(async () => {
-  issuer = await startFakeIssuer();
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
-});
-afterAll(async () => {
-  vi.unstubAllEnvs();
+const issuer = useFakeIssuer();
+afterAll(() => {
   store.close();
-  await issuer.close();
 });
 
 const day = 86_400_000;
@@ -37,13 +30,8 @@ describe("fitness: expiry holds on read (hosting.md)", () => {
   // The local DynamoDB never deletes an expired item, and the real one
   // deletes it late, so the read has to leave it out itself.
   it("leaves out of the page's list an ask a month old, still in the table", async () => {
-    const sub = `user_${randomUUID().slice(0, 8)}`;
-    const owner = callerOf({
-      token: "test",
-      clientId: "test",
-      scopes: [],
-      extra: { accountId: sub, requestId: "r" },
-    }).accountId;
+    const sub = newAccount();
+    const owner = accountId(sub);
     const fresh = { summary: "New", area: "Home", spokenDetail: "New." };
     const expired = { summary: "Old", area: "Home", spokenDetail: "Old." };
     await store.postAsk(
@@ -71,13 +59,8 @@ describe("fitness: expiry holds on read (hosting.md)", () => {
   });
 
   it("makes a new ask when the identical one's dedupe record is past its expiry, though still in the table", async () => {
-    const sub = `user_${randomUUID().slice(0, 8)}`;
-    const owner = callerOf({
-      token: "test",
-      clientId: "test",
-      scopes: [],
-      extra: { accountId: sub, requestId: "r" },
-    }).accountId;
+    const sub = newAccount();
+    const owner = accountId(sub);
     const ask = {
       summary: "Approve the plan",
       area: "Home",

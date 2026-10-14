@@ -1,66 +1,33 @@
 // Kept apart from error-contract.int.ts, which runs against a store that
 // cannot be reached.
-import { randomUUID } from "node:crypto";
 import { ProtocolErrorCode } from "@modelcontextprotocol/client";
 import { McpServer } from "@modelcontextprotocol/server";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  inject,
-  it,
-  vi,
-} from "vitest";
+import { afterAll, afterEach, describe, expect, inject, it, vi } from "vitest";
 import { z } from "zod";
 import { askTool } from "../service/src/ask";
 import { codes, type Code } from "../service/src/errors";
 import { handler } from "../service/src/handler";
-import { callerOf, type AccountId } from "../service/src/identity";
 import { rateLimits } from "../service/src/rate";
 import { createStore, dailyAskCap } from "../service/src/store/store";
+import { agentAsk } from "../test/asks";
+import { accountId, newAccount } from "../test/caller";
 import { noon, stopClockAt } from "../test/clock";
-import {
-  startFakeIssuer,
-  type FakeIssuer,
-  type TokenOptions,
-} from "../test/identity";
+import { useFakeIssuer, type TokenOptions } from "../test/identity";
 import { connect, eras, refusalOf } from "../test/mcp";
 
 const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
 const store = createStore({ tableName, endpoint });
 
-let issuer: FakeIssuer;
-beforeAll(async () => {
-  issuer = await startFakeIssuer();
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
-});
+const issuer = useFakeIssuer();
 afterEach(() => {
   vi.useRealTimers();
 });
-afterAll(async () => {
-  vi.unstubAllEnvs();
+afterAll(() => {
   store.close();
-  await issuer.close();
 });
 
-const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
-
-const accountId = (sub: string): AccountId =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: sub, requestId: "r" },
-  }).accountId;
-
-const ask = {
-  summary: "Approve the plan for the kitchen rewiring",
-  area: "Home renovation",
-  spoken_detail: "The electrician needs a yes or no before Friday.",
-};
+const ask = agentAsk;
 
 const numbered = (n: number) => ({
   summary: `Ask ${String(n)}`,

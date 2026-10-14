@@ -1,26 +1,24 @@
-import { randomUUID } from "node:crypto";
 import {
   afterAll,
   afterEach,
-  beforeAll,
   beforeEach,
   describe,
   expect,
   inject,
   it,
-  vi,
 } from "vitest";
 import { z } from "zod";
 import { handler } from "../service/src/handler";
-import { callerOf, type AccountId } from "../service/src/identity";
 import { handler as sorter, sortDeliveries } from "../service/src/sorter";
 import { sortKeys } from "../service/src/store/keys";
 import { createStore, type NewAsk } from "../service/src/store/store";
 import { sortingMs } from "../service/src/view";
 import { pagePaths } from "../shared/page-api";
+import { agentAsk } from "../test/asks";
+import { accountId, newAccount } from "../test/caller";
 import { storedItems } from "../test/dynamodb";
 import { fakes, type SentMessage } from "../test/fakes";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
+import { useFakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { captureLogs, type Captured } from "../test/logs";
 import { connect, origin } from "../test/mcp";
@@ -31,37 +29,17 @@ const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
 const store = createStore({ tableName, endpoint });
 
-let issuer: FakeIssuer;
-beforeAll(async () => {
-  issuer = await startFakeIssuer();
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
-});
-afterAll(async () => {
-  vi.unstubAllEnvs();
+const issuer = useFakeIssuer();
+afterAll(() => {
   store.close();
-  await issuer.close();
 });
-
-const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
-
-const accountId = (sub: string): AccountId =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: sub, requestId: "r" },
-  }).accountId;
 
 const minute = 60_000;
 
 const deliver = () =>
   fakes.queue.deliver((event) => sorter(event, { awsRequestId: "sort-1" }));
 
-const ask = {
-  summary: "Approve the plan for the kitchen rewiring",
-  area: "Home renovation",
-  spoken_detail: "The electrician needs a yes or no before Friday.",
-};
+const ask = agentAsk;
 
 async function post(sub: string, args: Record<string, string> = ask) {
   const client = await connect(handler, {

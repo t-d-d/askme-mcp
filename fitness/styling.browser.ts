@@ -5,19 +5,18 @@ import {
   type AsksAnswer,
   type PageAsk,
 } from "../shared/page-api";
+import { pageAsk } from "../test/asks";
 import { openPage, Status, type OpenPage } from "../test/browser";
 
 const tap = 44;
 
-const ask = (id: string, summary: string, more: Partial<PageAsk>) => ({
-  id,
-  summary,
-  spokenDetail: `The spoken detail of ${summary}`,
-  postedAt: new Date().toISOString(),
-  opened: false,
-  sort: { hashtags: ["shop"], level: "normal" as const, reason: "Routine." },
-  ...more,
-});
+const ask = (id: string, summary: string, more: Partial<PageAsk>) =>
+  pageAsk({
+    id,
+    summary,
+    sort: { hashtags: ["shop"], level: "normal", reason: "Routine." },
+    ...more,
+  });
 
 // One line of summary on the top card, and every shape of link.
 const list: AsksAnswer = {

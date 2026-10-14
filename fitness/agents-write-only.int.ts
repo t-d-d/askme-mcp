@@ -1,28 +1,20 @@
-import { randomBytes, randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { randomBytes } from "node:crypto";
+import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { Client } from "@modelcontextprotocol/client";
 import { handler, routes } from "../service/src/handler";
 import { instructions } from "../service/src/instructions";
 import { askChangePaths, pagePaths, samplesPath } from "../shared/page-api";
-import { startFakeIssuer, type FakeIssuer } from "../test/identity";
+import { agentAsk } from "../test/asks";
+import { newAccount } from "../test/caller";
+import { useFakeIssuer } from "../test/identity";
 import { invoke } from "../test/lambda";
 import { connect, eras, origin, type Era } from "../test/mcp";
 
-let issuer: FakeIssuer;
-beforeAll(async () => {
-  issuer = await startFakeIssuer();
-  vi.stubEnv("CLERK_ISSUER", issuer.issuer);
-});
-afterAll(async () => {
-  vi.unstubAllEnvs();
-  await issuer.close();
-});
+const issuer = useFakeIssuer();
 
 const ask = {
-  summary: "Approve the plan for the kitchen rewiring",
-  area: "Home renovation",
-  spoken_detail: "The electrician needs a yes or no before Friday.",
+  ...agentAsk,
   action_link: "https://github.com/t-d-d/askme-mcp/pull/1",
   session_link: "https://claude.ai/code/session_1",
 };
@@ -41,8 +33,6 @@ const idAndStatus = z.strictObject({
   id: z.string(),
   status: z.enum(["posted", "resolved"]),
 });
-
-const newAccount = () => `user_${randomUUID().slice(0, 8)}`;
 
 // An id of the same shape as askme's, that no account has.
 const unknownId = () => randomBytes(18).toString("base64url");
@@ -109,7 +99,7 @@ describe.each(eras)(
     it("answers an account that already has asks with an id and a status only", async () => {
       const client = await connect(handler, {
         token: await issuer.token({
-          claims: { sub: `user_${randomUUID().slice(0, 8)}` },
+          claims: { sub: newAccount() },
         }),
         era,
       });

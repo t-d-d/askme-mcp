@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { accountId } from "../../test/caller";
 import { captureLogs } from "../../test/logs";
-import { callerOf, type AccountId } from "./identity";
+import type { AccountId } from "./identity";
 import { createLogger } from "./log";
 import { CapReached, ModelFailed, type ModelRequest } from "./model";
 import { parseSortReply, reasonAsked, reasonLimit } from "./sort";
@@ -17,14 +18,6 @@ import {
   sortTimeoutMs,
   type SortContext,
 } from "./sorter";
-
-const accountId = (sub: string): AccountId =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: sub, requestId: "r" },
-  }).accountId;
 
 const owner = accountId("user_owner");
 

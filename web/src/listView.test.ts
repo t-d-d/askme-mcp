@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AsksAnswer, Hashtag, PageAsk } from "../../shared/page-api";
+import { pageAsk } from "../../test/asks";
 import { listView } from "./listView";
 import { everything, type Tab } from "./tab";
 
@@ -20,16 +21,16 @@ const ask = (
   id: string,
   hashtags: string[] | null,
   more: Partial<PageAsk> = {},
-): PageAsk => ({
-  id,
-  summary: `Ask ${id}`,
-  spokenDetail: `The spoken detail of ask ${id}`,
-  postedAt: new Date(evening - 30 * minute).toISOString(),
-  opened: false,
-  sort:
-    hashtags === null ? null : { hashtags, level: "normal", reason: "Sorted." },
-  ...more,
-});
+): PageAsk =>
+  pageAsk({
+    id,
+    postedAt: new Date(evening - 30 * minute).toISOString(),
+    sort:
+      hashtags === null
+        ? null
+        : { hashtags, level: "normal", reason: "Sorted." },
+    ...more,
+  });
 
 const at = (offset: number) => new Date(evening + offset).toISOString();
 

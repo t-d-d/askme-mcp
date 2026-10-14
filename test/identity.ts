@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { exportJWK, generateKeyPair, SignJWT, type JWTPayload } from "jose";
+import { afterAll, beforeAll, vi } from "vitest";
 
 export interface TokenOptions {
   // Undefined removes a claim.
@@ -110,6 +111,40 @@ export async function startFakeIssuer(): Promise<FakeIssuer> {
           else reject(error);
         });
       }),
+  };
+}
+
+// Starts the fake issuer before a file's tests and points CLERK_ISSUER at it.
+// After them, puts back every variable the file stubbed and stops the issuer,
+// so it is called at the top of a file, never inside a describe.
+export function useFakeIssuer(): Omit<FakeIssuer, "close"> {
+  let started: FakeIssuer | undefined;
+  beforeAll(async () => {
+    started = await startFakeIssuer();
+    vi.stubEnv("CLERK_ISSUER", started.issuer);
+  });
+  afterAll(async () => {
+    vi.unstubAllEnvs();
+    await started?.close();
+  });
+  const running = (): FakeIssuer => {
+    if (started === undefined) {
+      throw new Error("The fake issuer starts in beforeAll.");
+    }
+    return started;
+  };
+  return {
+    get issuer() {
+      return running().issuer;
+    },
+    get failing() {
+      return running().failing;
+    },
+    set failing(value: boolean) {
+      running().failing = value;
+    },
+    token: (options) => running().token(options),
+    sessionToken: (options) => running().sessionToken(options),
   };
 }
 

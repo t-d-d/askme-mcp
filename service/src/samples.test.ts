@@ -1,16 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { accountId } from "../../test/caller";
 import { fakeStore } from "../../test/fake-store";
 import { askTool } from "./ask";
-import { callerOf } from "./identity";
 import { sampleAreas, sendSamples, shuffled } from "./samples";
 import type { Counted, NewAsk, Posting } from "./store/store";
 
-const { accountId: account } = callerOf({
-  token: "test",
-  clientId: "test",
-  scopes: [],
-  extra: { accountId: "user_1", requestId: "req-1" },
-});
+const account = accountId("user_1");
 const now = new Date("2026-10-12T09:30:00.000Z");
 
 describe("the sample asks", () => {

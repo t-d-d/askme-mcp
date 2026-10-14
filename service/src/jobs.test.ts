@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { callerOf, type AccountId } from "./identity";
+import { accountId } from "../../test/caller";
 import { createSortRequests, jobMessage, sortJobSchema } from "./jobs";
-
-const accountId = (sub: string): AccountId =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: sub, requestId: "r" },
-  }).accountId;
 
 const owner = accountId("user_owner");
 const askId = "AAAAAAAAAAAAAAAAAAAAAAAA";

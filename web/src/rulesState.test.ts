@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AsksAnswer, RulesAnswer } from "../../shared/page-api";
+import { pageAsk } from "../../test/asks";
 import type { RefusalNote } from "./refusalNote";
 import { rulesState, type RulesStateInput } from "./rulesState";
 
@@ -21,15 +22,14 @@ const list: AsksAnswer = {
   asks: [],
 };
 
-const behindUntil = (at: number): AsksAnswer["asks"][number] => ({
-  id: "a",
-  summary: "Renew the shop's domain?",
-  spokenDetail: "The domain lapses on Friday.",
-  postedAt: new Date(at - 30 * minute).toISOString(),
-  opened: false,
-  sortingUntil: new Date(at).toISOString(),
-  sort: null,
-});
+const behindUntil = (at: number): AsksAnswer["asks"][number] =>
+  pageAsk({
+    id: "a",
+    summary: "Renew the shop's domain?",
+    spokenDetail: "The domain lapses on Friday.",
+    postedAt: new Date(at - 30 * minute).toISOString(),
+    sortingUntil: new Date(at).toISOString(),
+  });
 
 const stopped: AsksAnswer = { ...list, asks: [behindUntil(now - minute)] };
 const sorting: AsksAnswer = { ...list, asks: [behindUntil(now + minute)] };

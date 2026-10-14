@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { callerOf, type AccountId } from "./identity";
+import { accountId } from "../../test/caller";
 import {
   CapReached,
   createCountedModel,
@@ -354,14 +354,6 @@ describe("the model's key, read for a call", () => {
     expect(fake.sent).toEqual([]);
   });
 });
-
-const accountId = (sub: string): AccountId =>
-  callerOf({
-    token: "test",
-    clientId: "test",
-    scopes: [],
-    extra: { accountId: sub, requestId: "r" },
-  }).accountId;
 
 const owner = accountId("user_owner");
 
