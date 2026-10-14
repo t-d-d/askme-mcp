@@ -140,6 +140,23 @@ const queueAnswer = z.object({
   batchItemFailures: z.array(z.object({ itemIdentifier: z.string() })),
 });
 
+// Captures the log lines of each test in the describe it is called in, and
+// gives them with their level.
+function logsEachTest() {
+  let capture: { lines: Captured[]; restore(): void };
+  beforeEach(() => {
+    capture = captureLogs();
+  });
+  afterEach(() => {
+    capture.restore();
+  });
+  return () =>
+    capture.lines.map(({ method, args }) => ({
+      level: method,
+      ...z.record(z.string(), z.unknown()).parse(args[0]),
+    }));
+}
+
 const sorted = (hashtags: string[]) => ({
   json: { hashtags, level: "normal", reason: "Routine." },
 });
@@ -249,18 +266,7 @@ describe("fitness: each send has its own id (sort-queue.md)", () => {
 });
 
 describe("fitness: a failed sort never fails the run (sort-queue.md)", () => {
-  let capture: { lines: Captured[]; restore(): void };
-  beforeEach(() => {
-    capture = captureLogs();
-  });
-  afterEach(() => {
-    capture.restore();
-  });
-  const lines = () =>
-    capture.lines.map(({ method, args }) => ({
-      level: method,
-      ...z.record(z.string(), z.unknown()).parse(args[0]),
-    }));
+  const lines = logsEachTest();
 
   it("reports the message as failed and does not throw, then lets it go on the third delivery with one warn line", async () => {
     const sub = newAccount();
@@ -301,18 +307,7 @@ describe("fitness: a failed sort never fails the run (sort-queue.md)", () => {
 // OpenRouter answers 401 for a refused key, 402 for spent credit and 404
 // for a withdrawn model. Each would fail every try the same way (ADR 28).
 describe("fitness: a refused key is tried once (sort-queue.md)", () => {
-  let capture: { lines: Captured[]; restore(): void };
-  beforeEach(() => {
-    capture = captureLogs();
-  });
-  afterEach(() => {
-    capture.restore();
-  });
-  const lines = () =>
-    capture.lines.map(({ method, args }) => ({
-      level: method,
-      ...z.record(z.string(), z.unknown()).parse(args[0]),
-    }));
+  const lines = logsEachTest();
 
   it.each([401, 402, 404])(
     "calls the model once for a %i, counts that call, and lets the job go on its first delivery",
