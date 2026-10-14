@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { aheadSince, countOn, serviceAhead, type Moment } from "./load";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import { aheadSince, countOn, send, serviceAhead, type Moment } from "./load";
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -126,5 +127,34 @@ describe("how far the service's clock is ahead, counted on from poll to poll whi
     expect(putRight.serviceAhead).toBe(-10 * minute);
     const shownAgain = countOn(hidden, failedAfter(hidden, 10 * minute), 3);
     expect(shownAgain.serviceAhead).toBe(0);
+  });
+});
+
+describe("a save's answer", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const answering = (body: string) => {
+    vi.stubGlobal("fetch", () => Promise.resolve(new Response(body)));
+  };
+  const saved = z.object({ text: z.string() });
+  const token = () => Promise.resolve("token");
+
+  it("is the answer read by its schema", async () => {
+    answering(JSON.stringify({ text: "#work" }));
+    await expect(send("/rules", {}, saved, token)).resolves.toEqual({
+      text: "#work",
+    });
+  });
+
+  it("is null, not an error, when the save went through but its answer fails its schema", async () => {
+    answering(JSON.stringify({ shape: "new" }));
+    await expect(send("/rules", {}, saved, token)).resolves.toBeNull();
+  });
+
+  it("is an error when it is not JSON at all", async () => {
+    answering("<!doctype html>");
+    await expect(send("/rules", {}, saved, token)).rejects.toThrow();
   });
 });
