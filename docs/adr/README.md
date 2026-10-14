@@ -33,7 +33,8 @@ Each technical decision that is hard to reverse is recorded here, one file per d
 | [27](0027-expired-asks-are-not-matched.md) | An identical ask after the first has expired is posted as new | [ask-idempotency.md](../constraints/ask-idempotency.md) |
 | [28](0028-page-csp.md) | The page's CSP names every outside origin it uses | [content-security-policy.md](../constraints/content-security-policy.md) |
 | [29](0029-refused-key-is-not-retried.md) | A sort the model refuses for askme's own key is not tried again | [sort-queue.md](../constraints/sort-queue.md), [model-call-cap.md](../constraints/model-call-cap.md) |
-| [30](0030-api-throttle.md) | API Gateway throttles the API before askme's code runs | [api-throttle.md](../constraints/api-throttle.md), [error-contract.md](../constraints/error-contract.md) |
+| [30](0030-csp-allows-clerk-protect.md) | The page's CSP lets in Clerk Protect's hosts | [content-security-policy.md](../constraints/content-security-policy.md) |
+| [31](0031-api-throttle.md) | API Gateway throttles the API before askme's code runs | [api-throttle.md](../constraints/api-throttle.md), [error-contract.md](../constraints/error-contract.md) |
 
 ## How a decision is recorded
 

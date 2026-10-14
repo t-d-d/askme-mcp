@@ -37,6 +37,12 @@ const unanswered = [
     reason:
       'ADR 26 replaces it with "The signed-in check writes only its samples", which allows one press of Send sample asks and its dismissals.',
   },
+  {
+    record: 28,
+    check: "The page's CSP names only Clerk's host",
+    reason:
+      "ADR 30 replaces it with \"The page's CSP names only Clerk's origins\", which adds Clerk Protect's hosts.",
+  },
 ];
 
 // Checks a record repeats from an earlier record, which a test answers under

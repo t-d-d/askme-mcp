@@ -1,4 +1,4 @@
-# ADR 30: API Gateway throttles the API before askme's code runs
+# ADR 31: API Gateway throttles the API before askme's code runs
 
 Decided on 14 October 2026: the API Gateway stage throttles each of the API's routes, across all accounts, at 50 requests a second with bursts of 100. A request over the limit gets API Gateway's own 429 and starts no function, so it reaches no tool and carries none of askme's six refusal codes. The page treats it as any failed request. No alarm reads it. The spend alarm stays the alert for a flood, and API Gateway's request and 4xx counts are where the owner sees one. Issue #392 asked for it.
 
