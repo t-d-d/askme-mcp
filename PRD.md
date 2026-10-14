@@ -170,7 +170,7 @@ Version 1 is done when the recorded demo below works end to end on the deployed 
 
 **Other tests.** Schema validation rejects bad asks. A model failure does not lose an ask. Time windows behave at their boundaries, and a restriction wins when an ask's hashtags disagree. An agent cannot read rules, hashtags or other asks.
 
-**README.** Links to the film of the demo, and covers the overview, the stack, how the model is used and why that model, setup, the real build time and the fact that agents wrote the code, what is untested, the demo-data notice, and the trade-offs in this document.
+**README.** Links to the film of the demo, and covers the overview, the stack, how the model is used and why that model, the real build time and the fact that agents wrote the code, how it is tested and what is checked by hand, the demo-data notice, and the trade-offs in this document. It links to the setup steps.
 
 ## Decisions and reasons
 

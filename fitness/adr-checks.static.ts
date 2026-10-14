@@ -17,7 +17,7 @@ const unanswered = [
     record: 6,
     check: "Real clients connect",
     reason:
-      "The record's table says it runs by hand, after a deploy. The README's checklist for connecting a real agent is how.",
+      "The record's table says it runs by hand, after a deploy. The checklist for connecting a real agent, in docs/agent-checklist.md, is how.",
   },
   {
     record: 21,

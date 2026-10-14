@@ -2,26 +2,47 @@
 
 One place where all of a person's AI agents ask for their input, sorted by rules the person writes in plain English.
 
-> **This is a demo.** Every ask is deleted a month after it is posted. It differs from a production service in a few ways:
->
-> - The service runs on a Clerk development instance, which holds at most 100 accounts, so sign-up stops at the hundredth.
-> - Most limits are per account: 100 asks and 2,000 model calls a day, and per-minute limits on polling, posting and saving rules. A request without a valid token counts against none of them, and nothing limits requests from one address. A total rate limit applies across all accounts and routes: API Gateway takes about 50 requests a second for the whole API, with bursts of 100, and answers the rest with a 429 before askme's code runs ([ADR 31](docs/adr/0031-api-throttle.md), [ADR 35](docs/adr/0035-one-throttle-allowance.md)). A flood on any route shuts every account out of the whole API while the flood lasts. The sort queue runs five sorts at once. So 100 accounts could make up to 200,000 model calls a day, and the model key's own spending limit is what stops them.
-> - There is no web application firewall. AWS WAF cannot attach to this kind of API, and agents reach the MCP endpoint at API Gateway's own address, which also answers the page's API without going through CloudFront. A firewall on CloudFront would need agents to use CloudFront's address, and API Gateway's own address turned off, which takes a custom domain. Until then, AWS's standard DDoS protection and the total rate limit are what slow a flood. Its cost shows on the spend alarm, which reads a bill AWS updates about every six hours, and API Gateway's request and 4xx counts for the API show the flood itself.
+Built by [Thomas Dickinson](https://github.com/t-d-d) with Claude.
 
-The summary of the latest [deploy run](https://github.com/t-d-d/askme-mcp/actions/workflows/deploy.yml) gives the live page's address and the MCP endpoint's.
+<!-- Demo video goes here. -->
+
+> **This is a fully functional demo.** Every ask is deleted a month after it is posted. [Demo limits](#demo-limits) says how it differs from a production service.
 
 ## What it is
 
-A person who runs several agents gets asked for input by each of them, in each agent's own app. askme gives those agents one place to ask, and gives the person one list, ordered by rules they write themselves.
+People now run several AI agents at once, at work and at home, and each one stops to ask the person for input in its own app, at any hour. askme gives every agent one place to ask, and puts the person in charge of that channel. Any agent that can connect to an MCP server can post to it. The person's rules, written in plain English, decide how each ask is sorted, what shows first and what waits for its hours. Every area of their life ends up in one list on their phone.
 
-- An agent calls the MCP server's `ask` tool with a summary, the area of work, a version written to be heard, and up to two links, one to where the person should act and one back to its own session.
-- The service sorts the ask against the person's rules into their hashtags and one of three levels.
-- The page shows the list on a phone, with the first ask shown large. A card can be read aloud. Its main button opens the place to act, such as a pull request or the agent's session.
+- The MCP server's instructions tell an agent to post an ask whenever its work stops to wait for the person.
+- The agent calls the `ask` tool with a summary, the area of work, a version to be read aloud, and up to two links: where the person should act, and the agent's own session.
+- The service sorts the ask against the person's rules into their hashtags and one of three levels: high, normal or low.
+- The rules can limit a hashtag to certain hours, such as "#work only on weekdays, 8am to 6pm". An ask outside its hashtag's hours is held back until then. Each hashtag has its own tab.
+- The page shows the list on a phone, with the first ask shown large. A card can be read aloud, and its main button opens the place to act, such as a pull request or the agent's session.
 - The agent calls `resolve` when its wait is over, and the card clears. The person can also swipe it away.
 
-Agents can post and resolve asks, and read nothing. They never see the rules, the hashtags or even their own asks ([ADR 2](docs/adr/0002-agents-write-only.md)).
+The [PRD](PRD.md), the product requirements document, says what version 1 does, what it leaves out and what comes next. [docs/design.md](docs/design.md) shows every screen.
 
-The [PRD](PRD.md) says what version 1 does, what it leaves out and what comes next. [docs/design.md](docs/design.md) shows every screen.
+## Try it
+
+The page is live at https://d1dqzjjllemayb.cloudfront.net. To try it without an agent, sign up and press Send sample asks. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps. In Claude Code, run this, then choose Authenticate under `/mcp`:
+
+```
+claude mcp add --transport http --scope user askme https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp
+```
+
+In Cursor or VS Code, use its button, then sign in when it asks:
+
+[![Add askme to Cursor](https://img.shields.io/badge/Add_askme_to-Cursor-000000)](https://cursor.com/en/install-mcp?name=askme&config=eyJ1cmwiOiJodHRwczovL2Z4MHkyNmM4djAuZXhlY3V0ZS1hcGkudXMtZWFzdC0xLmFtYXpvbmF3cy5jb20vbWNwIn0%3D) [![Add askme to VS Code](https://img.shields.io/badge/Add_askme_to-VS_Code-007ACC)](https://insiders.vscode.dev/redirect/mcp/install?name=askme&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Ffx0y26c8v0.execute-api.us-east-1.amazonaws.com%2Fmcp%22%7D)
+
+## What comes next
+
+Version 1 shows asks only while the page is open, and sends no notifications. In rough order of value, the [roadmap](PRD.md#roadmap) adds:
+
+- **Real approvals.** Answer in the app, with the answer returned to the agent.
+- **Pings.** Push notifications on the phone, driven by the same rules, so the person decides what interrupts them and when.
+- **Widgets.** The top of the list on a phone or desktop widget.
+- **Rules by conversation.** Set rules by talking to an agent, with a permission only the person holds.
+- **Hands-free use.** The whole list read aloud in order, and answers by voice.
+- **A skill alongside the MCP server.** The server's guidance on when to ask and how to write a good ask, packaged for agents whose environment does not pass server instructions on.
 
 ## Stack
 
@@ -37,177 +58,109 @@ The [PRD](PRD.md) says what version 1 does, what it leaves out and what comes ne
 | Delivery | GitHub Actions on standard runners. A green merge to main deploys. |
 | Tests | Vitest, Playwright as a library, and DynamoDB Local in Docker |
 
-Each choice that is hard to reverse has a decision record in [docs/adr/](docs/adr/README.md). The rules those records put in force are in [docs/constraints/](docs/constraints/README.md).
+Each choice that is hard to reverse has an architectural decision record (ADR) in [docs/adr/](docs/adr/README.md), and the rules they put in force are in [docs/constraints/](docs/constraints/README.md).
 
 ## How the model is used
 
 The service makes two kinds of model call. Both go through OpenRouter, ask for a reply that fits a JSON Schema, turn reasoning off, and use only providers that keep no prompts.
 
 1. **Reading the rules.** When the person saves their rules, one call lists the hashtags and any hours each one is limited to. The page shows them back.
-2. **Sorting an ask.** One call per ask reads the person's rules and that ask, and replies with hashtags from the person's own list, one of three levels, and a reason of at most 140 characters.
+2. **Sorting an ask.** One call per ask reads the rules and the ask, and replies with hashtags from the person's own list, one of three levels, and a reason of at most 140 characters.
 
-The sorting call treats the ask as hostile text ([ADR 12](docs/adr/0012-untrusted-ask-text.md)). It declares no tools. The agent's fields sit in one delimited section, with any delimiter inside them escaped. The service throws away a reply that fails the schema, and the ask stays unsorted. Nothing the model says goes back to an agent, and the page shows the reason as plain text.
+The sorting call treats the ask as hostile text ([ADR 12](docs/adr/0012-untrusted-ask-text.md)). It declares no tools, and the agent's fields sit in one delimited section with any delimiter inside them escaped. A reply that fails the schema is thrown away and the ask stays unsorted. Nothing the model says goes back to an agent, and the page shows the reason as plain text.
 
 Posting never waits on the model. The service stores the ask, puts a sort job on the queue and answers the agent, and the queue retries a failed sort ([ADR 22](docs/adr/0022-sort-queue.md)). The service applies hours, and the time an ask stops mattering, in code, because models are unreliable at date arithmetic.
 
-Each account may post 100 asks a day and cause 2,000 model calls a day ([ADR 21](docs/adr/0021-model-call-cap.md)). Every model call shares one key, so the cap stops one scripted account from spending the key's limit for everyone.
-
 ### Why Claude Haiku 5.5
 
-`npm run eval:candidates` sent each of seven cheap, quick models every ask in the eval set twice, with the prompt the service uses. Claude Haiku 5.5 scored best over the whole set, so it is the default. The full results, with every miss and its reason, are in [evals/scores.md](evals/scores.md).
+The eval set holds 48 asks: 32 core, 4 timing and 12 hostile. `npm run eval:candidates` sent each of them to seven cheap, quick models twice, with the service's prompt. Claude Haiku 5.5 scored best over the whole set, so it is the default. Every miss and its reason is in [evals/scores.md](evals/scores.md).
 
-| Model | Core | Timing | Hostile | All | Gave in | Median reply |
-| --- | --- | --- | --- | --- | --- | --- |
-| `anthropic/claude-haiku-5.5` | 55/64 (86%) | 4/8 (50%) | 23/24 (96%) | 82/96 (85%) | 0 | 0.9s |
-| `mistralai/mistral-large-4-0` | 48/64 (75%) | 4/8 (50%) | 24/24 (100%) | 76/96 (79%) | 0 | 1.7s |
-| `xiaomi/mimo-v2.6-flash` | 47/64 (73%) | 4/8 (50%) | 24/24 (100%) | 75/96 (78%) | 0 | 4.6s |
-| `google/gemma-4-31b-it` | 46/64 (72%) | 5/8 (63%) | 22/24 (92%) | 73/96 (76%) | 0 | 1.6s |
-| `deepseek/deepseek-v4.1-flash` | 46/64 (72%) | 6/8 (75%) | 19/24 (79%) | 71/96 (74%) | 0 | 0.8s |
-| `google/gemini-3.1-flash-lite` | 40/64 (63%) | 6/8 (75%) | 21/24 (88%) | 67/96 (70%) | 0 | 1.1s |
-| `qwen/qwen3.5-35b-a3b` | 32/64 (50%) | 5/8 (63%) | 9/24 (38%) | 46/96 (48%) | 3 | 0.8s |
+| Model | Core | Timing | Hostile | All | Gave in | No fitting reply | Median reply |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `anthropic/claude-haiku-5.5` | 58/64 (91%) | 4/8 (50%) | 24/24 (100%) | 86/96 (90%) | 0 | 0 | 0.9s |
+| `google/gemma-4-31b-it` | 49/64 (77%) | 7/8 (88%) | 24/24 (100%) | 80/96 (83%) | 0 | 0 | 1.4s |
+| `xiaomi/mimo-v2.6-flash` | 47/64 (73%) | 6/8 (75%) | 23/24 (96%) | 76/96 (79%) | 0 | 0 | 2.9s |
+| `deepseek/deepseek-v4.1-flash` | 45/64 (70%) | 5/8 (63%) | 23/24 (96%) | 73/96 (76%) | 0 | 1 | 0.7s |
+| `google/gemini-3.1-flash-lite` | 44/64 (69%) | 7/8 (88%) | 21/24 (88%) | 72/96 (75%) | 0 | 0 | 1.1s |
+| `mistralai/mistral-large-4-0` | 52/64 (81%) | 3/8 (38%) | 13/24 (54%) | 68/96 (71%) | 0 | 14 | 1.9s |
+| `qwen/qwen3.5-35b-a3b` | 37/64 (58%) | 3/8 (38%) | 13/24 (54%) | 53/96 (55%) | 1 | 0 | 1.0s |
 
-A score counts the asks whose hashtags and level were both right. The core group holds asks from three areas of one person's life. The timing group copies a few core asks with only the time changed, and expects the same level. The hostile group holds asks that try to steer their own sorting, and "Gave in" counts the ones that moved the sort the way they pushed. The scores were saved on 13 October 2026. There is no pass mark.
-
-Most of Haiku's misses rank a saving passed up, such as a cheaper courier or a supplier's price rise, as normal where the eval expects high. Its four timing misses are the same mistake. Each copy got the level its core twin got, so the time did not move the level.
+A score counts the asks whose hashtags and level were both right. Core asks come from three areas of one person's life. Timing asks copy a few core asks with only the time changed, and expect the same level. Hostile asks try to steer their own sorting. Gave in counts the hostile asks whose sort did what the ask demanded. No fitting reply counts replies that did not fit the schema. The scores were saved on 13 October 2026, and there is no pass mark.
 
 ## Agents wrote the code
 
-Coding agents wrote every line of code in this repo, in Claude Code sessions. The owner and Claude wrote the PRD, the decision records and the issues, and the owner approved each one. Each change arrived as a pull request that the owner merged. By 13 October 2026, 133 pull requests had merged.
+Coding agents wrote every line of code in this repo, in Claude Code sessions, over a few days. The owner and Claude wrote the PRD and the decision records, and the owner approved each one. The owner and Claude broke the PRD into issues, and agents raised many more from work they found in passing. By 14 October 2026, 202 pull requests had merged.
 
-The agents work to rules kept in the repo, so each session starts from the same instructions.
+Before every push, the agent ran the gate, the repo's offline checks, and a high-effort code review of its branch, and fixed, filed or dismissed each finding. A pull request merges only when the gate passes in CI. The owner reviewed and merged the early pull requests. Once the gate and the reviews had earned enough trust, the owner set agent sessions to land whole trains, runs of linked issues worked in order, refactors among them, and those sessions reviewed and merged each pull request with no person reading it. The owner told them to override the default in [CLAUDE.md](CLAUDE.md), which says the owner merges.
 
-- [CLAUDE.md](CLAUDE.md) says how to work: one branch per issue, tests first, the gate before every push, and the owner merges.
+Every session starts from the same rules, kept in the repo:
+
+- [CLAUDE.md](CLAUDE.md) says how to work: one branch per issue, tests first, and the gate before every push.
 - [.claude/skills/](.claude/skills/) holds the steps for picking up an issue, checking the constraints, reviewing a branch before it is pushed, and writing a pull request.
-- Each decision record lists its checks, and each check is a fitness function named after it. Most run in the gate. A few run after each deploy, every day, or with the eval. `npm run checks` lists any check a record names that has no test. It runs by hand, because a record may name checks that land with a later issue.
-- `npm run gate` runs format, lint, types, and the static, unit, integration and browser tests. It runs offline and holds no secrets. A pull request merges only when it passes.
 
-Anything only the owner can do, such as making accounts, setting secrets or connecting a real agent, is an issue labelled `mode: human`. Its closing comment records the result.
+Each issue describes one change, with a label for its type, such as `type: bug`, and one for its mode. An agent takes a `mode: afk` (away from keyboard) issue, one it can finish without a person, to a pull request that closes it. Anything only the owner can do, such as setting secrets or connecting a real agent, is a `mode: human` issue, and its closing comment records the result.
+
+## How it is tested
+
+`npm run gate` runs format, lint, types, and the static, unit, integration and browser tests. It runs offline, holds no secrets, and is the same command on a laptop and in CI. A test's file name sets its tier, and its tier sets what it may touch ([ADR 9](docs/adr/0009-test-pyramid.md)).
+
+| Tier | What it checks | Runs |
+| --- | --- | --- |
+| Static | Types, lint, and fitness functions that read the repo's own files | In the gate |
+| Unit | Logic in memory, such as time windows, ordering and schemas | In the gate |
+| Integration | The API and the MCP tools from end to end, against a local DynamoDB, a fake model and test-key tokens | In the gate |
+| Browser | The built page in headless Chromium, with the API faked | In the gate |
+| Live | The deployed page, API and MCP endpoint. One check signs in as the one test account, sends sample asks and waits for each to be sorted. | After each deploy |
+| Conformance | Setup held outside the repo, such as main's ruleset in GitHub | Every day |
+
+If a deploy fails partway, or its live check fails, the run puts back the last build that passed the live check ([ADR 25](docs/adr/0025-roll-back-to-live-ok.md), [ADR 33](docs/adr/0033-roll-back-a-partial-deploy.md)).
+
+Each decision record names checks for the rules it puts in force, and each check is a test of the same name, called a fitness function. `npm run checks` lists any check that has no test.
+
+`npm run mutate -- <suite>` runs mutation testing with StrykerJS over one of nine suites, by hand. It makes small changes to the code and lists the ones no test catches. The refactoring train ([#225](https://github.com/t-d-d/askme-mcp/issues/225)) ran it before and after each move.
+
+The eval set measures sorting against the real model, on demand. The model may sort the same ask differently from one call to the next.
+
+[docs/testing.md](docs/testing.md) says what stands in for each outside service in the gate, where the real one is checked, and the mutation figures for each refactor.
+
+### Manual checks
+
+- **Real agents connecting.** The owner runs the [checklist for connecting a real agent](docs/agent-checklist.md) after a deploy that changes sign-in or the MCP server. It last passed on 12 October 2026, for a Claude cloud session and a local Cursor agent.
+- **Speech on a phone.** Listen uses the browser's own speech, which no test hears. The owner has checked on a phone that a card is read aloud.
+- **The page against the design.** Before pushing a change to the page, the coding agent compares it with the mockup at phone width, by eye. The gate checks the design's colours and font sizes, the contrast of the hashtag colours and the tap size of the controls the browser tests measure, but not the layout.
+- **The AWS account and the alert email.** While [bootstrapping](docs/bootstrap.md), the owner keeps the AWS account to askme alone, switches on billing alerts and confirms the alert email. A test alarm shows that the email arrives.
+
+## Demo limits
+
+- There is one deploy environment, with no staging. A green merge to main deploys straight to the live site.
+- Clerk runs as a development instance. It holds at most 100 accounts, so sign-up stops at the hundredth, and it signs people in with Clerk's shared Google and GitHub credentials.
+- Limits are per account: 100 asks and 2,000 model calls a day, and per-minute limits on polling, posting and saving rules. None of these limits one address, or a request without a valid token. Across all accounts, the whole API takes about 50 requests a second, with bursts of 100, and refuses the rest ([ADR 31](docs/adr/0031-api-throttle.md), [ADR 35](docs/adr/0035-one-throttle-allowance.md)), so a flood on any route shuts every account out while it lasts. 100 accounts could make 200,000 model calls a day, and the model key's own spending limit is what stops them.
+- There is no web application firewall. AWS WAF cannot attach to this kind of API, and agents call API Gateway's own address, which bypasses CloudFront. A firewall on CloudFront would need a custom domain first. Until then, AWS's standard DDoS protection and the rate limit slow a flood, and the spend alarm and API Gateway's request counts show one.
+- There is no privacy notice, no terms of service, and no way for a person to delete their account or their data.
+- askme has run with no more than a handful of people, and a new AWS account may run only 10 Lambda functions at once ([bootstrapping](docs/bootstrap.md), step 1).
+
+## Design choices
+
+- **The page polls.** It asks for changes every few seconds while it is open, and not at all while hidden. This keeps the service fully serverless, with no open connection and nothing running while nobody looks. A new ask can take a few seconds to show ([ADR 1](docs/adr/0001-polling.md)).
+- **Agents can post and resolve asks, and read nothing.** They never see the rules, the hashtags or even their own asks. An agent keeps the ids it was given, and always asks in its own session as well ([ADR 2](docs/adr/0002-agents-write-only.md), [ADR 11](docs/adr/0011-error-contract.md)).
+- **Rules are plain English, read by a model.** There is no compile step, and no fixed rule sits behind a sort. The eval set and the reason on each card are the checks on it.
+- **Clerk handles sign-in and agent OAuth.** Clerk's tokens carry no audience, so the service does not check one. The instance issues tokens for askme alone ([ADR 6](docs/adr/0006-identity.md)).
+- **The deploy role is an administrator.** The AWS account holds only askme, and a role that must create roles for its functions could make itself an administrator anyway. The guards are that only main can assume it and every merge needs the gate.
+- **One table, with no index and no scan.** Every read is one account's. A question across accounts needs a new decision ([ADR 13](docs/adr/0013-table-design.md)).
+- **Daily caps.** Every model call shares one key, so an account that reaches 2,000 calls in a day stops being sorted until the next UTC day. That stops one scripted account spending the key's limit for everyone ([ADR 21](docs/adr/0021-model-call-cap.md)).
+- **Everything scales to zero but the sort queue.** Lambda polls the SQS queue whether or not it holds jobs, and AWS bills those requests ([ADR 22](docs/adr/0022-sort-queue.md)).
+
+## Lessons learned
+
+- **Keep decisions and their amendments in issues, and only the constraints in the repo.** The repo holds 35 decision records, about 42,900 words, against 8,100 lines of application code. A merged record cannot be edited, so each amendment is a new record. Fifteen of the 35 amend an earlier one, and a reader follows the chain to learn what holds. That history belongs in issues. The repo needs only the constraint files, about 7,800 words, which are what an agent reads before a change.
+- **Decide whether follow-up work is worth doing before anyone builds it.** Any work found in passing became an issue, about 60 of the 211 issues. Too many were raised, and some were turned down only at pull request review, after the work was done. Next time each would be weighed when it is raised, its value against the complexity it adds, and closed then if it does not pay its way.
+- **Catch an agent's bad habits early, and turn each into a rule.** The agents made most design choices well unprompted, but a few habits went wrong and spread unnoticed. Logic went into the page's components, where unit tests caught none of its mutants (0 of 101, 0 of 88 and 0 of 100) until the refactoring train moved it out. Five test files each wrote their own fake of the store until one helper replaced them ([#308](https://github.com/t-d-d/askme-mcp/pull/308)). A long list of design rules up front would not have helped. Faster feedback would: mutation testing from the first days, and scheduled reviews of the whole code base outside the merge cycle. Either finds a pattern while it is in one or two places, when a rule costs little.
+- **Set the repo up for agents working in parallel.** Many agents worked at once against one main branch. 202 pull requests merged, and branches caught up with main 176 times. Catching up is normal. What cost time was the files every change touches, such as the README and the decision record index, which conflicted again and again, and two branches once took the same record number. Shared files should be few, and laid out so that git can merge them by itself: one file per entry instead of one shared table, numbers taken from the issue or given at merge, and indexes built by a script.
 
 ## Setup
 
-### On a laptop
+[docs/setup.md](docs/setup.md) says how to run the gate and the eval set on a laptop. [docs/bootstrap.md](docs/bootstrap.md) lists the accounts and settings a new deployment needs. [docs/restore.md](docs/restore.md) says how to restore the table to an earlier time.
 
-You need Node.js 22.18 or later (see [.node-version](.node-version)) and Docker. The integration tests run DynamoDB Local in Docker.
+## Licence
 
-```
-npm ci
-npx playwright install chromium
-npm run gate
-```
-
-`npm run eval` runs the eval set against the real model. On a laptop it reads the eval key from `OPENROUTER_API_KEY`. In a Claude cloud session the key is a network secret on the environment, and the command sends none of its own.
-
-### Accounts and settings
-
-These are made once, by hand. The repo refers to each by the name given here, and holds no values.
-
-1. **AWS.** Use an AWS account that holds askme and nothing else, in `us-east-1`. CloudWatch's billing metric and CloudFront's certificates exist only there. Switch on the account's billing alerts, or AWS publishes no billing metric and the spend alarm never fires ([ADR 17](docs/adr/0017-spend-reads-the-bill.md)). A new account may allow only 10 concurrent Lambda executions where AWS's default is 1,000, so ask AWS to raise it.
-2. **Parameters.** In Parameter Store, Standard tier, in `us-east-1`:
-   - `/askme/alerts/email`, a String, for the address alerts go to.
-   - `/askme/alerts/monthly-spend`, a String, for the monthly spend in US dollars that sets off the spend alarm.
-   - `/askme/openrouter/api-key`, a SecureString, for the service's model key, which has a spending limit.
-3. **The deploy role.** Apply [infra/github-oidc.cfn.yml](infra/github-oidc.cfn.yml) once by hand, as the stack `askme` in `us-east-1`, with the capability `CAPABILITY_NAMED_IAM`. Give it the parameters `GitHubOwnerId` and `GitHubRepoId`, the numeric ids any Actions run shows as `github.repository_owner_id` and `github.repository_id`. It makes GitHub's OIDC provider and the role `askme-github-deploy`, which only a job on main can assume. Each deploy applies it again after that.
-4. **GitHub.** Set the repo variables `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `CLERK_PUBLISHABLE_KEY` and `CLERK_ISSUER`, and the repo secret `SERVERLESS_ACCESS_KEY`. Give main a ruleset that requires a pull request and the `gate` check. A daily conformance check reads the ruleset back.
-5. **Clerk.** Make a development instance, and set it up as the next section says.
-6. **OpenRouter.** Two keys in a workspace of askme's own: the service's key above, and an eval key with a small limit. In a Claude cloud environment, add the eval key as a network secret for `openrouter.ai`, with the header `Authorization` and the prefix `Bearer`.
-7. **The first deploy.** Merge to main. The deploy run's summary gives both addresses. Then confirm the alert email, as below.
-
-### Clerk dashboard settings
-
-These are under Configure, then Developers, then OAuth applications.
-
-| Tab | Setting | Value |
-| --- | --- | --- |
-| Settings | Publish CIMD support | On, with "Allow any client" |
-| Settings | Publish DCR support | On |
-| Settings | Require PKCE | On, Clerk's default |
-| Settings | Access token format | JWT access tokens, Clerk's default |
-| Settings | Include Audience | Off, Clerk's default |
-| Scopes | Custom scope | `asks:create`, published in discovery |
-
-Under User & authentication, people sign in with email, Google or GitHub. A development instance uses Clerk's shared Google and GitHub credentials. A production instance needs askme's own.
-
-The live check after each deploy signs up its one test account the first time it runs. For that, set Clerk's access mode to Open and turn test mode on.
-
-### Confirming the alert email
-
-The first deploy makes the alert topic, and AWS emails a confirmation link to the address in `/askme/alerts/email`, from `no-reply@sns.amazonaws.com`. No alarm reaches anyone until the link is clicked. It lasts three days. If it runs out, open SNS in `us-east-1`, then Topics, `askme-alerts`, Subscriptions, select the pending subscription and choose Request confirmation.
-
-To check that an alarm reaches you, run this in CloudShell in `us-east-1`:
-
-```
-aws cloudwatch set-alarm-state \
-  --alarm-name askme-error-lines \
-  --state-value ALARM \
-  --state-reason "Checking the alert email arrives"
-```
-
-An email titled `ALARM: "askme-error-lines" in US East (N. Virginia)` arrives. The command changes only the alarm's state, and the alarm returns to OK at its next one-minute check without sending another email. Use `askme-error-lines` for this. `askme-spend` checks only every six hours, so it would stay in ALARM for hours.
-
-### Restoring the table
-
-The table keeps point-in-time recovery for 35 days. It stays when the stack is deleted or would replace it, and it has deletion protection. A restore makes a new table and leaves the live one alone, so restoring is two steps: restore a copy, then copy its items back into the live table. Run this in CloudShell in `us-east-1`, with the time to go back to in UTC:
-
-```
-LIVE=$(aws cloudformation describe-stack-resource --stack-name askme-prod \
-  --logical-resource-id Table \
-  --query StackResourceDetail.PhysicalResourceId --output text)
-aws dynamodb restore-table-to-point-in-time \
-  --source-table-name "$LIVE" --target-table-name askme-restored \
-  --restore-date-time 2026-01-31T12:00:00Z
-until [ "$(aws dynamodb describe-table --table-name askme-restored \
-  --query Table.TableStatus --output text)" = ACTIVE ]; do sleep 30; done
-aws dynamodb scan --table-name askme-restored --query Items --output json \
-  | jq -c '.[]' | while read -r item; do
-      aws dynamodb put-item --table-name "$LIVE" --item "$item" \
-        --condition-expression "attribute_not_exists(pk)" 2>/dev/null \
-        || echo "Not copied: $item"
-    done
-```
-
-A restore can take longer than the eight minutes or so that `aws dynamodb wait table-exists` allows, so the loop checks every 30 seconds. The copy adds only the items the live table lacks, and prints each one it leaves alone. It never overwrites a live item, because an older copy of an account's `META` or of an ask would put back a lower version or reopen a closed ask. If a live item itself is wrong, decide what to do with it by hand. Check the copy, then delete the restored table with `aws dynamodb delete-table --table-name askme-restored`.
-
-If the stack was deleted and deployed again, or replaced the table, the old table is still there under its old name, which `aws dynamodb list-tables` shows. Copy from it in the same way, with its name in place of `askme-restored`, and keep it until the copy is checked.
-
-## Checklist for connecting a real agent
-
-No test can connect a real agent, so the owner runs this checklist by hand after a deploy that changes sign-in or the MCP server. The Connect your agents screen gives the steps for Claude and Cursor.
-
-Connect each agent:
-
-- **Claude** (the app, and Claude cloud sessions). Add a custom connector, paste the server address from the Connect screen, and approve askme when Claude asks you to sign in.
-- **Claude Code on its own.** Run `claude mcp add --transport http --scope user askme <MCP endpoint>`, then choose Authenticate under `/mcp`.
-- **Cursor.** On the computer where Cursor is installed, open the Connect screen and click "Add askme to Cursor". Cursor offers to add a server named askme. Sign in to approve it.
-
-Then, for each agent:
-
-- [ ] The agent lists two tools, `ask` and `resolve`, and no others.
-- [ ] It posts an ask, and the card appears on the page within a few seconds, on a phone.
-- [ ] The card's main button opens the agent's session. A card with no link has no main button, and tapping it opens the ask's detail.
-- [ ] You reply in the session, the agent resolves the ask, and the card clears.
-
-On 12 October 2026 the whole checklist passed for a Claude cloud session and a local Cursor agent. On 11 October, Claude Code on a laptop and in the Claude desktop app connected and called `ask`.
-
-## What is untested
-
-- **Real agents connecting.** The owner runs the checklist above by hand. A change can pass every test and still break a real client.
-- **A Cursor cloud agent's session link.** Cursor cloud agents need a paid plan, which the owner does not have. The demo works without it, because a card with no link opens its detail.
-- **Speech on a phone.** Listen uses the browser's own speech. No test hears it.
-- **Whether the page matches the design.** Each change to the page is compared with the mockup by eye at phone width. No test sees it.
-- **Sorting quality.** The eval scores above have no pass mark, and the eval runs on demand, outside the gate. The model may sort the same ask differently from one call to the next.
-- **The alert email and billing.** Confirming the subscription and switching on billing alerts are done by hand. No check can see either, or that the AWS account holds nothing else.
-- **Main's ruleset.** It lives in GitHub's settings, which no pull request can see. The daily conformance check reads it, so a change shows up the next day.
-- **Load.** Nothing has been tested with more than a handful of people, and the Lambda limit in step 1 caps how many requests run at once.
-- **A Clerk production instance.** askme has only run on a development instance.
-
-## Trade-offs
-
-- **The page polls.** It asks for changes every few seconds while it is open, and not at all while hidden. A new ask can take a few seconds to show, and nothing runs while nobody looks ([ADR 1](docs/adr/0001-polling.md)).
-- **Agents read nothing.** An agent never learns whether its ask was opened or dismissed, and cannot list its own asks. It must keep the ids it was given, and always asks in its own session as well ([ADR 2](docs/adr/0002-agents-write-only.md), [ADR 11](docs/adr/0011-error-contract.md)).
-- **Rules are plain English, read by a model.** There is no compile step, and no fixed rule sits behind a sort. The eval set and the reason on each card are the checks on it.
-- **One environment.** There is no staging, so nothing deployed is tested before it merges. A live check signs in on the deployed page after each deploy ([ADR 4](docs/adr/0004-repo-and-delivery.md), [ADR 16](docs/adr/0016-live-sign-in.md)).
-- **A Clerk development instance.** It needs no domain, but it holds 100 accounts and uses Clerk's shared Google and GitHub credentials. DCR is on, though Clerk marks it deprecated, because MCP clients still use it. That opens a public registration endpoint and puts Clerk's consent screen on every agent sign-in. Clerk's tokens carry no audience, so the service does not check one. The instance issues tokens for askme alone ([ADR 6](docs/adr/0006-identity.md)).
-- **The deploy role is an administrator.** The AWS account holds only askme, and a role that must create roles for its functions could make itself an administrator anyway. The guards are that only main can assume it, only the owner merges, and every merge needs the gate.
-- **One table, with no index and no scan.** Every read is one account's. A question across accounts needs a new decision ([ADR 13](docs/adr/0013-table-design.md)).
-- **The sort queue costs a little when idle.** Lambda polls the SQS queue whether or not it holds jobs, and AWS bills those requests. Everything else scales to zero ([ADR 22](docs/adr/0022-sort-queue.md)).
-- **Daily caps.** An account that reaches 2,000 model calls in a day stops being sorted until the next UTC day, and its asks that were left out wait until the rules are saved again ([ADR 21](docs/adr/0021-model-call-cap.md)).
+[Apache 2.0](LICENSE).
