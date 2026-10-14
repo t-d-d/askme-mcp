@@ -52,7 +52,12 @@ const invalidToken: string = OAuthErrorCode.InvalidToken;
 function buildServer(context: McpRequestContext): McpServer {
   const server = new McpServer(
     { name: "askme", version: "1.0.0" },
-    { instructions },
+    {
+      instructions,
+      // The tool list never changes, so askme promises no notice of a
+      // change. The SDK promises one unless told otherwise.
+      capabilities: { tools: { listChanged: false } },
+    },
   );
   const caller = callerOf(context.authInfo);
   const { store, sorts } = ready();
@@ -199,10 +204,10 @@ async function serve(
   // the first, by its class. A handler for each request keeps one request's
   // errors from another's. The answer itself is passed on as it is (ADR 24).
   let failure: Error | undefined;
+  // Every exchange is a short request and response (ADR 1). askme offers no
+  // change notices, so the SDK answers a client asking to listen for them as
+  // the spec says: it acknowledges none, ends the stream and closes it.
   const mcp = createMcpHandler(buildServer, {
-    // Every exchange is a short request and response, so a client asking
-    // to hold a stream open for change notices is refused at once (ADR 1).
-    maxSubscriptions: 0,
     onerror: (error) => {
       failure ??= error;
     },
