@@ -13,7 +13,7 @@ Edits [`docs/constraints/content-security-policy.md`](../constraints/content-sec
 - **The constraint and its checks disagreed.** The constraint file said a new or narrower policy may go out first as report-only, until a deploy had passed the live check with it. The static check that the page's CSP is enforced fails on a report-only policy. `pageCsp()` in `test/page-csp.ts` fails every static CSP check when the page is sent two CSP headers. So a pull request that used the allowance had to change a check first.
 - **The first policy needed report-only, and a later one does not.** Report-only let the first deploys under #391 find what Clerk Protect needs without breaking sign-in, when the page had no policy to fall back on. The page now has an enforced policy. A report-only trial in its place would leave the page with no enforced policy while it runs.
 - **A failed live check already rolls the deploy back.** Under [ADR 25](0025-roll-back-to-live-ok.md), the same run redeploys the last build that passed the live check. A narrowing that refuses something Clerk needs fails the live check, and the page goes back to the wider policy in that run. This happened when Clerk Protect's probe ports failed a deploy (ADR 32).
-- **Narrowing is rare.** Adding an origin widens the policy, and a wider policy refuses nothing that worked before. Only removing a source can break the page, and no removal is planned.
+- **Narrowing is rare.** Adding an origin widens the policy, and a wider policy refuses nothing that worked before. Only removing a source, or adding a directive for a kind of load that `default-src` does not cover, such as `form-action`, can break the page. Neither is planned.
 
 ## Decision
 
@@ -35,7 +35,7 @@ The page's CSP goes out as `Content-Security-Policy` every time, with no report-
 | Check | What it asserts | Where it runs | What it catches |
 | --- | --- | --- | --- |
 | The page's CSP is enforced | The page's policy sends the CSP as `Content-Security-Policy`, not report-only. | Gate (static) | A policy sent report-only, which stops nothing. |
-| The page's CSP names only Clerk's origins | As in ADR 30 and ADR 32. The page is sent one CSP header, so a report-only header beside the enforcing one fails every assertion. | Gate (static) | A second CSP header, report-only or not. |
+| The page's CSP names only Clerk's origins | As in ADR 30 and ADR 32. The page is sent one CSP header, so a report-only header beside the enforcing one fails each assertion that reads the page's policy. | Gate (static) | A second CSP header, report-only or not. |
 
 Both checks are in the gate already. This record changes neither.
 
@@ -50,3 +50,4 @@ Both checks are in the gate already. This record changes neither.
 
 - A narrowing that refuses something Clerk needs breaks it in real browsers from the deploy until the run's rollback finishes. Sign-in can fail in that time.
 - The live check sees one signed-in run. A narrowing that refuses something Clerk loads only on another path, such as a challenge, shows only when a real visitor takes that path, as ADR 28 already accepts.
+- Clerk Protect varies from run to run (ADR 32), so a narrowing can pass the live check and still refuse what Clerk Protect loads on a later visit. Nothing rolls that back, and it shows only when sign-in fails for a real visitor or a later deploy's live check fails.

@@ -68,6 +68,8 @@ real person's browser. Clerk serves the newest clerk-js 6 with no deploy
 here, so a change Clerk makes can need a new source between deploys.
 The live check sees what Clerk Protect loads for a sign-in it does not
 challenge, and a challenge may load more.
+Clerk Protect varies from run to run, so a narrowing that passes one
+live check can still refuse what it loads on a later visit.
 The checks listen on each page, not in workers, so a pull request that
 adds a worker which loads anything checks those loads against the policy
 by hand.
