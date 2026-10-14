@@ -238,9 +238,30 @@ describe("comparing models", () => {
     expect(saved).toContain("The hostile group (ADR 12)");
   });
 
+  it("says what the rules group checks: that a rule outranks what never acting would cost", () => {
+    const ruled: EvalCase = {
+      name: "a hotfix under a top priority",
+      group: "rules",
+      area: "work",
+      rules: {
+        text: "#work comes first. It's top priority.",
+        hashtags: ["work"],
+      },
+      ask,
+      expected: { hashtags: [["work"]], level: "high" },
+    };
+    const saved = scoresFile(
+      [{ model: "maker/r", outcomes: [sorted(ruled, "high")] }],
+      { date: "2026-10-12", rounds: 1 },
+    );
+    expect(saved).toContain("The rules group");
+    expect(saved).toContain("| Model | Rules | All |");
+  });
+
   it("says nothing of a group the run does not have", () => {
     const saved = scoresFile(runs, { date: "2026-10-12", rounds: 2 });
     expect(saved).not.toContain("The timing group");
+    expect(saved).not.toContain("The rules group");
   });
 
   it("gives the timing group a column of its own when the set has one", () => {

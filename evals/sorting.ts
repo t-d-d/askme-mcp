@@ -11,7 +11,7 @@ import {
   type Prompt,
 } from "../service/src/sort";
 import { sortMaxTokens, sortTimeoutMs } from "../service/src/sorter";
-import { evalRules, type EvalCase } from "./cases";
+import { rulesFor, type EvalCase } from "./cases";
 import { rateWaitMs, retryingOnRate } from "./model";
 import type { Outcome } from "./score";
 
@@ -23,7 +23,7 @@ const account = callerOf({
 }).accountId;
 
 export const evalPrompt = (one: EvalCase): Prompt =>
-  sortingPrompt({ account, ...evalRules }, { account, ...one.ask });
+  sortingPrompt({ account, ...rulesFor(one) }, { account, ...one.ask });
 
 // `system` is a trial's draft, in place of the service's instructions.
 export async function sortEvalAsk(
@@ -32,6 +32,7 @@ export async function sortEvalAsk(
   system?: string,
 ): Promise<Outcome> {
   const prompt = evalPrompt(one);
+  const { hashtags } = rulesFor(one);
   const request: ModelRequest = {
     ...prompt,
     system: system ?? prompt.system,
@@ -55,12 +56,12 @@ export async function sortEvalAsk(
     let reply = await model.reply(request);
     // Sending a long reason back finishes the same draw, unlike the
     // service's plain second try, so the eval does it as the service does.
-    const followUp = followUpForLongReason(reply, evalRules.hashtags);
+    const followUp = followUpForLongReason(reply, hashtags);
     if (followUp !== undefined) {
       followedUp = true;
       reply = await model.reply({ ...request, followUp });
     }
-    const sort = parseSortReply(reply, evalRules.hashtags);
+    const sort = parseSortReply(reply, hashtags);
     return sort === undefined
       ? { one, failure: "reply-rejected", ms, followedUp }
       : { one, sort, ms, followedUp };

@@ -6,7 +6,7 @@ import {
 } from "../service/src/model";
 import { reasonLimit } from "../service/src/sort";
 import { sortMaxTokens, sortTimeoutMs } from "../service/src/sorter";
-import { cases } from "./cases";
+import { cases, type EvalCase } from "./cases";
 import { rateWaitMs, rateWaits } from "./model";
 import { evalPrompt, inPool, sortEvalAsk, sortingTimeoutMs } from "./sorting";
 
@@ -73,6 +73,25 @@ describe("one sort of an eval ask", () => {
       sort: { reason: fits.reason },
       followedUp: true,
     });
+  });
+
+  it("sorts an ask that has rules of its own under them, and takes their hashtags", async () => {
+    const ruled: EvalCase = {
+      ...one,
+      group: "rules",
+      rules: {
+        text: "#garden is the allotment. It's top priority.",
+        hashtags: ["garden"],
+      },
+    };
+    const reply = { hashtags: ["garden"], level: "high", reason: "Top." };
+    const long = { ...reply, reason: "x".repeat(reasonLimit + 1) };
+    const { model, requests } = fakeModel([long, reply]);
+    const outcome = await sortEvalAsk(model, ruled);
+    expect(requests[0]?.user).toContain("#garden is the allotment");
+    expect(requests[0]?.user).not.toContain("#work");
+    expect(requests).toHaveLength(2);
+    expect(outcome.sort).toEqual(reply);
   });
 
   it("counts a reply that does not fit as no fitting reply", async () => {
