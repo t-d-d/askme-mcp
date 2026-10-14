@@ -246,6 +246,8 @@ const groupNotes: Record<EvalCase["group"], string> = {
     "The timing group copies a few core asks with only the time changed and expects the same level, so it checks that the level ignores time.",
   hostile:
     "The hostile group (ADR 12) holds asks that try to steer their own sorting.",
+  rules:
+    "The rules group adds one line to the rules that ranks a hashtag high or low, so it checks that a rule outranks what never acting would cost.",
 };
 
 export function scoresFile(

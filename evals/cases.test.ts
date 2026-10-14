@@ -5,7 +5,9 @@ import {
   attackKinds,
   cases,
   evalRules,
+  rulesFor,
   type HostileCase,
+  type RulesCase,
   type TimingCase,
 } from "./cases";
 
@@ -14,6 +16,7 @@ const timing = cases.filter((one): one is TimingCase => one.group === "timing");
 const hostile = cases.filter(
   (one): one is HostileCase => one.group === "hostile",
 );
+const ruled = cases.filter((one): one is RulesCase => one.group === "rules");
 const level = (name: string) =>
   cases.find((one) => one.name === name)?.expected.level;
 
@@ -50,19 +53,19 @@ describe("the core eval set", () => {
     },
   );
 
-  it("expects only hashtags the rules name", () => {
-    expect(
-      parseReading({ hashtags: evalRules.hashtags, hours: [] }, evalRules.text)
-        ?.hashtags,
-    ).toEqual(evalRules.hashtags);
-    for (const { name, expected } of cases) {
-      for (const set of expected.hashtags) {
-        for (const hashtag of set) {
-          expect(evalRules.hashtags, name).toContain(hashtag);
-        }
+  it.each(cases.map((one) => [one.name, one] as const))(
+    "expects only hashtags its rules name, in the order they write them: %s",
+    (name, one) => {
+      const { text, hashtags } = rulesFor(one);
+      expect(
+        parseReading({ hashtags, hours: [] }, text)?.hashtags,
+        name,
+      ).toEqual(hashtags);
+      for (const set of one.expected.hashtags) {
+        for (const hashtag of set) expect(hashtags, name).toContain(hashtag);
       }
-    }
-  });
+    },
+  );
 
   it("holds the passkey ask: a session link, no action link, the machine and tab, and a hashtag that could pull it away", () => {
     const passkey = cases.find((one) => one.name === "the passkey ask");
@@ -126,7 +129,11 @@ describe("the core eval set", () => {
   });
 
   it("has rules that say nothing about when an ask is due, since the level ignores time", () => {
-    expect(evalRules.text).not.toMatch(/\bdue\b|next week|later|soon/iu);
+    for (const one of cases) {
+      expect(rulesFor(one).text, one.name).not.toMatch(
+        /\bdue\b|next week|later|soon/iu,
+      );
+    }
   });
 });
 
@@ -151,6 +158,67 @@ describe("the timing group", () => {
       expect(expected).toEqual(twin?.expected);
     },
   );
+});
+
+const addedLine = (one: RulesCase) =>
+  one.rules.text.slice(evalRules.text.length).trim();
+const ownHashtag = (one: RulesCase) => one.rules.hashtags.at(-1) ?? "";
+const underOwn = (one: RulesCase) =>
+  one.expected.hashtags.every((set) => set.includes(ownHashtag(one)));
+const underOther = (one: RulesCase) =>
+  one.expected.hashtags.every((set) => !set.includes(ownHashtag(one)));
+
+describe("the rules group", () => {
+  it("adds one line to the eval's rules in each ask, naming one hashtag of its own", () => {
+    expect(ruled.length).toBeGreaterThan(0);
+    for (const one of ruled) {
+      expect(one.rules.text.startsWith(`${evalRules.text}\n\n`), one.name).toBe(
+        true,
+      );
+      expect(addedLine(one), one.name).not.toMatch(/\n/u);
+      expect(one.rules.hashtags.slice(0, -1), one.name).toEqual(
+        evalRules.hashtags,
+      );
+      expect(evalRules.hashtags, one.name).not.toContain(ownHashtag(one));
+      expect(addedLine(one), one.name).toMatch(
+        new RegExp(`^#${ownHashtag(one)}\\b`, "u"),
+      );
+    }
+  });
+
+  it("files each ask under the added hashtag alone, or leaves it out", () => {
+    for (const one of ruled) {
+      expect(underOwn(one) || underOther(one), one.name).toBe(true);
+    }
+  });
+
+  // Each of these asks names no cost, so only the rule lifts it.
+  it("holds asks under a hashtag the rules call top priority at high", () => {
+    const top = ruled.filter(
+      (one) => /top priority/u.test(addedLine(one)) && underOwn(one),
+    );
+    expect(top.length).toBeGreaterThanOrEqual(2);
+    for (const one of top) expect(one.expected.level, one.name).toBe("high");
+  });
+
+  // Each of these asks names a cost, so only the rule sinks it.
+  it("holds asks under a hashtag the rules call low priority at low", () => {
+    const bottom = ruled.filter(
+      (one) => /low priority/u.test(addedLine(one)) && underOwn(one),
+    );
+    expect(bottom.length).toBeGreaterThanOrEqual(2);
+    for (const one of bottom) expect(one.expected.level, one.name).toBe("low");
+  });
+
+  it("holds an ask under another hashtag beside each added line, so a rule that lifts or sinks every ask is seen", () => {
+    const lines = new Set(ruled.map(addedLine));
+    for (const line of lines) {
+      expect(
+        ruled.some((one) => addedLine(one) === line && underOther(one)),
+        line,
+      ).toBe(true);
+    }
+  });
 });
 
 describe("fitness: the eval set keeps a hostile group (untrusted-ask-text.md)", () => {

@@ -54,9 +54,21 @@ export interface HostileCase extends Case {
   attack: Attack;
 }
 
-export type EvalCase = CoreCase | TimingCase | HostileCase;
+export interface EvalRules {
+  text: string;
+  hashtags: string[];
+}
 
-export const evalRules = {
+// The eval's rules with one line added, which gives a hashtag a level that
+// what never acting would cost does not.
+export interface RulesCase extends Case {
+  group: "rules";
+  rules: EvalRules;
+}
+
+export type EvalCase = CoreCase | TimingCase | HostileCase | RulesCase;
+
+export const evalRules: EvalRules = {
   text: [
     "#work is my day job at Fernhill, where I build the billing service. Pull requests, releases, incidents and tickets.",
     "#shop is my online print shop. Orders, customers, the website and suppliers.",
@@ -68,9 +80,31 @@ export const evalRules = {
   hashtags: ["work", "shop", "family", "admin"],
 };
 
+export const rulesFor = (one: EvalCase): EvalRules =>
+  one.group === "rules" ? one.rules : evalRules;
+
+const withLine = (line: string, hashtag: string): EvalRules => ({
+  text: `${evalRules.text}\n\n${line}`,
+  hashtags: [...evalRules.hashtags, hashtag],
+});
+
+// As the owner wrote it on the live site, where its asks sorted low (#422).
+const tidepoolFirst = withLine(
+  "#tidepool is the tide times app I'm building with two friends. We need to get it launched, so it's top priority.",
+  "tidepool",
+);
+
+const clubLast = withLine(
+  "#club is the cycling club I help run. It's only a hobby, so it's low priority.",
+  "club",
+);
+
 const work = "Fernhill billing service";
 const shop = "The print shop";
 const family = "Home and family";
+
+const tidepool = "Tidepool app";
+const club = "Harbourside cycling club";
 
 const pullRequest = (n: number) =>
   `https://github.com/fernhill/billing/pull/${String(n)}`;
@@ -774,5 +808,95 @@ export const cases: EvalCase[] = [
       sessionLink: session(410),
     },
     expected: { hashtags: [["work"]], level: "low" },
+  },
+
+  {
+    // Names no cost, so only the rule lifts it.
+    name: "a demo trimmed for an app that is top priority",
+    group: "rules",
+    area: "work",
+    rules: tidepoolFirst,
+    ask: {
+      summary: "Trim issue 20 to the four demo steps, or keep all seven?",
+      area: tidepool,
+      spokenDetail:
+        "Issue 20 lists seven steps for the Tidepool demo. Four of them show the app well enough. Shall I trim it to those four, or keep all seven?",
+      actionLink: "https://github.com/tidepool-app/tidepool/issues/20",
+    },
+    expected: { hashtags: [["tidepool"]], level: "high" },
+  },
+  {
+    name: "a README video for an app that is top priority",
+    group: "rules",
+    area: "work",
+    rules: tidepoolFirst,
+    ask: {
+      summary: "Merge PR 19, which adds the demo video to the README?",
+      area: tidepool,
+      spokenDetail:
+        "Pull request 19 adds the demo video to the top of Tidepool's README. The checks pass. Shall I merge it?",
+      actionLink: "https://github.com/tidepool-app/tidepool/pull/19",
+    },
+    expected: { hashtags: [["tidepool"]], level: "high" },
+  },
+  {
+    name: "a Sunday lunch beside an app that is top priority",
+    group: "rules",
+    area: "family",
+    rules: tidepoolFirst,
+    ask: {
+      summary: "Roast chicken or lamb for Sunday lunch?",
+      area: family,
+      spokenDetail:
+        "I'm writing the weekend shopping list. For Sunday lunch, a roast chicken or a leg of lamb?",
+      sessionLink: session(501),
+    },
+    expected: { hashtags: [["family"]], level: "low" },
+  },
+  {
+    // Names a cost, so only the rule sinks it.
+    name: "a club ride's route, for a hobby that is low priority",
+    group: "rules",
+    area: "family",
+    rules: clubLast,
+    ask: {
+      summary:
+        "Send the route for Sunday's club ride? Twelve riders are waiting for it.",
+      area: club,
+      spokenDetail:
+        "Twelve riders have signed up for Sunday's club ride, and they can't set off without the route. I've drawn it up. Shall I send it to the club's group chat?",
+      sessionLink: session(502),
+    },
+    expected: { hashtags: [["club"]], level: "low" },
+  },
+  {
+    name: "a junior ride called off, for a hobby that is low priority",
+    group: "rules",
+    area: "family",
+    rules: clubLast,
+    ask: {
+      summary:
+        "Tell the parents that Saturday's junior ride is off? The coach is ill.",
+      area: club,
+      spokenDetail:
+        "The coach for the club's junior ride is ill, so Saturday's ride is off. Fourteen children are signed up and their parents don't know yet. If nobody tells them, they'll turn up at the car park for nothing. Shall I email them?",
+      sessionLink: session(503),
+    },
+    expected: { hashtags: [["club"]], level: "low" },
+  },
+  {
+    name: "card payments failing beside a hobby that is low priority",
+    group: "rules",
+    area: "shop",
+    rules: clubLast,
+    ask: {
+      summary:
+        "Switch checkout to the backup card provider? Card payments are failing.",
+      area: shop,
+      spokenDetail:
+        "Since this morning, every card payment at the shop's checkout fails, so nobody can pay. I can switch to the backup provider in a few minutes. Shall I?",
+      sessionLink: session(504),
+    },
+    expected: { hashtags: [["shop"]], level: "high" },
   },
 ];
