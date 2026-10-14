@@ -162,14 +162,18 @@ async function sendJson(
   return response;
 }
 
+// Null when askme took the save but the page cannot read its answer, as
+// after a deploy that changes it. The save went through, so it is not an
+// error.
 export async function send<T>(
   path: string,
   body: unknown,
   schema: z.ZodType<T>,
   getToken: () => Promise<string | null>,
-): Promise<T> {
+): Promise<T | null> {
   const response = await sendJson("PUT", path, body, getToken);
-  return schema.parse(await response.json());
+  const answer = schema.safeParse(await response.json());
+  return answer.success ? answer.data : null;
 }
 
 export async function changeAsk(
