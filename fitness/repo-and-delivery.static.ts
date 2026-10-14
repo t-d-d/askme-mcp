@@ -26,6 +26,11 @@ const allJobs = (): [string, Job][] =>
     ]),
   );
 
+const isCredentials = (step: Step): boolean =>
+  step.uses?.startsWith("aws-actions/configure-aws-credentials@") ?? false;
+const isStackDeploy = (step: Step): boolean =>
+  step.run === "node_modules/.bin/serverless deploy";
+
 const deployCommand = /\b(?:serverless|sls)\b|\baws\s/u;
 const namesAStage = /\b(?:serverless|sls)\b[^\n]*\s(?:--stage|-s)\b/u;
 
@@ -460,14 +465,8 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
   it("checks them before the job holds credentials, and so before the deploy", () => {
     const steps = deploySteps();
     const check = steps.findIndex((step) => step.name === checkName);
-    const credentials = steps.findIndex(
-      (step) =>
-        step.uses?.startsWith("aws-actions/configure-aws-credentials@") ??
-        false,
-    );
-    const deploy = steps.findIndex(
-      (step) => step.run === "node_modules/.bin/serverless deploy",
-    );
+    const credentials = steps.findIndex(isCredentials);
+    const deploy = steps.findIndex(isStackDeploy);
     expect(check).toBeGreaterThan(-1);
     expect(check).toBeLessThan(credentials);
     expect(check).toBeLessThan(deploy);
@@ -543,19 +542,26 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
   });
 });
 
+const deployJob = (id: string): Job => {
+  const found = readWorkflow(deployPath).jobs[id];
+  if (found === undefined) throw new Error(`${deployPath} has no job ${id}`);
+  return found;
+};
+const needsOf = (id: string): string[] => {
+  const { needs } = deployJob(id);
+  return needs === undefined ? [] : [needs].flat();
+};
+const stepIndex = (job: Job, found: (step: Step) => boolean): number =>
+  (job.steps ?? []).findIndex(found);
+
+// The deploy's step that records its stack deploy has started, and the
+// rollback's step that lets the stack settle before its own (ADR 33).
+const recordsStart = (step: Step): boolean => step.id === "stack";
+const settles = (step: Step): boolean => step.name === "Let the stack settle";
+
 // When the live check fails, the same run puts back the last build that
 // passed it, then still ends failed so the owner reverts (ADR 25).
 describe("fitness: a failed live check redeploys the last good build (repo-and-delivery.md)", () => {
-  const jobs = () => readWorkflow(deployPath).jobs;
-  const job = (id: string): Job => {
-    const found = jobs()[id];
-    if (found === undefined) throw new Error(`${deployPath} has no job ${id}`);
-    return found;
-  };
-  const needs = (id: string): string[] => {
-    const { needs: named } = job(id);
-    return named === undefined ? [] : [named].flat();
-  };
   const lastGood = "${{ needs.find-live-ok.outputs.sha }}";
   const isCheckout = (step: Step): boolean =>
     step.uses?.startsWith("actions/checkout@") ?? false;
@@ -566,8 +572,8 @@ describe("fitness: a failed live check redeploys the last good build (repo-and-d
     );
 
   it("moves live-ok only after the live check passes", () => {
-    const mark = job("mark-live-ok");
-    expect(needs("mark-live-ok")).toEqual(["live"]);
+    const mark = deployJob("mark-live-ok");
+    expect(needsOf("mark-live-ok")).toEqual(["live"]);
     // A re-run after a rollback checks the build the rollback put back, not
     // the commit the run is for, so only the first attempt moves the tag.
     expect(mark.if).toBe("${{ success() && github.run_attempt == '1' }}");
@@ -577,11 +583,13 @@ describe("fitness: a failed live check redeploys the last good build (repo-and-d
   });
 
   it("cannot fail the run by failing to move the tag", () => {
-    expect(job("mark-live-ok")["continue-on-error"]).toBe(true);
+    expect(deployJob("mark-live-ok")["continue-on-error"]).toBe(true);
   });
 
   it("gives contents: write to the job that moves the tag, and to no other", () => {
-    expect(job("mark-live-ok").permissions).toEqual({ contents: "write" });
+    expect(deployJob("mark-live-ok").permissions).toEqual({
+      contents: "write",
+    });
     const writing = workflowPaths().flatMap((path) => {
       const workflow = readWorkflow(path);
       const writes = (permissions: Job["permissions"]): boolean =>
@@ -597,46 +605,52 @@ describe("fitness: a failed live check redeploys the last good build (repo-and-d
     expect(writing).toEqual([`${deployPath} mark-live-ok`]);
   });
 
-  it("looks for live-ok only when the live check fails", () => {
-    expect(needs("find-live-ok")).toEqual(["live"]);
-    expect(job("find-live-ok").if).toBe(
-      "${{ failure() && needs.live.result == 'failure' }}",
-    );
-    expect(job("find-live-ok").permissions).toEqual({ contents: "read" });
-  });
+  // ADR 33's check, below, says when the run looks for live-ok.
 
   it("says so in the run summary when there is no live-ok tag", () => {
-    expect(runsIn(job("find-live-ok")).join("\n")).toMatch(
+    expect(runsIn(deployJob("find-live-ok")).join("\n")).toMatch(
       /no live-ok tag[\s\S]*GITHUB_STEP_SUMMARY/iu,
     );
   });
 
   it("redeploys only when live-ok names a commit", () => {
-    expect(needs("rollback")).toEqual(["find-live-ok"]);
-    expect(job("rollback").if).toBe(
+    expect(needsOf("rollback")).toEqual(["find-live-ok"]);
+    expect(deployJob("rollback").if).toBe(
       "${{ !cancelled() && needs.find-live-ok.outputs.sha != '' }}",
     );
   });
 
   it("deploys live-ok's stack and page as the deploy does, but not the role's stack", () => {
-    const deploy = job("deploy");
-    const rollback = job("rollback");
+    const deploy = deployJob("deploy");
+    const rollback = deployJob("rollback");
     const checkout = (rollback.steps ?? []).find(isCheckout);
     expect(checkout?.with).toEqual({ ref: lastGood });
-    expect(checkingOutRun(rollback.steps)).toEqual(
+    // Only the deploy records that its stack deploy started, and only the
+    // rollback lets the stack settle first (ADR 33).
+    expect(
+      checkingOutRun(rollback.steps).filter((step) => !settles(step)),
+    ).toEqual(
       checkingOutRun(deploy.steps).filter(
-        (step) => !step.run?.includes("infra/github-oidc.cfn.yml"),
+        (step) =>
+          !step.run?.includes("infra/github-oidc.cfn.yml") &&
+          !recordsStart(step),
       ),
     );
     expect(JSON.stringify(rollback)).not.toContain("github-oidc");
     expect(rollback.permissions).toEqual(deploy.permissions);
-    expect(rollback.outputs).toEqual(deploy.outputs);
+    expect(rollback.outputs).toEqual(
+      Object.fromEntries(
+        Object.entries(deploy.outputs ?? {}).filter(
+          ([name]) => name !== "stack",
+        ),
+      ),
+    );
   });
 
   it("runs live-ok's own live tier against what it put back", () => {
-    const live = job("live");
-    const again = job("rollback-live");
-    expect(needs("rollback-live")).toEqual(["find-live-ok", "rollback"]);
+    const live = deployJob("live");
+    const again = deployJob("rollback-live");
+    expect(needsOf("rollback-live")).toEqual(["find-live-ok", "rollback"]);
     // A job with no if is skipped once any job before it failed, and the
     // live job has.
     expect(again.if).toBe(
@@ -658,11 +672,148 @@ describe("fitness: a failed live check redeploys the last good build (repo-and-d
   // own hides it from the run.
   it("leaves the run failed after a rollback", () => {
     for (const id of ["live", "find-live-ok", "rollback", "rollback-live"]) {
-      expect(job(id)["continue-on-error"], id).toBeUndefined();
-      const hiding = (job(id).steps ?? []).filter(
+      expect(deployJob(id)["continue-on-error"], id).toBeUndefined();
+      const hiding = (deployJob(id).steps ?? []).filter(
         (step) => step["continue-on-error"] !== undefined,
       );
       expect(hiding, id).toEqual([]);
     }
+  });
+});
+
+// A deploy that fails once its stack deploy has started may have changed what
+// is live, so it rolls back as a failed live check does. One that fails
+// before has changed nothing, and a cancelled run starts none (ADR 33).
+describe("fitness: a failed deploy redeploys the last good build (repo-and-delivery.md)", () => {
+  it("records that its stack deploy has started, in the step just before it", () => {
+    const deploy = deployJob("deploy");
+    const record = stepIndex(deploy, recordsStart);
+    expect(record).toBeGreaterThan(-1);
+    expect(record).toBe(stepIndex(deploy, isStackDeploy) - 1);
+    expect(deploy.steps?.[record]?.run).toBe(
+      'echo "stack=started" >> "$GITHUB_OUTPUT"',
+    );
+    expect(deploy.outputs?.stack).toBe("${{ steps.stack.outputs.stack }}");
+  });
+
+  it("looks for live-ok when the live check fails, or the deploy fails having started its stack deploy, and in no other case", () => {
+    expect(needsOf("find-live-ok")).toEqual(["deploy", "live"]);
+    expect(deployJob("find-live-ok").if).toBe(
+      "${{ !cancelled() && (needs.live.result == 'failure' || (needs.deploy.result == 'failure' && needs.deploy.outputs.stack == 'started')) }}",
+    );
+    expect(deployJob("find-live-ok").permissions).toEqual({ contents: "read" });
+  });
+
+  it("names in the run summary which failure started the rollback", () => {
+    const find = deployJob("find-live-ok").steps?.find(
+      (step) => step.id === "tag",
+    );
+    const run = find?.run ?? "";
+    expect(find?.env).toMatchObject({
+      LIVE_RESULT: "${{ needs.live.result }}",
+    });
+    expect(run).toContain(
+      'if [ "$LIVE_RESULT" = failure ]; then\n  cause="The live check failed."\nelse\n  cause="The deploy failed once its stack deploy had started."\nfi\n',
+    );
+    // Both lines it writes to the summary, with a tag or without, start
+    // with the cause.
+    expect(run.match(/>> "\$GITHUB_STEP_SUMMARY"/gu)).toHaveLength(2);
+    expect(run.match(/^\s*echo "\$cause /gmu)).toHaveLength(2);
+  });
+
+  it("leaves the run failed after a deploy that fails partway", () => {
+    const deploy = deployJob("deploy");
+    expect(deploy["continue-on-error"]).toBeUndefined();
+    expect(
+      (deploy.steps ?? []).filter(
+        (step) => step["continue-on-error"] !== undefined,
+      ),
+    ).toEqual([]);
+  });
+});
+
+// CloudFormation refuses an update to a stack that is changing, or stuck in a
+// rollback that failed. The rollback tries the undo once more, skipping
+// nothing, and deploys nothing over a stack still stuck (ADR 33).
+describe("fitness: the rollback deploys over a settled stack (repo-and-delivery.md)", () => {
+  const script = (): string => {
+    const found = deployJob("rollback").steps?.filter(settles) ?? [];
+    expect(found).toHaveLength(1);
+    return found[0]?.run ?? "";
+  };
+  const forcing = /resources-?to-?skip|force-?rollback/iu;
+
+  it("lets the stack settle once it holds credentials, just before it deploys", () => {
+    const rollback = deployJob("rollback");
+    const settle = stepIndex(rollback, settles);
+    expect(stepIndex(rollback, isCredentials)).toBeGreaterThan(-1);
+    expect(settle).toBeGreaterThan(stepIndex(rollback, isCredentials));
+    expect(settle).toBe(stepIndex(rollback, isStackDeploy) - 1);
+    // A step with an if can run after a step before it failed.
+    expect(
+      (rollback.steps ?? []).slice(settle).filter((step) => step.if),
+    ).toEqual([]);
+  });
+
+  it("reads askme-prod's status, and waits while it ends in _IN_PROGRESS", () => {
+    const run = script();
+    expect(run).toContain(
+      'aws cloudformation describe-stacks --stack-name askme-prod \\\n    --query "Stacks[0].StackStatus" --output text\n',
+    );
+    expect(run).toMatch(
+      /\nstack=\$\(status\)\nwhile \[\[ "\$stack" == \*_IN_PROGRESS \]\]; do\n[^]*?\n {2}sleep [1-9][0-9]*\n {2}stack=\$\(status\)\ndone\n/u,
+    );
+  });
+
+  it("continues a failed rollback once, naming only the stack, and waits for it", () => {
+    const run = script();
+    expect(run).toMatch(
+      /\nif \[ "\$stack" = UPDATE_ROLLBACK_FAILED \]; then\n[^]*?\n {2}if ! \{ aws cloudformation continue-update-rollback --stack-name askme-prod &&\n {6}aws cloudformation wait stack-rollback-complete --stack-name askme-prod; \}; then\n/u,
+    );
+    // Once: in no loop, and in no other step of any workflow.
+    expect(run.match(/^\s*(?:while|until|for|select)\b/gmu)).toHaveLength(1);
+    expect(run.indexOf("continue-update-rollback")).toBeGreaterThan(
+      run.indexOf("\ndone\n"),
+    );
+    const continues = allJobs()
+      .flatMap(([, job]) => runsIn(job))
+      .join("\n")
+      .match(/continue-update-rollback/gu);
+    expect(continues).toHaveLength(1);
+  });
+
+  it("writes each failed resource's reason to the run summary, and stops, when the stack is still stuck", () => {
+    expect(script()).toMatch(
+      /\n {4}\{\n[^]*?\n {6}aws cloudformation list-stack-resources --stack-name askme-prod \\\n {8}--query "StackResourceSummaries\[\?ends_with\(ResourceStatus, '_FAILED'\)\]\.\[LogicalResourceId, ResourceStatusReason\]" \\\n[^]*?\n {4}\} >> "\$GITHUB_STEP_SUMMARY"\n {4}exit 1\n {2}fi\nfi\n?$/u,
+    );
+  });
+
+  it("spots a resource skipped or a rollback forced, and nothing else", () => {
+    expect(forcing.test("--resources-to-skip WebBucket")).toBe(true);
+    expect(forcing.test('{"ResourcesToSkip": ["WebBucket"]}')).toBe(true);
+    expect(forcing.test("--force-rollback")).toBe(true);
+    expect(
+      forcing.test(
+        "aws cloudformation continue-update-rollback --stack-name x",
+      ),
+    ).toBe(false);
+  });
+
+  // A step can run a script, or read its arguments from a file, so this
+  // reads every file but the docs and these checks.
+  it("skips no resource and forces no rollback in any workflow, or any file a step could run", () => {
+    const self = "fitness/repo-and-delivery.static.ts";
+    const workflows = workflowPaths();
+    // Parsed, so a comment that warns against either drops out.
+    const text = (path: string): string =>
+      workflows.includes(path)
+        ? JSON.stringify(readYaml(path, z.unknown()))
+        : readRepoFile(path);
+    const forced = repoFiles()
+      .filter((path) => !path.startsWith("docs/") && !path.endsWith(".md"))
+      .filter((path) => path !== self)
+      .filter((path) => forcing.test(text(path)));
+    expect(workflows.length).toBeGreaterThan(0);
+    expect(forced).toEqual([]);
   });
 });
