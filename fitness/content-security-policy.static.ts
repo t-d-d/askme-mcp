@@ -102,7 +102,12 @@ describe("fitness: the page's CSP names only Clerk's origins (content-security-p
 
   it("names no outside origin but Clerk's host, as the deploy reads it from CLERK_ISSUER, and Clerk Protect's", () => {
     expect(notListed(csp())).toEqual([]);
-    expect(outsideSources(csp())).toContain(`script-src ${clerkHost}`);
+    expect(outsideSources(csp())).toEqual(
+      expect.arrayContaining([
+        `script-src ${clerkHost}`,
+        `connect-src ${clerkHost}`,
+      ]),
+    );
   });
 
   it("lets in what Clerk Protect loads, as the live check heard it", () => {

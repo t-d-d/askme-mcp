@@ -42,8 +42,9 @@ loading more code, or sending what it reads, anywhere else.
   Clerk instance, so a wildcard lets in hosts that are not ours. Clerk
   Protect's https://*.client.protect.clerk.com is the one exception,
   because Clerk names the host under it for each instance (ADR 30).
-- Write Clerk's host into serverless.yml: a move to a Clerk production
-  instance on its own domain would break sign-in until someone edited it.
+- Write Clerk's frontend host into serverless.yml: a move to a Clerk
+  production instance on its own domain would break sign-in until
+  someone edited it.
 - Add 'unsafe-eval', or 'unsafe-inline' in script-src, to quiet a
   violation. Change what needs it instead, as jitless does for zod.
 - Put the CSP in a meta tag: a meta tag cannot carry frame-ancestors or
@@ -57,6 +58,8 @@ Judgment: No test sees what Clerk needs on a path the live check does not
 take, such as a Clerk component in the page, or Clerk's telemetry in a
 real person's browser. Clerk serves the newest clerk-js 6 with no deploy
 here, so a change Clerk makes can need a new source between deploys.
+The live check sees what Clerk Protect loads for a sign-in it does not
+challenge, and a challenge may load more.
 The checks listen on each page, not in workers, so a pull request that
 adds a worker which loads anything checks those loads against the policy
 by hand.
