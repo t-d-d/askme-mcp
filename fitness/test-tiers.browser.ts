@@ -3,11 +3,14 @@ import { openPage } from "../test/browser";
 
 describe("fitness: the gate is offline (test-tiers.md)", () => {
   it("refuses a request from the browser to another host", async () => {
-    const open = await openPage(inject("pageUrl"), { width: 390, height: 844 });
+    // The page's CSP would refuse the fetch before the guard sees it
+    // (ADR 28).
+    const open = await openPage(
+      inject("pageUrl"),
+      { width: 390, height: 844 },
+      { csp: false },
+    );
     try {
-      // The page's CSP would refuse the fetch before the guard sees it
-      // (ADR 28), so it is sent from a blank page, which has no CSP.
-      await open.page.goto("about:blank");
       const failed = await open.page.evaluate(() =>
         fetch("https://example.com/").then(
           () => false,

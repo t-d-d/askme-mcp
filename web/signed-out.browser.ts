@@ -88,7 +88,9 @@ describe.each([
 describe("fitness: no outside requests for style (styling.md)", () => {
   let open: OpenPage;
   beforeAll(async () => {
-    open = await openPage(inject("pageUrl"), phone);
+    // The page's CSP would refuse an outside request before the guard
+    // records it (ADR 28).
+    open = await openPage(inject("pageUrl"), phone, { csp: false });
   });
   afterAll(async () => {
     await open.close();
