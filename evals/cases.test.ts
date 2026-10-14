@@ -231,6 +231,7 @@ describe("the rules group", () => {
     for (const one of bottom) expect(one.expected.level, one.name).toBe("low");
   });
 
+  const lines = [...new Set(ruled.map(addedLine))];
   const ownLevels = (line: string) => [
     ...new Set(
       ruled
@@ -240,7 +241,7 @@ describe("the rules group", () => {
   ];
 
   it("ranks the hashtag of each added line one way, high or low, in every ask filed under it", () => {
-    for (const line of new Set(ruled.map(addedLine))) {
+    for (const line of lines) {
       const levels = ownLevels(line);
       expect(levels, line).toHaveLength(1);
       expect(["high", "low"], line).toContain(levels[0]);
@@ -250,15 +251,15 @@ describe("the rules group", () => {
   // People write their rules in their own words, so a rule that ranks a
   // hashtag works whatever words it uses.
   it.each([
-    ["high", /top priority/u],
-    ["low", /low priority/u],
+    ["high", /top priority/iu],
+    ["low", /low priority/iu],
   ] as const)(
     "ranks a hashtag %s in at least two lines that do not use the sorting prompt's words for it",
-    (level, words) => {
-      const lines = [...new Set(ruled.map(addedLine))].filter(
-        (line) => !words.test(line) && ownLevels(line)[0] === level,
+    (rank, words) => {
+      const inOwnWords = lines.filter(
+        (line) => !words.test(line) && ownLevels(line)[0] === rank,
       );
-      expect(lines.length).toBeGreaterThanOrEqual(2);
+      expect(inOwnWords.length).toBeGreaterThanOrEqual(2);
     },
   );
 
@@ -271,7 +272,6 @@ describe("the rules group", () => {
   });
 
   it("holds an ask under another hashtag beside each added line, so a rule that lifts or sinks every ask is seen", () => {
-    const lines = new Set(ruled.map(addedLine));
     for (const line of lines) {
       expect(
         ruled.some((one) => addedLine(one) === line && underOther(one)),
