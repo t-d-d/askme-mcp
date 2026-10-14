@@ -135,7 +135,7 @@ export const datedPolls = (
 export function failingPolls(
   list: () => AsksAnswer,
   serviceNow: () => number,
-): { answering: Answering; fail: () => void } {
+): { answering: Answering; fail: () => void; recover: () => void } {
   const dated = datedPolls(list, serviceNow);
   let failing = false;
   return {
@@ -144,6 +144,9 @@ export function failingPolls(
     ),
     fail: () => {
       failing = true;
+    },
+    recover: () => {
+      failing = false;
     },
   };
 }
