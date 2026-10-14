@@ -131,6 +131,11 @@ Some things only a person, or an agent looking at a screenshot, can check.
 - **Daily caps.** An account that reaches 2,000 model calls in a day stops being sorted until the next UTC day, and its asks that were left out wait until the rules are saved again ([ADR 21](docs/adr/0021-model-call-cap.md)).
 - **Sized for a demo.** askme has run with no more than a handful of people. The AWS account's Lambda limit caps how many requests run at once, and a new account may start at 10 ([bootstrapping](docs/bootstrap.md), step 1).
 
+## Lessons learned
+
+- **Decision records would be better kept in issues, where they can be amended.** The repo holds 28 decision records, about 34,500 words, beside about 8,000 lines of application code. A merged record cannot be edited, so each change of mind is a new record that replaces part of an older one, and a reader follows the chain to learn what holds. The constraint files already say what is in force, in about 6,700 words, and they are what an agent reads before a change. Next time the reasoning would live in the issue that made the decision, and the repo would keep only the constraints.
+- **Decide whether follow-up work is worth doing before anyone builds it.** The rule was to raise an issue for any work found in passing, and about 60 of the repo's 206 issues came that way. Too many were raised. Some were built, and some were turned down only at pull request review, after the work was done. Next time each follow-up issue would be weighed when it is raised, its value against the complexity it adds, and closed then if it does not pay its way.
+
 ## Setup
 
 [docs/setup.md](docs/setup.md) says how to run the gate and the eval set on a laptop. [docs/bootstrap.md](docs/bootstrap.md) lists the accounts and settings a new deployment needs, made once by hand. [docs/restore.md](docs/restore.md) says how to restore the table to an earlier time.
