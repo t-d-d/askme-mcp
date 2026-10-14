@@ -553,8 +553,9 @@ export function createStore(config: {
       const time = now.getTime();
       const record = keys.dedupe(account, fingerprint(ask));
       // guarded() reads a refusal by place, so these come first and in this
-      // order.
-      const guards: Change[] = [
+      // order. While named is set, the dedupe record is taken over only if
+      // it still names that ask.
+      const guards = (named: string | undefined): Change[] => [
         {
           Put: {
             TableName,
@@ -563,9 +564,16 @@ export function createStore(config: {
               askId: id,
               expiresAt: seconds(time + dedupeWindowMinutes * minuteMs),
             },
-            ConditionExpression:
-              "attribute_not_exists(sk) OR expiresAt <= :now",
-            ExpressionAttributeValues: { ":now": seconds(time) },
+            ...(named === undefined
+              ? {
+                  ConditionExpression:
+                    "attribute_not_exists(sk) OR expiresAt <= :now",
+                  ExpressionAttributeValues: { ":now": seconds(time) },
+                }
+              : {
+                  ConditionExpression: "askId = :named",
+                  ExpressionAttributeValues: { ":named": named },
+                }),
           },
         },
         countingTheDay(account, now),
@@ -599,25 +607,63 @@ export function createStore(config: {
       async function guarded(
         changes: Change[],
         posted: Posting,
-      ): Promise<Posting | "refused"> {
+        named: string | undefined,
+      ): Promise<Posting | "refused" | "repeat"> {
         try {
-          await write(account, [...guards, ...changes], { everAsked: true });
+          await write(account, [...guards(named), ...changes], {
+            everAsked: true,
+          });
           return posted;
         } catch (error) {
           const failed = failedChanges(error);
           if (failed === undefined) throw error;
           const [repeat, overCap, ...later] = failed;
-          if (repeat === true) {
-            const first = await stored(record, dedupeSchema, now);
-            if (first === undefined) throw error;
-            return { kind: "matched", id: first.askId };
-          }
+          if (repeat === true) return "repeat";
           if (overCap === true) {
             return { kind: "over-cap", resetsAt: new Date(nextDay(now)) };
           }
           if (later.some(Boolean)) return "refused";
           throw error;
         }
+      }
+
+      // An agent can close an ask only with its id, so a repeat of one it
+      // resolved or replaced is not a retry. Nor is it one of an ask that
+      // expired: the page no longer shows it. Either is posted as new, and
+      // takes over the dedupe record. A dismissed ask still matches (ADR 23,
+      // ADR 27).
+      async function stillMatches(askId: string): Promise<boolean> {
+        const open = await stored(
+          keys.openAsk(account, askId),
+          storedAskSchema,
+          now,
+        );
+        if (open !== undefined) return true;
+        const closed = await stored(
+          keys.closedAsk(account, askId),
+          closedAskSchema,
+          now,
+        );
+        return closed?.endedAs === "dismissed";
+      }
+
+      async function deduped(
+        changes: Change[],
+        posted: Posting,
+      ): Promise<Posting | "refused"> {
+        let named: string | undefined;
+        for (let tries = 1; tries <= writeTries; tries += 1) {
+          const result = await guarded(changes, posted, named);
+          if (result !== "repeat") return result;
+          const first = await stored(record, dedupeSchema, now);
+          if (first !== undefined && (await stillMatches(first.askId))) {
+            return { kind: "matched", id: first.askId };
+          }
+          // The record expired, or names an ask the agent closed or one that
+          // expired, since the write was sent.
+          named = first?.askId;
+        }
+        throw new Error("The dedupe record kept changing under the post.");
       }
 
       const old =
@@ -630,7 +676,7 @@ export function createStore(config: {
             );
       if (old !== undefined) {
         // A replacement keeps the old ask's age and expiry (ADR 13).
-        const replacing = await guarded(
+        const replacing = await deduped(
           [
             put({ postedAt: old.postedAt, expiresAt: old.expiresAt }),
             ...closing(account, old, "replaced", now),
@@ -640,7 +686,7 @@ export function createStore(config: {
         // Refused when the old ask closed after it was read, so post as new.
         if (replacing !== "refused") return replacing;
       }
-      const posting = await guarded(
+      const posting = await deduped(
         [
           put({
             postedAt: now.toISOString(),

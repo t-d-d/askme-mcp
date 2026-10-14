@@ -285,6 +285,45 @@ describe("the tabs", () => {
     expect(await focused(tab(page, "#work"))).toBe(true);
   });
 
+  it("leave focus where it is when a tab goes after focus left it for the page", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#family").focus();
+    // As a click on plain text does, focus goes to the page itself.
+    await tab(page, "#family").blur();
+    expect(await page.evaluate(() => document.activeElement?.tagName)).toBe(
+      "BODY",
+    );
+    answer = {
+      ...list,
+      version: list.version + 1,
+      hashtags: hashtags.filter(({ name }) => name !== "family"),
+    };
+    await page.clock.fastForward(pollMs);
+    await tab(page, "#family").waitFor({ state: "detached" });
+    expect(await focused(tab(page, "Everything"))).toBe(false);
+  });
+
+  it("leave focus off the tabs when the ask whose card has focus leaves the list", async () => {
+    let answer = list;
+    view = await open(new Answering((url) => answerPoll(url, answer)), true);
+    const { page } = view;
+    const link = page.getByRole("link", {
+      name: "Merge the fix for checkout rounding?",
+    });
+    await link.focus();
+    answer = {
+      ...list,
+      version: list.version + 1,
+      asks: list.asks.filter(({ id }) => id !== "a"),
+    };
+    await page.clock.fastForward(pollMs);
+    await link.waitFor({ state: "detached" });
+    expect(await focused(tab(page, "Everything"))).toBe(false);
+  });
+
   it("stay on Everything when a hashtag that left the rules comes back", async () => {
     let answer = list;
     view = await open(new Answering((url) => answerPoll(url, answer)), true);
@@ -519,32 +558,59 @@ describe("the colour of an ask's buttons", () => {
       await computedColour(page, palette.blue.tint),
     );
   });
+});
 
-  it("shows the tab's hashtag on each row of a hashtag's tab", async () => {
-    view = await open({
-      ...list,
-      asks: [
-        ask("x", "Which date format should the export use?", 40 * minute, {
-          hashtags: ["work"],
-          level: "high",
-        }),
-        ...list.asks,
-      ],
-    });
-    const { page } = view;
-    await page.getByRole("article").waitFor();
-    await tab(page, "#work").click();
+describe("a row's hashtags", () => {
+  // x is older than a and as high, so a is a row on Everything too.
+  const withRow: AsksAnswer = {
+    ...list,
+    asks: [
+      ask("x", "Which date format should the export use?", 40 * minute, {
+        hashtags: ["work"],
+        level: "high",
+      }),
+      ...list.asks,
+    ],
+  };
+
+  // Each pill and its tint, in the order the row shows them.
+  const pills = async (page: Page) => {
     const row = page
       .getByRole("listitem")
       .filter({ hasText: "Merge the fix for checkout rounding?" });
     await row.waitFor();
-    expect(await row.innerText()).toContain("#work");
-    expect(await row.innerText()).not.toContain("#shop");
-    expect(
-      await row
-        .getByText("#work", { exact: true })
-        .evaluate((element) => getComputedStyle(element).backgroundColor),
-    ).toBe(await computedColour(page, palette.blue.tint));
+    return row.locator("span").evaluateAll((spans) =>
+      spans
+        .filter(
+          (span) =>
+            span.childElementCount === 0 && span.textContent.startsWith("#"),
+        )
+        .map((pill) => ({
+          name: pill.textContent,
+          behind: getComputedStyle(pill).backgroundColor,
+        })),
+    );
+  };
+
+  const inRulesOrder = async (page: Page) => [
+    { name: "#shop", behind: await computedColour(page, palette.orange.tint) },
+    { name: "#work", behind: await computedColour(page, palette.blue.tint) },
+  ];
+
+  it("are all shown on Everything, in the rules' order, each in its own colour", async () => {
+    view = await open(withRow);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    expect(await pills(page)).toEqual(await inRulesOrder(page));
+  });
+
+  it("are all shown on a hashtag's tab, not just the tab's own, each in its own colour", async () => {
+    view = await open(withRow);
+    const { page } = view;
+    await page.getByRole("article").waitFor();
+    await tab(page, "#work").click();
+    await page.getByRole("heading", { name: "2 more waiting" }).waitFor();
+    expect(await pills(page)).toEqual(await inRulesOrder(page));
   });
 });
 

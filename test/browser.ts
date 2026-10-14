@@ -6,9 +6,11 @@ import { z } from "zod";
 import { sinceParam, type AsksAnswer } from "../shared/page-api";
 import {
   askedForKey,
+  brokenKey,
   emailKey,
   sessionChangedEvent,
   sessionKey,
+  signInStuckKey,
   spokenKey,
 } from "./page/keys";
 import { isLoopbackHost } from "./loopback";
@@ -34,6 +36,13 @@ export interface OpenPage {
   show(): Promise<void>;
   // Without a reload, as Clerk does when another tab signs in or out.
   signInAs(session: string | null): Promise<void>;
+  // Takes the browser offline. Playwright still routes requests made
+  // offline, so the stand-in API fails them as Chromium would.
+  offline(): Promise<void>;
+  // How many times a document has loaded in the page, the first included.
+  loads(): number;
+  // Makes the next render throw.
+  breakRendering(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -53,6 +62,8 @@ export interface PageOptions {
   // Left out, the device asks for reduced motion, so a test can tap as soon
   // as a screen shows: taps are lost while screens slide.
   motion?: boolean;
+  // true leaves sign-in loading, as when Clerk cannot be reached.
+  signInStuck?: boolean;
 }
 
 export class Status {
@@ -124,7 +135,7 @@ export const datedPolls = (
 export function failingPolls(
   list: () => AsksAnswer,
   serviceNow: () => number,
-): { answering: Answering; fail: () => void } {
+): { answering: Answering; fail: () => void; recover: () => void } {
   const dated = datedPolls(list, serviceNow);
   let failing = false;
   return {
@@ -133,6 +144,9 @@ export function failingPolls(
     ),
     fail: () => {
       failing = true;
+    },
+    recover: () => {
+      failing = false;
     },
   };
 }
@@ -262,11 +276,16 @@ export async function openPage(
     }
   });
   const apiCalls: ApiCall[] = [];
+  let offline = false;
   // Registered after the guard, so it is tried first.
   await context.route(
     (target) =>
       isLoopbackHost(target.hostname) && target.pathname.startsWith("/api/"),
     async (route) => {
+      if (offline) {
+        await route.abort("internetdisconnected");
+        return;
+      }
       const request = route.request();
       const url = new URL(request.url());
       const authorization = await request.headerValue("authorization");
@@ -348,6 +367,11 @@ export async function openPage(
       [sessionKey, options.session] as const,
     );
   }
+  if (options.signInStuck === true) {
+    await context.addInitScript((key) => {
+      localStorage.setItem(key, "true");
+    }, signInStuckKey);
+  }
   if (options.email !== undefined) {
     await context.addInitScript(
       ([key, email]) => {
@@ -357,6 +381,10 @@ export async function openPage(
     );
   }
   const page = await context.newPage();
+  let loads = 0;
+  page.on("load", () => {
+    loads += 1;
+  });
   await page.goto(url);
   await page.evaluate(() => document.fonts.ready);
   return {
@@ -382,6 +410,19 @@ export async function openPage(
           window.dispatchEvent(new Event(event));
         },
         [sessionKey, sessionChangedEvent, session] as const,
+      ),
+    offline: async () => {
+      offline = true;
+      await context.setOffline(true);
+    },
+    loads: () => loads,
+    breakRendering: () =>
+      page.evaluate(
+        ([key, event]) => {
+          localStorage.setItem(key, "true");
+          window.dispatchEvent(new Event(event));
+        },
+        [brokenKey, sessionChangedEvent] as const,
       ),
     // A route still running as the browser closes, such as the guard
     // aborting a link opened in a new tab, would throw after the test and

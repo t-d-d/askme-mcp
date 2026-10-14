@@ -4,9 +4,11 @@ One place where all of a person's AI agents ask for their input, sorted by rules
 
 > **This is a fully functional demo.** Every ask is deleted a month after it is posted. It differs from a production service in a few ways:
 >
-> - There is one deploy environment. A green merge to main deploys straight to the live site, with no staging before it.
+> - There is one deploy environment. A green merge to main deploys straight to the live site, with no staging before it. If the live check after a deploy fails, the run puts back the last build that passed it.
 > - Clerk runs as a development instance. It holds at most 100 accounts, so sign-up stops at the hundredth, and it signs people in with Clerk's shared Google and GitHub credentials.
-> - The page sends CloudFront's standard security headers, but no Content-Security-Policy.
+> - Every limit is per account: 100 asks and 2,000 model calls a day, and per-minute limits on polling, posting and saving rules. A request without a valid token counts against none of them, and nothing limits requests from one address. Across accounts, the only limit is the sort queue, which runs five sorts at once. So 100 accounts could make up to 200,000 model calls a day, and the model key's own spending limit is what stops them.
+> - There is no web application firewall. AWS WAF cannot attach to this kind of API, and agents reach the MCP endpoint at API Gateway's own address, which also answers the page's API without going through CloudFront. A firewall on CloudFront would need agents to use CloudFront's address, and API Gateway's own address turned off, which takes a custom domain. Until then, AWS's standard DDoS protection, API Gateway's account-wide request throttle and the Lambda concurrency limit are what slow a flood. Its cost shows on the spend alarm, which reads a bill AWS updates about every six hours.
+> - The page's Content-Security-Policy is sent as report-only until a deploy has passed the live check with it. Until then the browser reports what the policy would block, and blocks nothing.
 
 The page is live at https://d1dqzjjllemayb.cloudfront.net. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps.
 
@@ -94,12 +96,14 @@ A test's file name sets its tier, and its tier sets what it may touch ([ADR 9](d
 | Unit | Logic in memory, such as time windows, ordering and schemas | In the gate |
 | Integration | The API and the MCP tools from end to end, against a local DynamoDB, a fake model and test-key tokens | In the gate |
 | Browser | The built page in headless Chromium, with the API faked | In the gate |
-| Live | The deployed page, API and MCP endpoint, and that the README gives their addresses. One check signs in as the one test account. | After each deploy |
+| Live | The deployed page, API and MCP endpoint. One check signs in as the one test account, sends sample asks and waits for each to be sorted. | After each deploy |
 | Conformance | Setup held outside the repo, such as main's ruleset in GitHub | Every day |
+
+If the live check fails, the deploy run puts back the last build that passed it ([ADR 25](docs/adr/0025-roll-back-to-live-ok.md)).
 
 Each decision record names checks for the rules it puts in force, and each check is a test named after it, called a fitness function. `npm run checks` lists any check a record names that has no test.
 
-Mutation testing measures how well the tests guard the code. `npm run mutate -- <suite>` runs StrykerJS over one of eight suites. It makes small changes to the code and lists the ones no test catches. It runs by hand, outside the gate. Each pull request in the refactoring train ([#225](https://github.com/t-d-d/askme-mcp/issues/225)) ran it before and after its move. When the dismissal rules moved out of a hook into a pure function, for example, the tests went from catching none of 100 changes to catching all 145.
+Mutation testing measures how well the tests guard the code. `npm run mutate -- <suite>` runs StrykerJS over one of nine suites. It makes small changes to the code and lists the ones no test catches. It runs by hand, outside the gate. Each pull request in the refactoring train ([#225](https://github.com/t-d-d/askme-mcp/issues/225)) ran it before and after its move. When the dismissal rules moved out of a hook into a pure function, for example, the tests went from catching none of 100 changes to catching all 145.
 
 The eval set measures how well the model sorts, against the real model, on demand. Its scores are above. They have no pass mark, and the model may sort the same ask differently from one call to the next.
 
@@ -119,7 +123,7 @@ Some things only a person, or an agent looking at a screenshot, can check.
 - **The page polls.** It asks for changes every few seconds while it is open, and not at all while hidden. This keeps the service fully serverless. It holds no open connection, and nothing runs while nobody looks. A new ask can take a few seconds to show ([ADR 1](docs/adr/0001-polling.md)).
 - **Agents read nothing.** An agent never learns whether its ask was opened or dismissed, and cannot list its own asks. It must keep the ids it was given, and always asks in its own session as well ([ADR 2](docs/adr/0002-agents-write-only.md), [ADR 11](docs/adr/0011-error-contract.md)).
 - **Rules are plain English, read by a model.** There is no compile step, and no fixed rule sits behind a sort. The eval set and the reason on each card are the checks on it.
-- **One environment.** There is no staging, so nothing deployed is tested before it merges. A live check signs in on the deployed page after each deploy ([ADR 4](docs/adr/0004-repo-and-delivery.md), [ADR 16](docs/adr/0016-live-sign-in.md)).
+- **One environment.** There is no staging, so nothing deployed is tested before it merges. A live check signs in on the deployed page after each deploy, and a failed one puts back the last build that passed it ([ADR 4](docs/adr/0004-repo-and-delivery.md), [ADR 16](docs/adr/0016-live-sign-in.md), [ADR 25](docs/adr/0025-roll-back-to-live-ok.md)).
 - **A Clerk development instance.** It needs no domain, but it holds 100 accounts and uses Clerk's shared Google and GitHub credentials. DCR is on, though Clerk marks it deprecated, because MCP clients still use it. That opens a public registration endpoint and puts Clerk's consent screen on every agent sign-in. Clerk's tokens carry no audience, so the service does not check one. The instance issues tokens for askme alone ([ADR 6](docs/adr/0006-identity.md)). askme has not run on a production instance.
 - **The deploy role is an administrator.** The AWS account holds only askme, and a role that must create roles for its functions could make itself an administrator anyway. The guards are that only main can assume it, only the owner merges, and every merge needs the gate.
 - **One table, with no index and no scan.** Every read is one account's. A question across accounts needs a new decision ([ADR 13](docs/adr/0013-table-design.md)).
@@ -129,4 +133,4 @@ Some things only a person, or an agent looking at a screenshot, can check.
 
 ## Setup
 
-[docs/setup.md](docs/setup.md) says how to run the gate and the eval set on a laptop. [docs/bootstrap.md](docs/bootstrap.md) lists the accounts and settings a new deployment needs, made once by hand.
+[docs/setup.md](docs/setup.md) says how to run the gate and the eval set on a laptop. [docs/bootstrap.md](docs/bootstrap.md) lists the accounts and settings a new deployment needs, made once by hand. [docs/restore.md](docs/restore.md) says how to restore the table to an earlier time.

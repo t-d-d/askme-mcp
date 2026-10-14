@@ -12,6 +12,7 @@ import { slide } from "./slide";
 import { listenLength } from "./speech";
 import type { Tab } from "./tab";
 import { backToList, followToList } from "./toList";
+import { screenTitle, useScreenHeading } from "./useScreenHeading";
 import { waiting } from "./waiting";
 
 // The reason is the sorting model's words, so it is plain text only
@@ -42,6 +43,8 @@ export function OpenCard({
   // The card stays until the slide draws the list, so Dismiss can be tapped
   // again before then.
   const dismissing = useRef(false);
+  // Not the summary, which is the agent's text.
+  const heading = useScreenHeading(screenTitle("Ask"));
   return (
     <div
       className={styles.screen}
@@ -76,7 +79,9 @@ export function OpenCard({
             {waiting(ask.postedAt, now, serviceAhead)}
           </span>
         </div>
-        <h1 className={styles.summary}>{ask.summary}</h1>
+        <h1 className={styles.summary} ref={heading} tabIndex={-1}>
+          {ask.summary}
+        </h1>
         {speak !== undefined && (
           <button
             className={styles.listen}

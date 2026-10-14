@@ -41,6 +41,16 @@ export const suites: Record<string, Suite> = {
     mutate: ["web/src/rulesState.ts"],
     tests: ["web/src/rulesState.test.ts"],
   },
+  load: {
+    about:
+      "How the page reads the service's clock from an answer's Date header, and loads and sends to the API, against the unit tests that call it.",
+    mutate: ["web/src/load.ts"],
+    tests: [
+      "web/src/load.test.ts",
+      "web/src/dismissing.test.ts",
+      "web/src/refusalNote.test.ts",
+    ],
+  },
   dismissing: {
     about:
       "What a dismissal does next: its note, Undo, its timers and when it is sent, against its unit tests.",

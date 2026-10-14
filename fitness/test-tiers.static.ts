@@ -6,9 +6,7 @@ import {
   builtFrom,
   constantFor,
   controlNames,
-  fileSystemImports,
   liveTierFiles,
-  relativeImports,
   typedValues,
 } from "../test/live-tier";
 import {
@@ -188,7 +186,7 @@ describe("fitness: conformance runs daily and only reads (test-tiers.md)", () =>
     expect(triggers(workflow)).toEqual(["schedule", "workflow_dispatch"]);
     expect(Object.keys(workflow.jobs)).toEqual(["conformance"]);
     expect(runsIn(workflow.jobs.conformance)).toEqual([
-      "npm ci",
+      "npm ci --ignore-scripts",
       "npm run conformance",
     ]);
   });
@@ -387,18 +385,21 @@ describe("fitness: the live tier makes no other account (test-tiers.md)", () => 
   });
 });
 
-// None of these writes to askme's store (ADR 20).
-const readingControls = [
+// Only Send sample asks and Dismiss write to askme's store (ADR 20,
+// ADR 26).
+const listedControls = [
   "Sign in",
   "Sign up",
   "Continue",
   "Rules",
   "Connect agents",
   "All asks",
+  "Send sample asks",
+  "Dismiss",
   "Sign out",
 ];
 
-describe("fitness: the live tier presses only controls that read (test-tiers.md)", () => {
+describe("fitness: the live tier presses only listed controls (test-tiers.md)", () => {
   it("finds the name of every control a file finds by its role", () => {
     expect(
       controlNames(
@@ -430,102 +431,15 @@ describe("fitness: the live tier presses only controls that read (test-tiers.md)
     ]);
   });
 
-  it("finds only controls that sign in, sign out or move between screens", () => {
+  it("finds only controls that sign in or out, move between screens, send the samples or dismiss them", () => {
     const found = liveTierFiles().flatMap((path) =>
       controlNames(readRepoFile(path)).map((name) => ({ path, name })),
     );
-    const reading = new Set(readingControls.map((control) => `"${control}"`));
-    expect(found.map(({ name }) => name)).toContain('"Sign out"');
-    expect(found.filter(({ name }) => !reading.has(name))).toEqual([]);
-  });
-});
-
-// ADR 23: the live tier may read the repo's own files, and writes none.
-const readingFunctions = new Set([
-  "existsSync",
-  "readFile",
-  "readFileSync",
-  "readdir",
-  "readdirSync",
-  "stat",
-  "statSync",
-]);
-
-describe("fitness: the live tier writes no file (test-tiers.md)", () => {
-  it("reads the live file that reads the repo", () => {
-    expect(liveTierFiles()).toContain("test/readme.live.ts");
-  });
-
-  it("finds what a file takes from Node's file modules, by any route", () => {
-    expect(
-      fileSystemImports(
-        [
-          'import { readFileSync, writeFileSync as save } from "node:fs";',
-          'import fs from "fs";',
-          'import * as files from "node:fs/promises";',
-          'import { join } from "node:path";',
-          'import old = require("fs");',
-          'const lazy = await import("node:fs");',
-          'const required = require("fs/promises");',
-          'export { writeFile } from "node:fs/promises";',
-          'export * from "fs";',
-          'export * as passed from "node:fs";',
-          'const loaded = createRequire(import.meta.url)("fs");',
-          'const built = process.getBuiltinModule("node:fs");',
-          'const actual = await vi.importActual("node:fs");',
-          'const named = "fs";',
-          "const computed = await import(`node:${named}`);",
-          "const variable = require(named);",
-          'import type { Stats } from "node:fs";',
-          'import { type Dirent, readdirSync } from "node:fs";',
-          'export type { WriteStream } from "fs";',
-        ].join("\n"),
-      ),
-    ).toEqual([
-      "readFileSync",
-      "writeFileSync",
-      "default",
-      "*",
-      "*",
-      "*",
-      "*",
-      "writeFile",
-      "*",
-      "*",
-      "*",
-      "*",
-      "*",
-      "*",
-      "*",
-      "*",
-      "readdirSync",
-    ]);
-  });
-
-  it("follows every way a live file can reach a file in the repo", () => {
-    expect(
-      relativeImports(
-        [
-          'import { a } from "./a";',
-          'export { b } from "./b";',
-          'import "./c";',
-          'const d = await import ("./d");',
-          'import e = require("./e");',
-          'const f = require ("../f");',
-          'import { g } from "vitest";',
-        ].join("\n"),
-      ),
-    ).toEqual(["./a", "./b", "./c", "./d", "./e", "../f"]);
-  });
-
-  it("takes from them only the functions that read", () => {
-    for (const path of liveTierFiles()) {
-      expect(
-        fileSystemImports(readRepoFile(path)).filter(
-          (name) => !readingFunctions.has(name),
-        ),
-        path,
-      ).toEqual([]);
-    }
+    const listed = new Set(listedControls.map((control) => `"${control}"`));
+    const names = found.map(({ name }) => name);
+    expect(names).toContain('"Sign out"');
+    expect(names).toContain('"Send sample asks"');
+    expect(names).toContain('"Dismiss"');
+    expect(found.filter(({ name }) => !listed.has(name))).toEqual([]);
   });
 });

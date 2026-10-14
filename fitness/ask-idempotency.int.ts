@@ -5,6 +5,7 @@ import { z } from "zod";
 import { handler } from "../service/src/handler";
 import { callerOf, type AccountId } from "../service/src/identity";
 import {
+  askLifetimeDays,
   createStore,
   dedupeWindowMinutes,
   type Posting,
@@ -77,6 +78,9 @@ const asksOf = async (sub: string) =>
     (item) => typeof item.summary === "string",
   );
 
+const openIdsOf = async (sub: string) =>
+  (await store.openAsks(accountId(sub), new Date())).asks.map(({ id }) => id);
+
 const idFrom = (posting: Posting): string => {
   if (posting.kind === "posted" || posting.kind === "matched") {
     return posting.id;
@@ -116,19 +120,146 @@ describe("fitness: same call twice (ask-idempotency.md)", () => {
       await agent.close();
     }
   });
+});
 
-  it("returns the first id when that ask is already closed, and does not open it again", async () => {
+describe("fitness: closed by the agent is new (ask-idempotency.md)", () => {
+  it("makes a new card with a new id when the agent resolved the first ask", async () => {
     const sub = newAccount();
     const agent = await agentOf(sub);
     try {
       const first = await post(agent);
       await agent.callTool({ name: "resolve", arguments: { id: first } });
+      const second = await post(agent);
+      expect(second).not.toBe(first);
+      expect(await openIdsOf(sub)).toEqual([second]);
+      expect(await asksOf(sub)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: first, endedAs: "resolved" }),
+        ]),
+      );
+      expect(await asksOf(sub)).toHaveLength(2);
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("makes a new card with a new id when the agent replaced the first ask", async () => {
+    const sub = newAccount();
+    const agent = await agentOf(sub);
+    try {
+      const first = await post(agent);
+      const replacing = await post(agent, { ...ask, replaces: first });
+      const again = await post(agent);
+      expect(again).not.toBe(first);
+      expect(again).not.toBe(replacing);
+      expect((await openIdsOf(sub)).sort()).toEqual([replacing, again].sort());
+      expect(await asksOf(sub)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: first, endedAs: "replaced" }),
+        ]),
+      );
+      expect(await asksOf(sub)).toHaveLength(3);
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("matches a repeat of the new ask, as it would any open ask", async () => {
+    const sub = newAccount();
+    const agent = await agentOf(sub);
+    try {
+      const first = await post(agent);
+      await agent.callTool({ name: "resolve", arguments: { id: first } });
+      const second = await post(agent);
+      expect(await post(agent)).toBe(second);
+      expect(await asksOf(sub)).toHaveLength(2);
+    } finally {
+      await agent.close();
+    }
+  });
+});
+
+describe("fitness: a dismissal still matches (ask-idempotency.md)", () => {
+  it("returns the first id and makes no card when the person dismissed the first ask", async () => {
+    const sub = newAccount();
+    const agent = await agentOf(sub);
+    try {
+      const first = await post(agent);
+      expect(await store.dismissAsk(accountId(sub), first, new Date())).toBe(
+        "dismissed",
+      );
       expect(await post(agent)).toBe(first);
       expect(await asksOf(sub)).toEqual([
-        expect.objectContaining({ id: first, endedAs: "resolved" }),
+        expect.objectContaining({ id: first, endedAs: "dismissed" }),
       ]);
     } finally {
       await agent.close();
+    }
+  });
+});
+
+describe("fitness: expired is new (ask-idempotency.md)", () => {
+  const newAsk = {
+    summary: ask.summary,
+    area: ask.area,
+    spokenDetail: ask.spoken_detail,
+  };
+  const start = new Date("2026-10-11T09:30:00.000Z");
+  const at = (ms: number) => new Date(start.getTime() + ms);
+  const lifetime = askLifetimeDays * 86_400_000;
+  const later = at(lifetime + 60_000);
+
+  // A replacing ask keeps the expiry of the ask it replaces (ADR 13), so
+  // the first ask here expires two minutes after it is posted.
+  const postFirst = async (owner: AccountId) => {
+    const oldest = idFrom(await store.postAsk(owner, newAsk, start));
+    const replacing = { ...newAsk, replaces: oldest };
+    const first = idFrom(
+      await store.postAsk(owner, replacing, at(lifetime - 120_000)),
+    );
+    return { first, repeat: () => store.postAsk(owner, replacing, later) };
+  };
+
+  const openIdsAt = async (owner: AccountId, now: Date) =>
+    (await store.openAsks(owner, now)).asks.map(({ id }) => id);
+
+  it("makes a new card with a new id when the first ask expired, never closed, inside the window", async () => {
+    const owner = accountId(newAccount());
+    const { first, repeat } = await postFirst(owner);
+    expect(await openIdsAt(owner, later)).toEqual([]);
+
+    const again = idFrom(await repeat());
+    expect(again).not.toBe(first);
+    expect(await openIdsAt(owner, later)).toEqual([again]);
+    expect(await asksOf(owner)).toHaveLength(3);
+  });
+
+  it("makes a new card with a new id when the person dismissed the first ask and it then expired", async () => {
+    const owner = accountId(newAccount());
+    const { first, repeat } = await postFirst(owner);
+    expect(await store.dismissAsk(owner, first, at(lifetime - 60_000))).toBe(
+      "dismissed",
+    );
+
+    const again = idFrom(await repeat());
+    expect(again).not.toBe(first);
+    expect(await openIdsAt(owner, later)).toEqual([again]);
+  });
+});
+
+describe("fitness: two at once after a close (ask-idempotency.md)", () => {
+  it("stores one new ask when two identical asks arrive together after a resolve", async () => {
+    const sub = newAccount();
+    const agents = await Promise.all([agentOf(sub), agentOf(sub)]);
+    try {
+      const first = await post(agents[0]);
+      await agents[0].callTool({ name: "resolve", arguments: { id: first } });
+      const ids = await Promise.all(agents.map((agent) => post(agent)));
+      expect(new Set(ids).size).toBe(1);
+      expect(ids[0]).not.toBe(first);
+      expect(await asksOf(sub)).toHaveLength(2);
+    } finally {
+      await Promise.all(agents.map((agent) => agent.close()));
     }
   });
 });

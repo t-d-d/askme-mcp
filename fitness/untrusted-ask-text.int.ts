@@ -117,7 +117,6 @@ describe("fitness: a bad reply changes nothing (untrusted-ask-text.md)", () => {
     async (_, reply) => {
       const sub = newAccount();
       await saveRules(sub);
-      await runSorts();
       const posted = idAndStatus.parse(
         (await callTool(sub, "ask", ask)).structuredContent,
       );
@@ -164,8 +163,17 @@ describe("fitness: no tools (untrusted-ask-text.md)", () => {
     }
   });
 
-  it("routes every request only to providers that keep no prompts", () => {
-    expect(fakes.model.calls.length).toBeGreaterThan(0);
+  it("routes every request only to providers that keep no prompts", async () => {
+    const sub = newAccount();
+    const summary = `Providers ${randomUUID()}`;
+    await saveRules(sub);
+    await callTool(sub, "ask", { ...ask, summary });
+    fakes.model.reply({
+      json: { hashtags: ["shop"], level: "high", reason: "Customers see it." },
+    });
+    await runSorts();
+    expect(sortingCallsFor(summary)).toHaveLength(1);
+    expect(fakes.model.calls.length).toBeGreaterThan(1);
     for (const call of fakes.model.calls) {
       expect(call.body).toMatchObject({
         provider: { data_collection: "deny", zdr: true },
@@ -178,7 +186,6 @@ describe("fitness: nothing flows back (untrusted-ask-text.md)", () => {
   it("answers ask and resolve with an id and a status only, whatever the model said", async () => {
     const sub = newAccount();
     await saveRules(sub);
-    await runSorts();
     const summary = `Flows back ${randomUUID()}`;
     const hostile = { ...ask, summary };
     const first = await callTool(sub, "ask", hostile);

@@ -12,7 +12,6 @@ import {
   computedColour,
   datedPolls,
   failingPolls,
-  moveDeviceClock,
   openPage,
   Status,
   stepUntil,
@@ -148,7 +147,8 @@ async function lineChangesAt({
   }
 }
 
-// The moment is by the service's clock.
+// The moment is by the service's clock. Polls fail after the first, so the
+// line moves on by the offset that poll gave.
 async function lineChangesAtWhilePollsFail({
   moment,
   serviceAhead,
@@ -164,7 +164,8 @@ async function lineChangesAtWhilePollsFail({
   before: string;
   after: string | null;
 }): Promise<void> {
-  const pageAt = moment - serviceAhead - 2 * minute;
+  const here = moment - serviceAhead;
+  const pageAt = here - 2 * minute;
   const polls = failingPolls(
     () => list([ask("a", "shop", sortingUntil)]),
     () => pageAt + serviceAhead,
@@ -178,11 +179,10 @@ async function lineChangesAtWhilePollsFail({
   const { page } = view;
   await stepUntilShown(page, page.getByText(before, { exact: true }));
   polls.fail();
-  await moveDeviceClock(page, serviceAhead);
-  await page.clock.pauseAt(new Date(moment - 2 * minute + pollMs + 1000));
+  await page.clock.pauseAt(new Date(pageAt + pollMs + 1000));
   await stepUntilShown(page, page.getByText("Not connected. Trying again."));
   expect(await page.getByText(before, { exact: true }).count()).toBe(1);
-  await page.clock.pauseAt(new Date(moment + pollMs));
+  await page.clock.pauseAt(new Date(here + pollMs));
   if (after === null) {
     await stepUntil(
       page,
@@ -312,13 +312,11 @@ describe("the sorting line", () => {
     },
   );
 
-  // While polls fail, the page counts on from the last poll by
-  // performance.now(), which a change to the device's clock does not move.
   it.each([
     ["fast", -3 * minute],
     ["slow", 3 * minute],
   ])(
-    "turns an ask stopped when the service's time for it comes, though a clock a few minutes %s is put right while polls fail",
+    "turns an ask stopped when the service's time for it comes, on a clock a few minutes %s, while polls fail",
     async (_, serviceAhead) => {
       await lineChangesAtWhilePollsFail({
         moment: later.getTime(),
@@ -417,7 +415,7 @@ describe("the sorting line while today's sorting limit is reached", () => {
     ["fast", -3 * minute],
     ["slow", 3 * minute],
   ])(
-    "is gone when the service's day ends, though a clock a few minutes %s is put right while polls fail",
+    "is gone when the service's day ends, on a clock a few minutes %s, while polls fail",
     async (_, serviceAhead) => {
       await lineChangesAtWhilePollsFail({
         moment: Date.parse(resets),

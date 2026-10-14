@@ -5,6 +5,7 @@ export const routes = {
   "GET /mcp": "agent",
   "DELETE /mcp": "agent",
   "GET /.well-known/oauth-protected-resource/mcp": "public",
+  "OPTIONS /.well-known/oauth-protected-resource/mcp": "public",
   "GET /api/asks": "page",
   "GET /api/connection": "page",
   "GET /api/rules": "page",

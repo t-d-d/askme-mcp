@@ -49,3 +49,13 @@ export function pageRefusal(code: Code, message: string): Response {
     { status: statuses[code], headers: { "cache-control": "no-store" } },
   );
 }
+
+// Any unexpected failure, on the page's routes and the MCP endpoint alike
+// (ADR 11). On the MCP endpoint, a failure after the token is checked and
+// before a tool runs keeps the SDK's own 500 instead (ADR 24).
+export function unavailable(): Response {
+  return pageRefusal(
+    "service_unavailable",
+    "askme could not finish this request. Try again in a moment.",
+  );
+}

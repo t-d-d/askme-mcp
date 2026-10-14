@@ -4,6 +4,7 @@ import {
   samplesPath,
   type AskChange,
 } from "../../shared/page-api";
+import { answerRead, pageReloads, reloadOnce, sessionMarks } from "./reload";
 
 export async function load<T>(
   path: string,
@@ -29,7 +30,25 @@ export async function loadDated<T>(
     throw new Error(`The API answered ${String(response.status)}.`);
   }
   const ahead = serviceAhead(response, Date.now());
-  return { answer: schema.parse(await response.json()), serviceAhead: ahead };
+  const answer = schema.safeParse(await response.json());
+  // The poll's path carries the version it asks from.
+  const [answerPath = path] = path.split("?");
+  if (!answer.success) {
+    // An answer in a shape the page does not know means a deploy has
+    // changed it, and a newer page can read it.
+    reloadOnce(
+      sessionMarks,
+      () => {
+        pageReloads.reload(() => {
+          window.location.reload();
+        });
+      },
+      answerPath,
+    );
+    throw answer.error;
+  }
+  answerRead(sessionMarks, answerPath);
+  return { answer: answer.data, serviceAhead: ahead };
 }
 
 export class Refusal extends Error {
@@ -53,66 +72,12 @@ const httpDate = z
 
 // Milliseconds, negative when behind. The Date header is whole seconds,
 // set as the answer left, so this errs behind and a wait for one of the
-// service's moments never ends early.
+// service's moments never ends early. Nothing corrects it for a change to
+// the device's clock while polls fail, on purpose. useAsks.ts says why.
 export function serviceAhead(response: Response, receivedAt: number): number {
   const date = httpDate.safeParse(response.headers.get("date"));
   return date.success ? date.data - receivedAt : 0;
 }
-
-// Date.now() moves when the device's clock is set. performance.now() does
-// not, but on most systems it stands still while the device sleeps.
-export interface Moment {
-  date: number;
-  steady: number;
-}
-
-export const momentNow = (): Moment => ({
-  date: Date.now(),
-  steady: performance.now(),
-});
-
-// A visible page whose Date.now() gains this much on performance.now() is
-// taken to have slept, since a device rarely sets its clock by this much.
-const sleptAtLeast = 60 * 60 * 1000;
-
-// Time passed is performance.now()'s count, so setting the device's clock
-// moves nothing. Where the device may have slept, it is the larger of the
-// two counts, as no less time can have passed.
-export function aheadSince(
-  ahead: number,
-  then: Moment,
-  now: Moment,
-  visibleThroughout: boolean,
-): number {
-  const byDate = now.date - then.date;
-  const bySteady = now.steady - then.steady;
-  const mayHaveSlept = !visibleThroughout || byDate - bySteady >= sleptAtLeast;
-  const passed = mayHaveSlept ? Math.max(byDate, bySteady) : bySteady;
-  return ahead + passed - byDate;
-}
-
-// visibilityChanges may be counted at an earlier moment, such as when the
-// poll was sent. That only reads a step as hidden more often, the safe side.
-export interface Counted {
-  serviceAhead: number;
-  at: Moment;
-  visibilityChanges: number;
-}
-
-export const countOn = (
-  from: Counted,
-  now: Moment,
-  visibilityChanges: number,
-): Counted => ({
-  serviceAhead: aheadSince(
-    from.serviceAhead,
-    from.at,
-    now,
-    from.visibilityChanges === visibilityChanges,
-  ),
-  at: now,
-  visibilityChanges,
-});
 
 async function sendJson(
   method: "PUT" | "POST",
@@ -145,14 +110,18 @@ async function sendJson(
   return response;
 }
 
+// Null when askme took the save but the page cannot read its answer, as
+// after a deploy that changes it. The save went through, so it is not an
+// error.
 export async function send<T>(
   path: string,
   body: unknown,
   schema: z.ZodType<T>,
   getToken: () => Promise<string | null>,
-): Promise<T> {
+): Promise<T | null> {
   const response = await sendJson("PUT", path, body, getToken);
-  return schema.parse(await response.json());
+  const answer = schema.safeParse(await response.json());
+  return answer.success ? answer.data : null;
 }
 
 export async function changeAsk(

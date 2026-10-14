@@ -73,8 +73,8 @@ export async function sortEvalAsk(
 }
 
 // Each sort may time out, and again on its follow-up, with each call first
-// waiting out every 429. A run that ran out of time would save nothing it
-// paid for.
+// waiting out every 429 at the longest wait. A run that ran out of time would
+// save nothing it paid for.
 export const sortingTimeoutMs = (sorts: number, parallel: number): number =>
   Math.ceil(sorts / parallel) * 2 * (sortTimeoutMs + rateWaitMs) + 60_000;
 

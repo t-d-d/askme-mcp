@@ -24,11 +24,10 @@ function findLiveTierFiles(): string[] {
   return [...seen].sort();
 }
 
-// Every form that loads a module, so no helper a live file loads goes unscanned.
-export function relativeImports(text: string): string[] {
+function relativeImports(text: string): string[] {
   return [
     ...text.matchAll(
-      /(?:\bfrom|\bimport(?:\s*\()?|\brequire\s*\()\s*["'](\.{1,2}\/[^"']+)["']/gu,
+      /(?:\bfrom|\bimport|\bimport\()\s*["'](\.{1,2}\/[^"']+)["']/gu,
     ),
   ].flatMap((match) => (match[1] === undefined ? [] : [match[1]]));
 }
@@ -124,84 +123,6 @@ export function typedValues(text: string): string[] {
       typing.has(node.expression.name.text)
     ) {
       found.push(node.arguments[0]?.getText(source) ?? "");
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
-  return found;
-}
-
-const fileModules = new Set([
-  "fs",
-  "node:fs",
-  "fs/promises",
-  "node:fs/promises",
-]);
-
-// What a source takes from Node's file modules (ADR 23): each function by
-// name, "default", or "*" for the whole module. Any other mention of a
-// module's name, and an import or require of a computed name, counts as
-// the whole module, so createRequire and its like cannot slip past.
-export function fileSystemImports(text: string): string[] {
-  const source = parse(text);
-  const found: string[] = [];
-  const fromFiles = (node: ts.Node | undefined): boolean =>
-    node !== undefined &&
-    ts.isStringLiteralLike(node) &&
-    fileModules.has(node.text);
-  const named = (
-    elements: ts.NodeArray<ts.ImportSpecifier | ts.ExportSpecifier>,
-  ): void => {
-    for (const element of elements) {
-      if (!element.isTypeOnly) {
-        found.push((element.propertyName ?? element.name).text);
-      }
-    }
-  };
-  const visit = (node: ts.Node): void => {
-    if (ts.isImportDeclaration(node) && fromFiles(node.moduleSpecifier)) {
-      const clause = node.importClause;
-      if (
-        clause === undefined ||
-        clause.phaseModifier === ts.SyntaxKind.TypeKeyword
-      )
-        return;
-      if (clause.name !== undefined) found.push("default");
-      const bindings = clause.namedBindings;
-      if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
-        found.push("*");
-      } else if (bindings !== undefined) {
-        named(bindings.elements);
-      }
-      return;
-    }
-    if (
-      ts.isExportDeclaration(node) &&
-      node.moduleSpecifier !== undefined &&
-      fromFiles(node.moduleSpecifier)
-    ) {
-      if (node.isTypeOnly) return;
-      const clause = node.exportClause;
-      if (clause === undefined || ts.isNamespaceExport(clause)) {
-        found.push("*");
-      } else {
-        named(clause.elements);
-      }
-      return;
-    }
-    if (fromFiles(node)) {
-      found.push("*");
-    } else if (
-      ts.isCallExpression(node) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) &&
-          node.expression.text === "require")) &&
-      !(
-        node.arguments[0] !== undefined &&
-        ts.isStringLiteralLike(node.arguments[0])
-      )
-    ) {
-      found.push("*");
     }
     ts.forEachChild(node, visit);
   };

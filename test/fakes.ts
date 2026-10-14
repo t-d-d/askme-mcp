@@ -28,6 +28,20 @@ export interface FakeModel {
   calls: ModelCall[];
   // With none queued, the model fails with a 503.
   reply(...replies: ModelReply[]): void;
+  // The replies queued and not yet taken.
+  unused(): number;
+  // Drops the queued replies and the recorded calls.
+  reset(): void;
+}
+
+// Run after each integration test, so no reply reaches the next one.
+export function expectRepliesUsed(model: FakeModel): void {
+  const left = model.unused();
+  if (left > 0) {
+    throw new Error(
+      `${String(left)} queued model ${left === 1 ? "reply was" : "replies were"} left unused. Queue only the replies the test uses.`,
+    );
+  }
 }
 
 export interface SentMessage {
@@ -53,7 +67,10 @@ export interface FakeQueue {
   // when an answer is lost on its way back, so the SDK sends them again.
   loseAnswers(count: number): void;
   waiting(): number;
+  // Drops the waiting messages.
   purge(): void;
+  // Returns the queue to its starting state.
+  reset(): void;
   // One message per run. A message whose run fails or throws waits for the
   // next call, as SQS hides it for its visibility timeout, and holds back
   // the rest of its group until then. Gives the number of runs.
@@ -64,12 +81,16 @@ export interface FakeParameterStore {
   endpoint: string;
   asked: string[];
   hanging: boolean;
+  // Returns the store to its starting state.
+  reset(): void;
 }
 
 export interface Fakes {
   model: FakeModel;
   queue: FakeQueue;
   parameters: FakeParameterStore;
+  // Returns every fake to its starting state.
+  reset(): void;
   close(): Promise<void>;
 }
 
@@ -174,6 +195,11 @@ async function startModel() {
     reply: (...replies) => {
       queued.push(...replies);
     },
+    unused: () => queued.length,
+    reset: () => {
+      queued.length = 0;
+      calls.length = 0;
+    },
   };
   return { model, close: server.close };
 }
@@ -251,6 +277,17 @@ async function startQueue() {
     waiting: () => waiting.length,
     purge() {
       waiting.length = 0;
+    },
+    reset() {
+      sent.length = 0;
+      calls.length = 0;
+      waiting.length = 0;
+      taken.clear();
+      lost = 0;
+      sequence = 0;
+      queue.failing = false;
+      queue.hanging = false;
+      queue.refusing = false;
     },
     async deliver(run) {
       let runs = 0;
@@ -394,6 +431,10 @@ async function startParameterStore() {
     endpoint: "",
     asked: [],
     hanging: false,
+    reset() {
+      parameters.asked.length = 0;
+      parameters.hanging = false;
+    },
   };
   const server = await listen(async (incoming, outgoing) => {
     const body = z
@@ -443,6 +484,11 @@ export async function startFakes(): Promise<Fakes> {
     model: model.model,
     queue: queue.queue,
     parameters: parameters.parameters,
+    reset() {
+      model.model.reset();
+      queue.queue.reset();
+      parameters.parameters.reset();
+    },
     close: async () => {
       await Promise.all([model.close(), queue.close(), parameters.close()]);
     },

@@ -70,6 +70,7 @@ describe("the metadata", () => {
   it("names Clerk as the authorisation server, and the one scope", async () => {
     const response = await invoke(handler, new Request(metadataUrl));
     expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
     expect(await response.json()).toEqual({
       resource: mcpUrl,
       authorization_servers: [issuer.issuer],
@@ -77,6 +78,37 @@ describe("the metadata", () => {
       bearer_methods_supported: ["header"],
       resource_name: "askme",
     });
+  });
+
+  // The SDK's browser client sends MCP-Protocol-Version on the metadata GET,
+  // so the browser asks first.
+  it("answers a browser's preflight so that the GET may go ahead", async () => {
+    const response = await invoke(
+      handler,
+      new Request(metadataUrl, {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://client.example",
+          "access-control-request-method": "GET",
+          "access-control-request-headers": "mcp-protocol-version",
+        },
+      }),
+    );
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(response.headers.get("access-control-allow-methods")).toBe("GET");
+    expect(response.headers.get("access-control-allow-headers")).toBe(
+      "mcp-protocol-version",
+    );
+  });
+
+  it("leaves the MCP endpoint without a preflight answer", async () => {
+    const response = await invoke(
+      handler,
+      new Request(mcpUrl, { method: "OPTIONS" }),
+    );
+    expect(response.status).toBe(404);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
   });
 });
 
@@ -391,11 +423,61 @@ describe("a request the handler cannot use", () => {
 
   // API Gateway always sends a well-formed event, so this is askme's fault
   // (ADR 11).
-  it("is answered 503 when the event is not one API Gateway sends", async () => {
+  it("is answered 503 with service_unavailable when the event is not one API Gateway sends", async () => {
     const result = z
-      .object({ statusCode: z.number() })
+      .object({ statusCode: z.number(), body: z.string() })
       .parse(await handler({ hello: "world" }));
     expect(result.statusCode).toBe(503);
+    const refusal = z
+      .strictObject({
+        code: z.string(),
+        class: z.string(),
+        message: z.string(),
+      })
+      .parse(JSON.parse(result.body));
+    expect(refusal.code).toBe("service_unavailable");
+    expect(refusal.class).toBe("retry");
+  });
+
+  // The handler reads every route's answer out with Response's text, so making
+  // the first read throw makes the handler's own failure path answer.
+  async function failingOnce(request: Request): Promise<Response> {
+    const capture = captureLogs();
+    const text = vi
+      .spyOn(Response.prototype, "text")
+      .mockImplementationOnce(() => {
+        throw new Error("Could not answer");
+      });
+    try {
+      return await invoke(handler, request);
+    } finally {
+      text.mockRestore();
+      capture.restore();
+    }
+  }
+
+  // A browser-based client must be able to read the 503's code.
+  it("answers the metadata's failure with a 503 a browser may read", async () => {
+    const response = await failingOnce(new Request(metadataUrl));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(
+      z.object({ code: z.string() }).parse(await response.json()).code,
+    ).toBe("service_unavailable");
+  });
+
+  it("answers the MCP endpoint's failure with a 503 that allows no other origin", async () => {
+    const response = await failingOnce(new Request(mcpUrl, { method: "POST" }));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("answers a page route's failure with a 503 that allows no other origin", async () => {
+    const response = await failingOnce(
+      new Request(`${new URL(mcpUrl).origin}/api/asks`),
+    );
+    expect(response.status).toBe(503);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
   });
 });
 

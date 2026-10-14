@@ -128,16 +128,24 @@ const finish = (page: Page) =>
     }
   });
 
-// At the start, the picture of the screen being left lies in place over the
-// other.
-const atStart = (page: Page) =>
-  page.evaluate(async () => {
+const holdAt = (page: Page, end: boolean) =>
+  page.evaluate(async (end) => {
     for (const animation of document.getAnimations()) {
       animation.pause();
-      animation.currentTime = 0;
+      const time = end ? animation.effect?.getComputedTiming().endTime : 0;
+      if (time === undefined) throw new Error("An animation with no end");
+      animation.currentTime = time;
     }
     await new Promise((resolve) => requestAnimationFrame(resolve));
-  });
+  }, end);
+
+// At the start, the picture of the screen being left lies in place over the
+// other.
+const atStart = (page: Page) => holdAt(page, false);
+
+// At the end, before the browser clears the slide away. A phone can draw a
+// frame there.
+const atEnd = (page: Page) => holdAt(page, true);
 
 // The browser's picture of a screen can shade the edge of a letter a step or
 // so off the screen itself, so each pixel need only be within a few steps.
@@ -204,8 +212,12 @@ const click = (page: Page, name: string) => () =>
   page.getByRole("link", { name }).click();
 
 // Taps Dismiss and changes the address in the same frame, as a keyboard's
-// Back might. Both start just after a frame is drawn, so the change of
-// address reaches the page before the next.
+// Back might. A change of fragment sends popstate at once but queues
+// hashchange as a task, and on a busy machine the next frame's task can
+// already be queued ahead of it. So the address is changed with pushState,
+// which sends neither event. The page is handed popstate at once, as a
+// browser would, and hashchange in a microtask, which runs after those
+// Dismiss queued but always before the next frame.
 async function dismissAndGo(page: Page) {
   const first = await page
     .getByRole("button", { name: "Dismiss" })
@@ -223,8 +235,16 @@ async function dismissAndGo(page: Page) {
         });
         requestAnimationFrame(came("the next frame"));
       });
+      const oldURL = window.location.href;
       button.click();
-      window.location.hash = "#asks";
+      window.history.pushState(null, "", "#asks");
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+      const newURL = window.location.href;
+      queueMicrotask(() => {
+        window.dispatchEvent(
+          new HashChangeEvent("hashchange", { oldURL, newURL }),
+        );
+      });
       return first;
     });
   expect(first, "what comes first after Dismiss").toBe("the address");
@@ -248,6 +268,30 @@ describe("the rules and Connect your agents", () => {
     await heading(page, name);
     await slides(page, click(page, "All asks"), slidesOut);
     await theList(page);
+  });
+
+  // A picture that slid out and then fell back into place would cover the
+  // list again for a frame.
+  it("keep the rules off the screen at the end of their slide out", async () => {
+    const page = await open("#rules");
+    await heading(page, "Your rules");
+    const rules = await page.screenshot();
+    await click(page, "All asks")();
+    expect(await moving(page)).toEqual(slidesOut);
+    // The list draws live under the picture, so let its asks arrive first.
+    await theList(page);
+    await atEnd(page);
+    const ending = await page.screenshot();
+    await finish(page);
+    await theList(page);
+    expect(
+      await alike(page, ending, rules),
+      "the last frame of the slide is unlike the rules",
+    ).toBe(false);
+    expect(
+      await alike(page, ending, await page.screenshot()),
+      "the last frame of the slide shows the list",
+    ).toBe(true);
   });
 
   it("slide out on Back, Connect your agents to show the rules, and the rules to show the list", async () => {

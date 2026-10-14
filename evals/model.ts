@@ -54,14 +54,28 @@ export const clientFor = (model: string, key: string | undefined): Model =>
     key: () => Promise.resolve(key),
   });
 
-// A call OpenRouter refused for rate has been seen to get a reply a minute
-// later. The time limits for sorting allow for every wait.
-export const rateWaits: readonly number[] = [10_000, 20_000, 30_000];
+interface RateWait {
+  least: number;
+  most: number;
+}
 
-export const rateWaitMs = rateWaits.reduce((sum, wait) => sum + wait, 0);
+// A call OpenRouter refused for rate has been seen to get a reply a minute
+// later. Each wait is picked at random between its least and its most, so
+// calls refused together are not all sent again at once. The time limits for
+// sorting allow for every wait at its most.
+export const rateWaits: readonly RateWait[] = [
+  { least: 10_000, most: 15_000 },
+  { least: 20_000, most: 30_000 },
+  { least: 30_000, most: 45_000 },
+];
+
+export const rateWaitMs = rateWaits.reduce((sum, { most }) => sum + most, 0);
 
 const pause = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const randomWait = ({ least, most }: RateWait) =>
+  least + Math.floor(Math.random() * (most - least + 1));
 
 // A 429 means the model never saw the call, so a new try draws nothing new
 // from it. The service's plain second try is a second draw, and the eval
@@ -77,7 +91,7 @@ export const retryingOnRate = (model: Model): Model => ({
           throw error;
         }
       }
-      await pause(wait);
+      await pause(randomWait(wait));
     }
     return model.reply(request);
   },

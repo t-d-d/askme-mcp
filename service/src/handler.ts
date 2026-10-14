@@ -12,9 +12,10 @@ import {
   type McpRequestContext,
   type OAuthTokenVerifier,
 } from "@modelcontextprotocol/server";
-import { servePage, unavailable as pageUnavailable } from "./api";
+import { servePage } from "./api";
 import { askTool } from "./ask";
 import { readEnv } from "./env";
+import { unavailable } from "./errors";
 import {
   authorizationOf,
   incoming,
@@ -118,14 +119,20 @@ export async function handler(event: unknown): Promise<Result> {
   }
   const log = createLogger(request.requestId);
   try {
-    return await result(await serve(request, log));
+    return await result(readable(request.route, await serve(request, log)));
   } catch (error) {
     log.error("request-failed", { errorClass: errorClass(error) });
-    const { route } = request;
-    return result(
-      isRoute(route) && isPageRoute(route) ? pageUnavailable() : unavailable(),
-    );
+    return result(readable(request.route, unavailable()));
   }
+}
+
+// A browser-based client reads the metadata, so it must be able to read
+// every answer the metadata's route gives, its failure included.
+function readable(route: string, response: Response): Response {
+  if (isRoute(route) && routes[route] === "public") {
+    response.headers.set("access-control-allow-origin", "*");
+  }
+  return response;
 }
 
 async function serve(
@@ -133,6 +140,18 @@ async function serve(
   log: Logger,
 ): Promise<Response> {
   if (!isRoute(route)) return new Response(null, { status: 404 });
+  // The SDK's browser client sends MCP-Protocol-Version on the metadata GET,
+  // so the browser asks here first.
+  if (route === "OPTIONS /.well-known/oauth-protected-resource/mcp") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "access-control-allow-methods": "GET",
+        "access-control-allow-headers": "mcp-protocol-version",
+        "access-control-max-age": "86400",
+      },
+    });
+  }
   const { issuer, verifier, verifySession, store, sorts, model } = ready();
   if (isPageRoute(route)) {
     return servePage(route, request, {
@@ -146,9 +165,7 @@ async function serve(
   }
   const resource = new URL(mcpPath, origin);
   if (routes[route] === "public") {
-    return Response.json(resourceMetadata(resource, issuer), {
-      headers: { "access-control-allow-origin": "*" },
-    });
+    return Response.json(resourceMetadata(resource, issuer));
   }
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(resource);
   const authorization = authorizationOf(request);
@@ -159,6 +176,9 @@ async function serve(
       resourceMetadataUrl,
     });
   } catch (error) {
+    // A failure that is not a bad token, such as Clerk's key set being out
+    // of reach, goes up to handler(). It answers with a 503, not a tool
+    // result (ADR 24).
     if (!(error instanceof OAuthError) || error.code !== invalidToken) {
       throw error;
     }
@@ -180,20 +200,10 @@ async function serve(
     authInfo: { ...authInfo, extra: { ...authInfo.extra, requestId } },
   });
   // The SDK answers a failure of its own with a server error and logs
-  // nothing, so it is logged here, by status only.
+  // nothing, so it is logged here, by status only. The answer itself is
+  // passed on as it is (ADR 24).
   if (response.status >= 500) {
     log.error("request-failed", { status: response.status });
   }
   return response;
-}
-
-// Any unexpected failure outside the page's routes (ADR 11).
-function unavailable(): Response {
-  return Response.json(
-    {
-      error: "temporarily_unavailable",
-      error_description: "askme could not finish this request. Try again.",
-    },
-    { status: 503 },
-  );
 }

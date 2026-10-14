@@ -6,7 +6,7 @@ import {
   type AsksAnswer,
 } from "../../shared/page-api";
 import { useAuth } from "./auth";
-import { countOn, loadDated, momentNow, type Counted } from "./load";
+import { loadDated } from "./load";
 import { pollMs } from "./poll";
 import type { Answer } from "./useAnswer";
 
@@ -17,32 +17,16 @@ const pollPath = (since: number | undefined) =>
 
 const queryKey = [pagePaths.asks];
 
-interface Polled extends Counted {
+interface Polled {
   list: AsksAnswer;
+  serviceAhead: number;
 }
-
-class PollFailed extends Error {
-  readonly counted: Counted | undefined;
-  constructor(counted: Counted | undefined, cause: unknown) {
-    super("A poll for the list failed.", { cause });
-    this.name = "PollFailed";
-    this.counted = counted;
-  }
-}
-
-// At module level, so it counts whichever screen is showing.
-let visibilityChanges = 0;
-document.addEventListener("visibilitychange", () => {
-  visibilityChanges += 1;
-});
 
 // polledAt counts failed polls too, so a held ask is let go at its hours
-// while the page is not connected. serviceAhead goes with polledAt, and
-// receivedAhead with receivedAt.
+// while the page is not connected.
 export interface PolledAnswer extends Answer<AsksAnswer> {
   polledAt: number;
   serviceAhead: number;
-  receivedAhead: number;
 }
 
 export function useAsks(): PolledAnswer {
@@ -52,38 +36,19 @@ export function useAsks(): PolledAnswer {
     queryKey,
     queryFn: async ({ signal }): Promise<Polled> => {
       const held = queries.getQueryData<Polled>(queryKey);
-      const changesWhenSent = visibilityChanges;
-      try {
-        const { answer, serviceAhead } = await loadDated(
-          pollPath(held?.list.version),
-          pollAnswer,
-          getToken,
-          signal,
-        );
-        const polled = {
-          serviceAhead,
-          at: momentNow(),
-          visibilityChanges: changesWhenSent,
-        };
-        if ("unchanged" in answer) {
-          if (held === undefined) {
-            throw new Error("The API said nothing changed, with no list held.");
-          }
-          return { list: held.list, ...polled };
+      const { answer, serviceAhead } = await loadDated(
+        pollPath(held?.list.version),
+        pollAnswer,
+        getToken,
+        signal,
+      );
+      if ("unchanged" in answer) {
+        if (held === undefined) {
+          throw new Error("The API said nothing changed, with no list held.");
         }
-        return { list: answer, ...polled };
-      } catch (error) {
-        // React Query keeps a failure until a poll succeeds, so count on
-        // from the last failure if there is one.
-        const before = queries.getQueryState(queryKey)?.error;
-        const from = before instanceof PollFailed ? before.counted : held;
-        throw new PollFailed(
-          from === undefined
-            ? undefined
-            : countOn(from, momentNow(), visibilityChanges),
-          error,
-        );
+        return { list: held.list, serviceAhead };
       }
+      return { list: answer, serviceAhead };
     },
     // Only while visible, and once on becoming visible (polling.md).
     refetchInterval: pollMs,
@@ -96,11 +61,14 @@ export function useAsks(): PolledAnswer {
     // Not the later of the two: once the device sets its clock back, that
     // would be the older poll's.
     polledAt: query.isError ? query.errorUpdatedAt : query.dataUpdatedAt,
-    serviceAhead:
-      query.error instanceof PollFailed
-        ? (query.error.counted?.serviceAhead ?? 0)
-        : (query.data?.serviceAhead ?? 0),
-    receivedAhead: query.data?.serviceAhead ?? 0,
+    // The last poll that reached askme sets the offset, and failed polls
+    // keep it. So if the device's clock is set while polls fail, the page's
+    // times move by that much until a poll gets through. This is a chosen
+    // trade-off. The page once corrected for it, with performance.now() and
+    // a guess at when the device slept, and that code cost more than so rare
+    // a case is worth. Do not bring the correction back without the owner's
+    // decision.
+    serviceAhead: query.data?.serviceAhead ?? 0,
     failed: query.isError,
   };
 }

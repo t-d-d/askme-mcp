@@ -114,7 +114,7 @@ Lines of running text stay under 80 characters. At desktop width the spoken text
 | --- | --- |
 | Corner of a card or a sheet | 28px |
 | Corner of a button or a text box | 18px |
-| Corner of a pill | 10px, or 8px for the small pill in a list row |
+| Corner of a pill | 10px, or 8px for the small pills in a list row |
 | Smallest thing you can tap | 44px by 44px |
 | Main button height | 56px, or 52px on a settings screen |
 | Side padding | 20px for text, 16px outside a card, 22px inside one |
@@ -182,6 +182,8 @@ The first ask in the list. White, with its hashtag pills, how long it has waited
 - **Session.** Tint fill, a speech-bubble icon. Shown only when the ask has both links.
 - Tapping the summary opens the card.
 
+An opened top card shows it as an opened row does: the summary in `--text-2`, and "Opened" after how long it has waited.
+
 ### What the main button says
 
 askme knows only the link's address, so the label comes from its shape.
@@ -203,19 +205,21 @@ Any other link gets "Open". It is a verb because askme has nothing to name. It c
 
 ### List rows
 
-Every ask after the first. A summary of up to two lines, then one line with the small hashtag pill, the age and the site name at the right. Rows are separated by hairlines and sit on the ground colour.
+Every ask after the first. A summary of up to two lines, then one line with a small pill for each of its hashtags, the age and the site name at the right. Rows are separated by hairlines and sit on the ground colour.
+
+A row shows all of its ask's hashtags, as the top card does, on Everything and on a hashtag's tab. They are in the order the rules give them, and each pill is in its own hashtag's colour.
 
 Tapping a row opens its card, the same as tapping the top card's summary. The site name says where the card's main button leads.
 
-When that line's parts do not all fit, they keep their order, and the last ones move down whole to a second line, 6px below, as wrapped pills are. The pill, the age and "Opened" stay whole, so the site's name gives way first. Beside #shopping and "50 min" on a 320px phone, console.aws.amazon.com moves down to a line of its own, still at the right. Beside a long hashtag, such as #customer-onboarding-flow, "Opened" moves down too, and starts the second line at the left.
+When that line's parts do not all fit, they keep their order, and the last ones move down whole to a second line, 6px below, as wrapped pills are. Each pill, the age and "Opened" stay whole, so the site's name gives way first. Beside #shopping and "50 min" on a 320px phone, console.aws.amazon.com moves down to a line of its own, still at the right. Beside a long hashtag, such as #customer-onboarding-flow, "Opened" moves down too, and starts the second line at the left.
 
 A site's name too long for a whole line breaks just after a dot, as on the top card, and each of its lines ends at the row's right edge. A part between two dots is split only when it is too long for a whole line on its own.
 
 | State | How it looks |
 | --- | --- |
 | Open | As above |
-| Opened | The whole row at 55% opacity, with "Opened" after the age. It sinks below unopened asks at its level. |
-| Not sorted yet | A "Not sorted yet" pill in `--neutral-tint` where the hashtag would be |
+| Opened | The summary in `--text-2`, with "Opened" after the age. It sinks below unopened asks at its level. Nothing on it fades, so its text stays at 4.5 to 1. |
+| Not sorted yet | A "Not sorted yet" pill in `--neutral-tint` where the hashtags would be |
 
 Above the rows, one small heading counts them: "4 more waiting". When the top ask is the only one, the heading says "Nothing else waiting" and has no rows under it, on a phone and at desktop width. On a hashtag's tab it counts that tab's asks.
 
@@ -233,6 +237,8 @@ A white screen. "All asks" at the top left goes back, and "Dismiss" is at the to
 A site's name too long for its button's line, such as productionresultssa0.blob.core.windows.net on a 320px phone, breaks onto a second line just after a dot, as on the top card. A part between two dots is split only when it is too long for a line on its own.
 
 Swiping a row or the top card dismisses it. A note with "Undo" shows for a few seconds, and the dismissal is sent when it goes. If it fails, the card comes back with a note. If another dismissal is waiting at the time, its clock stops while the failure note shows. Its note with "Undo" then comes back for the full few seconds.
+
+The note's clock stops while it has focus or the pointer is over it. When both have left, the note stays for the full few seconds again.
 
 ### All clear
 
@@ -302,7 +308,7 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 
 ## Movement
 
-- Movement answers something the person did: a card slides away on a swipe, a row dims when opened, the held or lapsed asks appear when shown.
+- Movement answers something the person did: a card slides away on a swipe, the held or lapsed asks appear when shown.
 - An open card and the rules sit over the list, and Connect your agents over the rules. A screen that sits higher slides in from the right over the one it opens from, and slides out to the right to show the one under it, in 250ms. Nothing can be tapped while it moves. When the browser draws its own movement for Back, as a phone's may on a swipe, the screen changes at once.
 - Nothing moves by itself, and nothing loops.
 - When the person's device asks for reduced motion, changes happen at once.
@@ -313,6 +319,8 @@ The headline, one sentence about the product, "Sign up" in ink, a picture of a t
 - Everything works from a keyboard, and focus is always visible: a 2px ink outline, 2px away from the control.
 - When the list goes all clear while a tab has focus, the tabs go and focus moves to the "All clear." headline, so a screen reader says what happened. The headline is not a control, so it draws no outline, and Tab never stops on it.
 - When a card closes, the list is back where it was, and focus goes to the row or top card that opened the card. If that ask has left the list or moved in it, focus goes to the ask that came after it, or with none left, to the last ask in the list. If the ask that takes focus is not wholly on the screen, the page scrolls only as far as it takes to show it and its outline, clear of the note.
+- When a screen opens from a link or Back, focus moves to its heading, so a screen reader says where the person is: the summary on an open card, "Your rules" and "Connect your agents". As with All clear, the heading draws no outline, and Tab never stops on it. A screen the page opens on leaves focus where the browser put it.
+- The page's title names the screen: "askme" for the list, "Ask | askme" for an open card, "Your rules | askme" and "Connect your agents | askme". An open card's title is never its summary, which is the agent's text.
 - A button is a `button`, and a link is an `a` with an address. An icon-only control has a spoken label.
 - A link that opens a new tab says so to a screen reader. Its spoken name ends with "(opens in a new tab)", and the screen does not show these words. These links are the card's buttons to the work and to the agent's session, and "Add askme to Cursor".
 - Nothing you can tap is smaller than 44px by 44px.
