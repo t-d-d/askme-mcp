@@ -23,9 +23,18 @@ const ruled = cases.filter((one): one is RulesCase => one.group === "rules");
 const hasOwnRules = <T extends EvalCase>(
   one: T,
 ): one is T & { rules: EvalRules } => rulesFor(one) !== evalRules;
-const ownRuled = cases.filter(hasOwnRules);
 const level = (name: string) =>
   cases.find((one) => one.name === name)?.expected.level;
+
+describe("the rules an ask is sorted under", () => {
+  it("are the eval's rules for an ask outside the rules and hostile groups, whatever else it carries", () => {
+    const [first] = ruled;
+    expect(first).toBeDefined();
+    if (first === undefined) return;
+    const copied: EvalCase = { ...first, group: "core" };
+    expect(rulesFor(copied)).toBe(evalRules);
+  });
+});
 
 describe("the core eval set", () => {
   it("has about 30 asks, across three areas", () => {
@@ -183,8 +192,7 @@ const underOther = (one: OwnRules) =>
 describe("the rules group", () => {
   it("adds one line to the eval's rules in each ask with rules of its own, naming one hashtag of its own", () => {
     expect(ruled.length).toBeGreaterThan(0);
-    expect(ownRuled).toEqual(expect.arrayContaining(ruled));
-    for (const one of ownRuled) {
+    for (const one of [...ruled, ...hostile.filter(hasOwnRules)]) {
       expect(one.rules.text.startsWith(`${evalRules.text}\n\n`), one.name).toBe(
         true,
       );

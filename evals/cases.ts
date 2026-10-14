@@ -83,7 +83,9 @@ export const evalRules: EvalRules = {
 };
 
 export const rulesFor = (one: EvalCase): EvalRules =>
-  ("rules" in one ? one.rules : undefined) ?? evalRules;
+  one.group === "rules" || one.group === "hostile"
+    ? (one.rules ?? evalRules)
+    : evalRules;
 
 const withLine = (line: string, hashtag: string): EvalRules => ({
   text: `${evalRules.text}\n\n${line}`,
