@@ -60,7 +60,9 @@ function outsideSources(csp: string): string[] {
 const protectSources = [
   "script-src https://cdn.protect.clerk.com",
   "script-src https://*.client.protect.clerk.com",
-  "connect-src https://*.client.protect.clerk.com",
+  // Its probe also tries ports other than 443, which a source with no port
+  // does not cover (ADR 32).
+  "connect-src https://*.client.protect.clerk.com:*",
 ];
 
 // Every outside source the policy may name, each in its directive. A pull
@@ -154,6 +156,18 @@ describe("fitness: the page's CSP names only Clerk's origins (content-security-p
     ).toEqual([`frame-src ${clerkHost}`]);
   });
 
+  it("flags any port on a source but Clerk Protect's in connect-src", () => {
+    expect(
+      notListed(
+        `script-src 'self' https://*.client.protect.clerk.com:*; connect-src ${clerkHost}:* https://*.client.protect.clerk.com https://*.client.protect.clerk.com:*`,
+      ),
+    ).toEqual([
+      "script-src https://*.client.protect.clerk.com:*",
+      `connect-src ${clerkHost}:*`,
+      "connect-src https://*.client.protect.clerk.com",
+    ]);
+  });
+
   it("tells eval or inline script, in any script directive and any case, from the page's own sources", () => {
     expect(
       scriptHoles(
@@ -213,5 +227,13 @@ describe("fitness: the page keeps the managed security headers (content-security
       "x-xss-protection": "0",
       "permissions-policy": "()",
     });
+  });
+});
+
+// Report-only stops nothing, so it was only for the first deploys
+// (ADR 28, ADR 34).
+describe("fitness: the page's CSP is enforced (content-security-policy.md)", () => {
+  it("sends the page's CSP as Content-Security-Policy, not report-only", () => {
+    expect(pageCsp().header).toBe("content-security-policy");
   });
 });

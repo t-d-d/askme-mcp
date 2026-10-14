@@ -1,3 +1,4 @@
+import { McpServer } from "@modelcontextprotocol/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { askTool } from "../service/src/ask";
@@ -126,6 +127,32 @@ describe("fitness: no content reaches the output (logging.md)", () => {
       run.mockRestore();
     }
   });
+
+  it.each(eras)(
+    "runs the path where the MCP server cannot be built for an ask, %s handshake",
+    async (era) => {
+      const seen: Response[] = [];
+      const client = await connect(handler, {
+        token: await token(),
+        era,
+        seen,
+      });
+      const register = vi
+        .spyOn(McpServer.prototype, "registerTool")
+        .mockImplementationOnce(() => {
+          throw new Error(`Could not register ${marker}`);
+        });
+      try {
+        await expect(
+          client.callTool({ name: "ask", arguments: ask }),
+        ).rejects.toThrow();
+        expect(seen.at(-1)?.status).toBe(500);
+      } finally {
+        register.mockRestore();
+        await client.close();
+      }
+    },
+  );
 
   it("runs the paths of the page's API", async () => {
     const call = (token?: string) =>

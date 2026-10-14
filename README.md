@@ -6,9 +6,8 @@ One place where all of a person's AI agents ask for their input, sorted by rules
 >
 > - There is one deploy environment, with no staging. A green merge to main deploys straight to the live site.
 > - Clerk runs as a development instance. It holds at most 100 accounts, so sign-up stops at the hundredth, and it signs people in with Clerk's shared Google and GitHub credentials.
-> - Limits are per account: 100 asks and 2,000 model calls a day, and per-minute limits on polling, posting and saving rules. None of these limits one address, or a request without a valid token. Across all accounts, API Gateway takes at most 50 requests a second on each route and refuses the rest ([ADR 31](docs/adr/0031-api-throttle.md)), so a flood shuts every account out of that route while it lasts. 100 accounts could make 200,000 model calls a day, and the model key's own spending limit is what stops them.
+> - Limits are per account: 100 asks and 2,000 model calls a day, and per-minute limits on polling, posting and saving rules. None of these limits one address, or a request without a valid token. Across all accounts, the whole API takes about 50 requests a second, with bursts of 100, and refuses the rest ([ADR 31](docs/adr/0031-api-throttle.md), [ADR 35](docs/adr/0035-one-throttle-allowance.md)), so a flood on any route shuts every account out while it lasts. 100 accounts could make 200,000 model calls a day, and the model key's own spending limit is what stops them.
 > - There is no web application firewall. AWS WAF cannot attach to this kind of API, and agents call API Gateway's own address, which bypasses CloudFront. A firewall on CloudFront would need a custom domain first. Until then, AWS's standard DDoS protection and the rate limit slow a flood, and the spend alarm and API Gateway's request counts show one.
-> - The page's Content-Security-Policy is report-only for now. The browser reports what it would block, and blocks nothing.
 
 The page is live at https://d1dqzjjllemayb.cloudfront.net. Agents connect to the MCP endpoint at `https://fx0y26c8v0.execute-api.us-east-1.amazonaws.com/mcp`, and the page's Connect your agents screen gives the steps.
 
@@ -71,7 +70,7 @@ Most of Haiku's misses rank a saving passed up, such as a cheaper courier or a s
 
 ## Agents wrote the code
 
-Coding agents wrote every line of code in this repo, in Claude Code sessions. The owner and Claude wrote the PRD and the decision records, and the owner approved each one. The owner and Claude broke the PRD into issues, and agents raised many more from work they found in passing. By 14 October 2026, 193 pull requests had merged.
+Coding agents wrote every line of code in this repo, in Claude Code sessions. The owner and Claude wrote the PRD and the decision records, and the owner approved each one. The owner and Claude broke the PRD into issues, and agents raised many more from work they found in passing. By 14 October 2026, 202 pull requests had merged.
 
 Before every push, the agent ran the gate and a high-effort code review of its branch, and fixed, filed or dismissed each finding. A pull request merges only when the gate passes in CI. The owner reviewed and merged the early pull requests. Once the gate and the reviews had earned enough trust, the owner set agent sessions to land whole trains of issues, refactors among them, and those sessions reviewed and merged each pull request with no person reading it.
 
@@ -95,7 +94,7 @@ Each issue describes one change, with a label for its type, such as `type: bug`,
 | Live | The deployed page, API and MCP endpoint. One check signs in as the one test account, sends sample asks and waits for each to be sorted. | After each deploy |
 | Conformance | Setup held outside the repo, such as main's ruleset in GitHub | Every day |
 
-If the live check fails, the deploy run puts back the last build that passed it ([ADR 25](docs/adr/0025-roll-back-to-live-ok.md)).
+If a deploy fails partway, or its live check fails, the run puts back the last build that passed the live check ([ADR 25](docs/adr/0025-roll-back-to-live-ok.md), [ADR 33](docs/adr/0033-roll-back-a-partial-deploy.md)).
 
 Each decision record names checks for the rules it puts in force, and each check is a test of the same name, called a fitness function. `npm run checks` lists any check that has no test.
 
@@ -126,10 +125,10 @@ The eval set measures sorting against the real model, on demand. The model may s
 
 ## Lessons learned
 
-- **Decision records would be better kept in issues, where they can be amended.** The repo holds 31 decision records, about 38,700 words, against about 8,100 lines of application code. A merged record cannot be edited, so a change of mind means a new record that replaces part of an old one. Nine of the 31 do, and a reader has to follow the chain. The constraint files already say what is in force, in about 7,400 words, and they are what an agent reads. Next time the reasoning would live in the issue that made the decision, and the repo would keep only the constraints.
-- **Decide whether follow-up work is worth doing before anyone builds it.** Any work found in passing became an issue, about 60 of the 206. Too many were raised, and some were turned down only at pull request review, after the work was done. Next time each would be weighed when it is raised, its value against the complexity it adds, and closed then if it does not pay its way.
+- **Decision records would be better kept in issues, where they can be amended.** The repo holds 35 decision records, about 42,900 words, against about 8,100 lines of application code. A merged record cannot be edited, so a change of mind means a new record that amends part of an old one. Fifteen of the 35 do, and a reader has to follow the chain. The constraint files already say what is in force, in about 7,800 words, and they are what an agent reads. Next time the reasoning would live in the issue that made the decision, and the repo would keep only the constraints.
+- **Decide whether follow-up work is worth doing before anyone builds it.** Any work found in passing became an issue, about 60 of the 211. Too many were raised, and some were turned down only at pull request review, after the work was done. Next time each would be weighed when it is raised, its value against the complexity it adds, and closed then if it does not pay its way.
 - **Catch an agent's bad habits early, and turn each into a rule.** The agents made most design choices well unprompted, but a few habits went wrong and spread unnoticed. Logic went into the page's components, where unit tests caught none of its mutants (0 of 101, 0 of 88 and 0 of 100) until the refactoring train moved it out. Five test files each wrote their own fake of the store until one helper replaced them ([#308](https://github.com/t-d-d/askme-mcp/pull/308)). A long list of design rules up front would not have helped. Faster feedback would: mutation testing from the first days, and scheduled reviews of the whole code base outside the merge cycle. Either finds a pattern while it is in one or two places, when a rule costs little.
-- **Set the repo up for agents working in parallel.** Many agents worked at once against one main branch. 193 pull requests merged, and branches caught up with main 172 times. Catching up is normal. What cost time was the files every change touches, such as the README and the decision record index, which conflicted again and again, and two branches once took the same record number. Shared files should be few, and laid out so that git can merge them by itself: one file per entry instead of one shared table, numbers taken from the issue or given at merge, and indexes built by a script.
+- **Set the repo up for agents working in parallel.** Many agents worked at once against one main branch. 202 pull requests merged, and branches caught up with main 176 times. Catching up is normal. What cost time was the files every change touches, such as the README and the decision record index, which conflicted again and again, and two branches once took the same record number. Shared files should be few, and laid out so that git can merge them by itself: one file per entry instead of one shared table, numbers taken from the issue or given at merge, and indexes built by a script.
 
 ## Setup
 

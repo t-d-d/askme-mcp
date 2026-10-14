@@ -26,7 +26,11 @@ const list: AsksAnswer = {
 describe("fitness: the reason is inert (untrusted-ask-text.md)", () => {
   let view: OpenPage;
   beforeAll(async () => {
+    // The page's CSP would refuse the image and its handler before the
+    // guard or the title could show them (ADR 28), so it is left off to
+    // see what the page itself does with the reason.
     view = await openPage(`${inject("pageUrl")}#ask/hostile`, phone, {
+      csp: false,
       session: "test-session-token",
       api: { [pagePaths.asks]: list },
     });
