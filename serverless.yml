@@ -223,7 +223,9 @@ resources:
 
     # The headers of AWS's managed SecurityHeadersPolicy, which the API still
     # uses, and the page's CSP (ADR 28). The CSP names every outside origin
-    # the page loads from or calls: Clerk's host alone, from CLERK_ISSUER.
+    # the page loads from or calls: Clerk's host, from CLERK_ISSUER, and the
+    # hosts of Clerk Protect, Clerk's bot protection, which Clerk's own config
+    # names for the instance (ADR 30).
     # The bucket sends none of these headers, so overriding changes nothing
     # today and keeps it that way. The CSP is report-only until a deploy has
     # passed the live check with it.
@@ -255,8 +257,11 @@ resources:
                 Override: true
                 Value: >-
                   default-src 'self';
-                  script-src 'self' ${env:CLERK_ISSUER};
-                  connect-src 'self' ${env:CLERK_ISSUER};
+                  script-src 'self' ${env:CLERK_ISSUER}
+                  https://cdn.protect.clerk.com
+                  https://*.client.protect.clerk.com;
+                  connect-src 'self' ${env:CLERK_ISSUER}
+                  https://*.client.protect.clerk.com;
                   img-src 'self' data:;
                   style-src 'self' 'unsafe-inline';
                   worker-src 'self' blob:;

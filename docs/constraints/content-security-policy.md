@@ -1,6 +1,6 @@
 # Content Security Policy
 Relevance: Anything the page loads from or calls outside its own address, a new script, style, font, image or worker source, a Clerk component in the page, or the page's response headers: web/src/**, web/index.html, package.json, the deployment definition
-Decision: The page's CSP names every outside origin it loads from or calls, today Clerk's host alone, and a new origin is added in the pull request that needs it.
+Decision: The page's CSP names every outside origin the page uses, today Clerk's and Clerk Protect's hosts, and the pull request that adds an origin adds it there.
 
 Why: Any script running in the page can call Clerk's getToken and act as
 the person. A CSP that names every origin stops a script that gets in from
@@ -16,7 +16,9 @@ loading more code, or sending what it reads, anywhere else.
 - default-src is 'self'.
 - The policy names every outside origin the page loads from or calls, in
   the directive for that kind of load, and no other. Today that is
-  Clerk's host, in script-src and connect-src.
+  Clerk's host, in script-src and connect-src, and Clerk Protect's:
+  https://cdn.protect.clerk.com in script-src, and
+  https://*.client.protect.clerk.com in script-src and connect-src.
 - Clerk's host is written as ${env:CLERK_ISSUER}, which the deploy fills
   in.
 - A pull request that makes the page reach a new origin adds it to the
@@ -35,9 +37,11 @@ loading more code, or sending what it reads, anywhere else.
 
 ## Do not
 
-- Allow a wildcard such as https://*.clerk.accounts.dev, or a bare scheme
-  such as https:. Anyone can make a Clerk instance, so a wildcard lets in
-  hosts that are not ours.
+- Allow a wildcard such as https://*.clerk.accounts.dev or
+  https://*.clerk.com, or a bare scheme such as https:. Anyone can make a
+  Clerk instance, so a wildcard lets in hosts that are not ours. Clerk
+  Protect's https://*.client.protect.clerk.com is the one exception,
+  because Clerk names the host under it for each instance (ADR 30).
 - Write Clerk's host into serverless.yml: a move to a Clerk production
   instance on its own domain would break sign-in until someone edited it.
 - Add 'unsafe-eval', or 'unsafe-inline' in script-src, to quiet a
@@ -56,4 +60,4 @@ here, so a change Clerk makes can need a new source between deploys.
 The checks listen on each page, not in workers, so a pull request that
 adds a worker which loads anything checks those loads against the policy
 by hand.
-History: [ADR 28](../adr/0028-page-csp.md)
+History: [ADR 28](../adr/0028-page-csp.md), [ADR 30](../adr/0030-csp-allows-clerk-protect.md)

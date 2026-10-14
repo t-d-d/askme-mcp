@@ -54,9 +54,22 @@ function outsideSources(csp: string): string[] {
   );
 }
 
+// What Clerk Protect, Clerk's bot protection, loads into the page: a script
+// from its CDN, then a loader and probes from hosts named for the instance,
+// which Clerk's own config gives (ADR 30).
+const protectSources = [
+  "script-src https://cdn.protect.clerk.com",
+  "script-src https://*.client.protect.clerk.com",
+  "connect-src https://*.client.protect.clerk.com",
+];
+
 // Every outside source the policy may name, each in its directive. A pull
 // request that makes the page reach a new origin adds it here (ADR 28).
-const allowedOutside = [`script-src ${clerkHost}`, `connect-src ${clerkHost}`];
+const allowedOutside = [
+  `script-src ${clerkHost}`,
+  `connect-src ${clerkHost}`,
+  ...protectSources,
+];
 
 function notListed(csp: string): string[] {
   return outsideSources(csp).filter((entry) => !allowedOutside.includes(entry));
@@ -78,7 +91,7 @@ function scriptHoles(csp: string): string[] {
 
 const csp = () => pageCsp().value;
 
-describe("fitness: the page's CSP names only Clerk's host (content-security-policy.md)", () => {
+describe("fitness: the page's CSP names only Clerk's origins (content-security-policy.md)", () => {
   it("sends the page one CSP, from a policy of its own", () => {
     expect(csp()).not.toBe("");
   });
@@ -87,9 +100,15 @@ describe("fitness: the page's CSP names only Clerk's host (content-security-poli
     expect(directives(csp()).get("default-src")).toEqual(["'self'"]);
   });
 
-  it("names no outside origin but Clerk's host, as the deploy reads it from CLERK_ISSUER", () => {
+  it("names no outside origin but Clerk's host, as the deploy reads it from CLERK_ISSUER, and Clerk Protect's", () => {
     expect(notListed(csp())).toEqual([]);
-    expect(outsideSources(csp())).not.toEqual([]);
+    expect(outsideSources(csp())).toContain(`script-src ${clerkHost}`);
+  });
+
+  it("lets in what Clerk Protect loads, as the live check heard it", () => {
+    expect(outsideSources(csp())).toEqual(
+      expect.arrayContaining(protectSources),
+    );
   });
 
   it("forbids framing the page, plugins and a changed base address", () => {
