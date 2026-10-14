@@ -176,6 +176,9 @@ async function serve(
       resourceMetadataUrl,
     });
   } catch (error) {
+    // A failure that is not a bad token, such as Clerk's key set being out
+    // of reach, goes up to handler(). It answers with a 503, not a tool
+    // result (ADR 24).
     if (!(error instanceof OAuthError) || error.code !== invalidToken) {
       throw error;
     }
@@ -197,7 +200,8 @@ async function serve(
     authInfo: { ...authInfo, extra: { ...authInfo.extra, requestId } },
   });
   // The SDK answers a failure of its own with a server error and logs
-  // nothing, so it is logged here, by status only.
+  // nothing, so it is logged here, by status only. The answer itself is
+  // passed on as it is (ADR 24).
   if (response.status >= 500) {
     log.error("request-failed", { status: response.status });
   }
