@@ -495,6 +495,23 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
     expect(fetching).toEqual([]);
   });
 
+  // A laptop, or a cloud session, installs with a plain npm ci (#368).
+  it("skips install scripts in a plain install", () => {
+    const settings = readRepoFile(".npmrc")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !/^[#;]/u.test(line))
+      // npm splits at the first "=" and drops a comment after the value.
+      .map((line) => /^([^=]*?)\s*=\s*(.*?)(?:\s+[#;].*)?$/u.exec(line))
+      .map((match) => [match?.[1], match?.[2]]);
+    expect(Object.fromEntries(settings)).toMatchObject({
+      "ignore-scripts": "true",
+    });
+  });
+
+  // The flag on the command line wins over .npmrc.
+  const scriptedInstall = "npm ci --ignore-scripts=false";
+
   it("installs the launcher where it is checked, in the jobs that deploy", () => {
     const deploying = allJobs().filter(([, job]) => runsFramework(job));
     expect(deploying.map(([id]) => id)).toEqual([
@@ -503,10 +520,10 @@ describe("fitness: the deploy runs pinned code (repo-and-delivery.md)", () => {
     ]);
     for (const [, job] of deploying) {
       const steps = job.steps ?? [];
-      expect(installs(job)).toEqual(["npm ci"]);
-      expect(steps.findIndex((step) => step.run === "npm ci")).toBeLessThan(
-        steps.findIndex((step) => step.name === checkName),
-      );
+      expect(installs(job)).toEqual([scriptedInstall]);
+      expect(
+        steps.findIndex((step) => step.run === scriptedInstall),
+      ).toBeLessThan(steps.findIndex((step) => step.name === checkName));
     }
   });
 

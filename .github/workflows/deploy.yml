@@ -32,7 +32,10 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - run: npm ci
+      # .npmrc skips install scripts, but the serverless package's installs the
+      # launcher, so this install runs them. The flag on the command line wins
+      # over .npmrc.
+      - run: npm ci --ignore-scripts=false
       # The serverless package only installs a launcher, which fetches the
       # framework and runs it. Serverless publishes no checksum for either, so
       # both must match sums of downloads made when the version was pinned. A
@@ -116,7 +119,8 @@ jobs:
           cache: npm
       # Only the deploy and rollback jobs run the Serverless launcher, and check
       # it. Its download is the one install script on a Linux runner, so the
-      # other jobs skip it.
+      # other jobs skip it. The flag repeats .npmrc, which an older commit, such
+      # as live-ok, may not have.
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run test:live
@@ -205,7 +209,10 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - run: npm ci
+      # .npmrc skips install scripts, but the serverless package's installs the
+      # launcher, so this install runs them. The flag on the command line wins
+      # over .npmrc.
+      - run: npm ci --ignore-scripts=false
       # The serverless package only installs a launcher, which fetches the
       # framework and runs it. Serverless publishes no checksum for either, so
       # both must match sums of downloads made when the version was pinned. A
@@ -284,7 +291,8 @@ jobs:
           cache: npm
       # Only the deploy and rollback jobs run the Serverless launcher, and check
       # it. Its download is the one install script on a Linux runner, so the
-      # other jobs skip it.
+      # other jobs skip it. The flag repeats .npmrc, which an older commit, such
+      # as live-ok, may not have.
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run test:live
