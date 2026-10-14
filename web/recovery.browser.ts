@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, inject, it } from "vitest";
 import {
   pagePaths,
+  rulesInput,
   samplesPath,
   type AsksAnswer,
   type RulesAnswer,
@@ -357,5 +358,175 @@ describe("a poll answer the page cannot read, beside rules it can", () => {
       })
       .toBeGreaterThanOrEqual(after);
     expect(opened.loads()).toBe(2);
+  });
+});
+
+// Rules with unsaved text, then a deploy that changes the poll's answer.
+// The person stays at the first "Leave site?".
+const stayedWithUnsavedRules = async () => {
+  const list = listAt(new Date());
+  let deployed = false;
+  const opened = await openPage(`${inject("pageUrl")}#rules`, phone, {
+    session,
+    clock: true,
+    api: {
+      [pagePaths.asks]: new Answering((url) =>
+        deployed ? { version: 4, shape: "new" } : answerPoll(url, list),
+      ),
+      [pagePaths.rules]: rules,
+    },
+  });
+  // Set at once, so the page closes even if a step below fails.
+  view = opened;
+  const { page } = opened;
+  const box = page.getByRole("textbox");
+  await expect.poll(() => box.inputValue()).toBe(rules.text);
+  await box.fill(`${rules.text}\n\n#family is home.`);
+  const asked: string[] = [];
+  page.on("dialog", (dialog) => {
+    asked.push(dialog.type());
+    void dialog.dismiss();
+  });
+  deployed = true;
+  await page.clock.fastForward(pollMs);
+  await expect.poll(() => asked).toEqual(["beforeunload"]);
+  expect(opened.loads()).toBe(1);
+  const polls = () =>
+    opened.apiCalls.filter(({ path }) => path === pagePaths.asks).length;
+  // A poll still out when the next falls due is not sent twice, so the
+  // clock moves on until three more have gone.
+  const after = polls() + 3;
+  await expect
+    .poll(async () => {
+      await page.clock.fastForward(pollMs);
+      return polls();
+    })
+    .toBeGreaterThanOrEqual(after);
+  return { opened, asked, polls };
+};
+
+describe("a reload the person cancels", () => {
+  it("does not ask again while the rules hold unsaved text", async () => {
+    const { opened, asked } = await stayedWithUnsavedRules();
+    expect(asked).toEqual(["beforeunload"]);
+    expect(opened.loads()).toBe(1);
+  });
+
+  it("reloads once the text is saved, and not again after", async () => {
+    const { opened, asked, polls } = await stayedWithUnsavedRules();
+    const { page } = opened;
+    await page.getByRole("button", { name: "Save rules" }).click();
+    await expect.poll(() => opened.loads()).toBe(2);
+    expect(asked).toEqual(["beforeunload"]);
+    // The page after the reload finds the first page's mark.
+    const after = polls() + 3;
+    await expect
+      .poll(async () => {
+        await page.clock.fastForward(pollMs);
+        return polls();
+      })
+      .toBeGreaterThanOrEqual(after);
+    expect(opened.loads()).toBe(2);
+  });
+
+  it("reloads once the text is thrown away", async () => {
+    const { opened, asked } = await stayedWithUnsavedRules();
+    const { page } = opened;
+    page.removeAllListeners("dialog");
+    page.on("dialog", (dialog) => {
+      asked.push(dialog.type());
+      void dialog.accept();
+    });
+    await page.getByRole("link", { name: "All asks" }).click();
+    await expect.poll(() => opened.loads()).toBe(2);
+    expect(asked).toEqual(["beforeunload", "confirm"]);
+  });
+});
+
+// As after a deploy that changes the rules' answer, while the page stays
+// open: askme stores the rules, and this page cannot read the answer to the
+// save or the next load. With newPage, the load after that is the newer
+// page's, which reads them.
+const savesWithNewAnswer = (stored: string[], newPage: boolean) => {
+  let unread = 0;
+  return new Answering((_url, _authorization, sent) => {
+    if (sent.method === "PUT") {
+      stored.push(rulesInput.parse(JSON.parse(sent.body ?? "")).text);
+      unread = newPage ? 1 : 0;
+      return { shape: "new" };
+    }
+    if (unread > 0) {
+      unread -= 1;
+      return { shape: "new" };
+    }
+    return { ...rules, text: stored.at(-1) ?? rules.text };
+  });
+};
+
+const saves = (opened: OpenPage) =>
+  opened.apiCalls.filter(
+    ({ path, method }) => path === pagePaths.rules && method === "PUT",
+  ).length;
+
+describe("a rules save whose answer the page cannot read", () => {
+  it("reloads the page once to read the rules, without asking to leave", async () => {
+    const list = listAt(new Date());
+    const stored: string[] = [];
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      api: {
+        [pagePaths.asks]: new Answering((url) => answerPoll(url, list)),
+        [pagePaths.rules]: savesWithNewAnswer(stored, true),
+      },
+    });
+    const opened = view;
+    const { page } = opened;
+    const asked: string[] = [];
+    page.on("dialog", (dialog) => {
+      asked.push(dialog.type());
+      void dialog.accept();
+    });
+    const box = page.getByRole("textbox");
+    await expect.poll(() => box.inputValue()).toBe(rules.text);
+    await box.fill(`${rules.text}\n\n#family is home.`);
+    await page.getByRole("button", { name: "Save rules" }).click();
+    await expect.poll(() => opened.loads()).toBe(2);
+    await expect.poll(() => box.inputValue()).toBe(stored[0]);
+    expect(stored).toHaveLength(1);
+    // The text was saved, so leaving loses nothing.
+    expect(asked).toEqual([]);
+  });
+
+  it("says it saved, not that it did not go through, where the page has already reloaded for another answer", async () => {
+    const list = listAt(new Date());
+    const stored: string[] = [];
+    let deployed = false;
+    view = await openPage(`${inject("pageUrl")}#rules`, phone, {
+      session,
+      clock: true,
+      api: {
+        [pagePaths.asks]: new Answering((url) =>
+          deployed ? { version: 4, shape: "new" } : answerPoll(url, list),
+        ),
+        [pagePaths.rules]: savesWithNewAnswer(stored, false),
+      },
+    });
+    const opened = view;
+    const { page } = opened;
+    const box = page.getByRole("textbox");
+    await expect.poll(() => box.inputValue()).toBe(rules.text);
+    deployed = true;
+    await page.clock.fastForward(pollMs);
+    await expect.poll(() => opened.loads()).toBe(2);
+    await expect.poll(() => box.inputValue()).toBe(rules.text);
+    const typed = `${rules.text}\n\n#family is home.`;
+    await box.fill(typed);
+    await page.getByRole("button", { name: "Save rules" }).click();
+    await expect.poll(() => saves(opened)).toBe(1);
+    await page.getByRole("status").filter({ hasText: "Saved." }).waitFor();
+    expect(await box.inputValue()).toBe(typed);
+    expect(await page.getByText("That didn't go through").count()).toBe(0);
+    expect(opened.loads()).toBe(2);
+    expect(stored).toHaveLength(1);
   });
 });

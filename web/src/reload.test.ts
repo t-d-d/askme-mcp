@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { answerRead, reloadOnce, storedMarks, type Marks } from "./reload";
+import {
+  answerRead,
+  heldReloads,
+  reloadOnce,
+  storedMarks,
+  type Marks,
+} from "./reload";
 
 const memory = (): Marks => {
   const held = new Map<string, string>();
@@ -16,6 +22,10 @@ const memory = (): Marks => {
 
 const asks = "/api/asks";
 const rules = "/api/rules";
+
+// Each page load has its own id.
+const first = "first-load";
+const second = "second-load";
 
 const counting = () => {
   const reloads = { count: 0 };
@@ -37,44 +47,76 @@ describe("reloading for an answer the page cannot read", () => {
   it("does not reload a second time", () => {
     const marks = memory();
     const { reloads, reload } = counting();
-    reloadOnce(marks, reload, asks);
-    reloadOnce(marks, reload, asks);
+    reloadOnce(marks, reload, asks, first);
+    reloadOnce(marks, reload, asks, second);
+    expect(reloads.count).toBe(1);
+  });
+
+  it("reloads again from the page whose reload did not happen", () => {
+    const marks = memory();
+    const { reloads, reload } = counting();
+    reloadOnce(marks, reload, asks, first);
+    reloadOnce(marks, reload, asks, first);
+    reloadOnce(marks, reload, rules, first);
+    expect(reloads.count).toBe(3);
+    reloadOnce(marks, reload, asks, second);
+    expect(reloads.count).toBe(3);
+  });
+
+  it("keeps the first answer's mark when a second fails on the same page", () => {
+    const marks = memory();
+    const { reloads, reload } = counting();
+    reloadOnce(marks, reload, asks, first);
+    reloadOnce(marks, reload, rules, first);
+    answerRead(marks, rules);
+    reloadOnce(marks, reload, asks, second);
+    expect(reloads.count).toBe(2);
+  });
+
+  it("reads a mark that holds the answer alone, as an older page kept it", () => {
+    const marks = memory();
+    marks.setItem("askme-reloaded-for", asks);
+    const { reloads, reload } = counting();
+    reloadOnce(marks, reload, asks, second);
+    expect(reloads.count).toBe(0);
+    answerRead(marks, asks);
+    reloadOnce(marks, reload, asks, second);
     expect(reloads.count).toBe(1);
   });
 
   it("reloads again once an answer has been read", () => {
     const marks = memory();
     const { reloads, reload } = counting();
-    reloadOnce(marks, reload, asks);
+    reloadOnce(marks, reload, asks, first);
     answerRead(marks, asks);
-    reloadOnce(marks, reload, asks);
+    reloadOnce(marks, reload, asks, second);
     expect(reloads.count).toBe(2);
   });
 
   it("does not reload for a second answer while the first one's mark stands", () => {
     const marks = memory();
     const { reloads, reload } = counting();
-    reloadOnce(marks, reload, asks);
-    reloadOnce(marks, reload, rules);
+    reloadOnce(marks, reload, asks, first);
+    reloadOnce(marks, reload, rules, second);
     expect(reloads.count).toBe(1);
   });
 
   it("keeps the mark when a different answer is read", () => {
     const marks = memory();
     const { reloads, reload } = counting();
-    reloadOnce(marks, reload, asks);
+    reloadOnce(marks, reload, asks, first);
     answerRead(marks, rules);
-    reloadOnce(marks, reload, asks);
-    reloadOnce(marks, reload, rules);
+    reloadOnce(marks, reload, asks, second);
+    reloadOnce(marks, reload, rules, second);
     expect(reloads.count).toBe(1);
   });
 
   it("reloads for a different answer once the one that reloaded has been read", () => {
     const marks = memory();
     const { reloads, reload } = counting();
-    reloadOnce(marks, reload, asks);
+    reloadOnce(marks, reload, asks, first);
     answerRead(marks, asks);
-    reloadOnce(marks, reload, rules);
+    reloadOnce(marks, reload, rules, second);
     expect(reloads.count).toBe(2);
   });
 
@@ -112,5 +154,65 @@ describe("reloading for an answer the page cannot read", () => {
     reloadOnce(blocked, reload, asks);
     answerRead(blocked, asks);
     expect(reloads.count).toBe(0);
+  });
+});
+
+describe("reloading while a screen holds unsaved work", () => {
+  it("reloads at once when nothing holds", () => {
+    const reloads = heldReloads();
+    const { reloads: count, reload } = counting();
+    reloads.reload(reload);
+    reloads.reload(reload);
+    expect(count.count).toBe(2);
+  });
+
+  it("tries once while held, then waits", () => {
+    const reloads = heldReloads();
+    reloads.hold();
+    const { reloads: count, reload } = counting();
+    reloads.reload(reload);
+    reloads.reload(reload);
+    reloads.reload(reload);
+    expect(count.count).toBe(1);
+  });
+
+  it("reloads once when the hold ends after a reload waited", () => {
+    const reloads = heldReloads();
+    const release = reloads.hold();
+    const { reloads: count, reload } = counting();
+    reloads.reload(reload);
+    reloads.reload(reload);
+    release();
+    release();
+    expect(count.count).toBe(2);
+  });
+
+  it("reloads when the hold ends after its one try, as the person stayed", () => {
+    const reloads = heldReloads();
+    const release = reloads.hold();
+    const { reloads: count, reload } = counting();
+    reloads.reload(reload);
+    release();
+    expect(count.count).toBe(2);
+  });
+
+  it("does not reload when the hold ends with nothing waiting", () => {
+    const reloads = heldReloads();
+    const { reloads: count, reload } = counting();
+    reloads.hold()();
+    expect(count.count).toBe(0);
+    reloads.reload(reload);
+    expect(count.count).toBe(1);
+  });
+
+  it("waits while any hold remains", () => {
+    const reloads = heldReloads();
+    const { reloads: count, reload } = counting();
+    reloads.hold();
+    const release = reloads.hold();
+    reloads.reload(reload);
+    release();
+    reloads.reload(reload);
+    expect(count.count).toBe(1);
   });
 });

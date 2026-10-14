@@ -4,7 +4,7 @@ import {
   samplesPath,
   type AskChange,
 } from "../../shared/page-api";
-import { answerRead, reloadOnce, sessionMarks } from "./reload";
+import { answerRead, pageReloads, reloadOnce, sessionMarks } from "./reload";
 
 export async function load<T>(
   path: string,
@@ -39,7 +39,9 @@ export async function loadDated<T>(
     reloadOnce(
       sessionMarks,
       () => {
-        window.location.reload();
+        pageReloads.reload(() => {
+          window.location.reload();
+        });
       },
       answerPath,
     );
@@ -108,14 +110,18 @@ async function sendJson(
   return response;
 }
 
+// Null when askme took the save but the page cannot read its answer, as
+// after a deploy that changes it. The save went through, so it is not an
+// error.
 export async function send<T>(
   path: string,
   body: unknown,
   schema: z.ZodType<T>,
   getToken: () => Promise<string | null>,
-): Promise<T> {
+): Promise<T | null> {
   const response = await sendJson("PUT", path, body, getToken);
-  return schema.parse(await response.json());
+  const answer = schema.safeParse(await response.json());
+  return answer.success ? answer.data : null;
 }
 
 export async function changeAsk(
