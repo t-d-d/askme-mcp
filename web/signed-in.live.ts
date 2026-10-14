@@ -21,6 +21,8 @@ import {
   screen,
   sendSortAndDismiss,
   watchAnswers,
+  watchViolations,
+  type Violation,
 } from "../test/live-page";
 
 // Clerk's test mode verifies a +clerk_test address with the code 424242 and
@@ -67,6 +69,7 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
   const apiCalls: string[] = [];
   const dismissed: string[] = [];
   let answer: ReturnType<typeof watchAnswers>;
+  let violations: () => Violation[] = () => [];
   let posted: PageAsk[] = [];
 
   beforeAll(async () => {
@@ -83,6 +86,7 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
       }
     });
     answer = watchAnswers(page, origin);
+    violations = await watchViolations(page.context(), origin);
     await page.goto(pageUrl());
     await signIn(page);
   }, 5 * stepMs);
@@ -193,7 +197,7 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
     4 * stepMs,
   );
 
-  // Runs last, so it sees every call the steps above made (ADR 20,
+  // Runs after the steps, so it sees every call they made (ADR 20,
   // ADR 26).
   describe("fitness: the signed-in check writes only its samples (test-tiers.md)", () => {
     it("sends the page's API reads, one press of the samples and their dismissals", () => {
@@ -207,6 +211,21 @@ describe("fitness: a person can sign in on the live page (test-tiers.md)", () =>
       );
       expect(posted).toHaveLength(sampleCount);
       expect([...dismissed].sort()).toEqual(posted.map(({ id }) => id).sort());
+    });
+  });
+
+  // Runs after the steps, so it hears every page the run loaded, the
+  // signed-out page before sign-in and the reload after sign-out included.
+  // The browser tier fakes Clerk, so only this run sees what Clerk's scripts
+  // need (ADR 28).
+  describe("fitness: the live page breaks no CSP rule (content-security-policy.md)", () => {
+    it("hears no CSP violation on the page during the run", () => {
+      expect(
+        violations().map(
+          ({ page: where, directive, blocked, disposition }) =>
+            `${directive} refused ${blocked} on ${where} (${disposition})`,
+        ),
+      ).toEqual([]);
     });
   });
 });

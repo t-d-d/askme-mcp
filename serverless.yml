@@ -202,9 +202,9 @@ resources:
             AllowedMethods: [GET, HEAD]
             CachedMethods: [GET, HEAD]
             Compress: true
-            # AWS managed policies: CachingOptimized and SecurityHeadersPolicy.
+            # AWS managed policy: CachingOptimized.
             CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
-            ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03
+            ResponseHeadersPolicyId: !Ref WebResponseHeadersPolicy
           CacheBehaviors:
             # Each answer is one account's and the token is in a header, so
             # nothing is cached and every header but Host goes on. AWS managed
@@ -220,6 +220,49 @@ resources:
               CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
               OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
               ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03
+
+    # The headers of AWS's managed SecurityHeadersPolicy, which the API still
+    # uses, and the page's CSP (ADR 28). The CSP names every outside origin
+    # the page loads from or calls: Clerk's host alone, from CLERK_ISSUER.
+    # The bucket sends none of these headers, so overriding changes nothing
+    # today and keeps it that way. The CSP is report-only until a deploy has
+    # passed the live check with it.
+    WebResponseHeadersPolicy:
+      Type: AWS::CloudFront::ResponseHeadersPolicy
+      Properties:
+        ResponseHeadersPolicyConfig:
+          Name: askme-page
+          Comment: The page's security headers and CSP
+          SecurityHeadersConfig:
+            StrictTransportSecurity:
+              AccessControlMaxAgeSec: 31536000
+              Override: true
+            ContentTypeOptions:
+              Override: true
+            FrameOptions:
+              FrameOption: SAMEORIGIN
+              Override: true
+            ReferrerPolicy:
+              ReferrerPolicy: strict-origin-when-cross-origin
+              Override: true
+            XSSProtection:
+              Protection: true
+              ModeBlock: true
+              Override: true
+          CustomHeadersConfig:
+            Items:
+              - Header: Content-Security-Policy-Report-Only
+                Override: true
+                Value: >-
+                  default-src 'self';
+                  script-src 'self' ${env:CLERK_ISSUER};
+                  connect-src 'self' ${env:CLERK_ISSUER};
+                  img-src 'self' data:;
+                  style-src 'self' 'unsafe-inline';
+                  worker-src 'self' blob:;
+                  frame-ancestors 'none';
+                  object-src 'none';
+                  base-uri 'none'
 
     WebBucketPolicy:
       Type: AWS::S3::BucketPolicy
