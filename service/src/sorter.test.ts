@@ -425,9 +425,9 @@ describe("a job from the queue", () => {
       for (const receives of [1, sortDeliveries]) {
         capture.lines.length = 0;
         const { model, asked } = memoryModel([new ModelFailed(reason)]);
-        expect(await deliver(receives, memoryStore({ ask, rules }), model)).toBe(
-          false,
-        );
+        expect(
+          await deliver(receives, memoryStore({ ask, rules }), model),
+        ).toBe(false);
         expect(asked).toHaveLength(1);
         expect(logged()).toEqual([
           expect.objectContaining({
