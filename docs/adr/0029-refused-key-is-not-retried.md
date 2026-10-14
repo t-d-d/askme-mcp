@@ -1,4 +1,4 @@
-# ADR 28: A sort the model refuses for askme's own key is not tried again
+# ADR 29: A sort the model refuses for askme's own key is not tried again
 
 Decided on 14 October 2026: when the model refuses a sort's call for a fault of askme's own, the sort makes no second try and the sort function lets the job go on that delivery. The refused call still counts against the account's daily cap. Issue #351 found that a refused key spent six counted calls on each ask. The owner picked this option, and wanted the call taken back off the count only if that was simple. It is not, so it is left out. This amends point 6 of [ADR 22](0022-sort-queue.md), which has the queue deliver every failed sort again. The rest of ADR 21 and ADR 22 stands.
 

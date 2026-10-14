@@ -57,4 +57,4 @@ Judgment: A model call made for no account is a new decision. The
 cap's value is the owner's call, set against the key's limit across
 every account.
 
-History: [ADR 21](../adr/0021-model-call-cap.md), [ADR 22](../adr/0022-sort-queue.md), [ADR 28](../adr/0028-refused-key-is-not-retried.md)
+History: [ADR 21](../adr/0021-model-call-cap.md), [ADR 22](../adr/0022-sort-queue.md), [ADR 29](../adr/0029-refused-key-is-not-retried.md)

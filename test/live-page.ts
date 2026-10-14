@@ -1,7 +1,8 @@
 // The live check's steps on the signed-in page, apart from signing in, so
 // the browser tier can rehearse them against a faked API (ADR 26).
-import type { Page } from "playwright";
+import type { BrowserContext, Page } from "playwright";
 import { expect } from "vitest";
+import { z } from "zod";
 import {
   askChange,
   askChangePaths,
@@ -52,6 +53,81 @@ export function watchAnswers(
       .catch(() => undefined);
   });
   return () => answer;
+}
+
+// A CSP violation on the page: which directive refused what, and where.
+export interface Violation {
+  page: string;
+  directive: string;
+  blocked: string;
+  disposition: string;
+}
+
+// What the page tells the binding. The page writes it, so it is parsed.
+const violationEvent = z.object({
+  page: z.string(),
+  directive: z.string(),
+  blocked: z.string(),
+  disposition: z.string(),
+});
+
+const violationBinding = "askmeLiveViolation";
+
+// A Clerk address can carry a token in its query, and the run's log is
+// public, so an address is kept without its query or fragment. A keyword
+// such as "inline" is kept as it is.
+function withoutQuery(address: string): string {
+  if (!URL.canParse(address)) return address;
+  const url = new URL(address);
+  url.search = "";
+  url.hash = "";
+  return url.href;
+}
+
+// Every securitypolicyviolation event on a page from origin, in any tab of
+// the context, from the next page it loads (ADR 28). Clerk's own screens are
+// on another address, with a policy of their own, so they are left out.
+export async function watchViolations(
+  context: BrowserContext,
+  origin: string,
+): Promise<() => Violation[]> {
+  const heard: Violation[] = [];
+  const fromOrigin = (address: string) =>
+    URL.canParse(address) && new URL(address).origin === origin;
+  await context.exposeBinding(violationBinding, ({ frame }, told: unknown) => {
+    const read = violationEvent.safeParse(told);
+    if (read.success) {
+      if (!fromOrigin(read.data.page)) return;
+      heard.push({
+        page: withoutQuery(read.data.page),
+        directive: read.data.directive,
+        blocked: withoutQuery(read.data.blocked),
+        disposition: read.data.disposition,
+      });
+    } else if (fromOrigin(frame.url())) {
+      heard.push({
+        page: withoutQuery(frame.url()),
+        directive: "(unreadable)",
+        blocked: "(unreadable)",
+        disposition: "(unreadable)",
+      });
+    }
+  });
+  await context.addInitScript((name) => {
+    document.addEventListener("securitypolicyviolation", (event) => {
+      const tell: unknown = Reflect.get(window, name);
+      if (typeof tell !== "function") return;
+      void Reflect.apply(tell, window, [
+        {
+          page: event.documentURI,
+          directive: event.effectiveDirective,
+          blocked: event.blockedURI,
+          disposition: event.disposition,
+        },
+      ]);
+    });
+  }, violationBinding);
+  return () => [...heard];
 }
 
 // Starts on Connect your agents, and ends on the list. It checks that each

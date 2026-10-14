@@ -1,3 +1,4 @@
+import "./jitless";
 import "@fontsource-variable/bricolage-grotesque/opsz.css";
 import "./tokens.css";
 import "./base.css";

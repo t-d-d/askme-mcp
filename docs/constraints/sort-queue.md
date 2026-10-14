@@ -76,4 +76,4 @@ Judgment: A new reason to sort an ask queues a job through the jobs
 module. A new state for the page comes from what the table holds, not
 from the queue.
 
-History: [ADR 22](../adr/0022-sort-queue.md), [ADR 28](../adr/0028-refused-key-is-not-retried.md)
+History: [ADR 22](../adr/0022-sort-queue.md), [ADR 29](../adr/0029-refused-key-is-not-retried.md)

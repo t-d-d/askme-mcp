@@ -330,7 +330,7 @@ describe("sorting an ask", () => {
   });
 
   // Each try counts against the cap, and a second fails the same way
-  // (ADR 28).
+  // (ADR 29).
   it.each(["status-401", "status-402", "status-403-budget", "status-404"])(
     "tries no more after a %s, a refusal of askme's own, and says why to the job that asked",
     async (reason) => {
@@ -418,7 +418,7 @@ describe("a job from the queue", () => {
   });
 
   // A later delivery would be refused the same way, and its call would
-  // count against the cap (ADR 28).
+  // count against the cap (ADR 29).
   it.each(["status-401", "status-402", "status-403-budget", "status-404"])(
     "logs %s at error as askme's own, and lets the job go on any delivery with a warn line",
     async (reason) => {

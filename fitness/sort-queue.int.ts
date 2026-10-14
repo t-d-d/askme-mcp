@@ -305,7 +305,7 @@ describe("fitness: a failed sort never fails the run (sort-queue.md)", () => {
 });
 
 // OpenRouter answers 401 for a refused key, 402 for spent credit and 404
-// for a withdrawn model. Each would fail every try the same way (ADR 28).
+// for a withdrawn model. Each would fail every try the same way (ADR 29).
 describe("fitness: a refused key is tried once (sort-queue.md)", () => {
   const lines = logsEachTest();
 

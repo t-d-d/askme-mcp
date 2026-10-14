@@ -104,7 +104,7 @@ export async function sortAsk(
         }
         if (!(error instanceof ModelFailed)) throw error;
         // A refusal of askme's own key or settings fails every try the same
-        // way, and each try counts against the cap (ADR 28).
+        // way, and each try counts against the cap (ADR 29).
         if (modelFaultIsOurs(error.reason)) return { failed: error.reason };
         followUp = undefined;
         failure = error.reason;
@@ -169,7 +169,7 @@ export async function runJob(
   if (outcome === "done") return false;
   // The model refused askme's own key or settings, which fails every sort,
   // so it alerts. A later delivery would be refused the same way, so the job
-  // is let go (ADR 28).
+  // is let go (ADR 29).
   if (outcome.failed !== undefined && modelFaultIsOurs(outcome.failed)) {
     log.error("request-failed", { errorClass: outcome.failed });
     log.warn("sort-failed", { ...at, errorClass: outcome.failed });
