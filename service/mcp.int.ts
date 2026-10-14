@@ -383,33 +383,49 @@ describe("a request the handler cannot use", () => {
     expect(response.status).toBe(404);
   });
 
-  // The SDK answers its own failure with a 500 and logs nothing.
-  it("is logged as a failure when the MCP server cannot be built", async () => {
-    const capture = captureLogs();
-    const register = vi
-      .spyOn(McpServer.prototype, "registerTool")
-      .mockImplementationOnce(() => {
-        throw new Error("Could not register");
-      });
-    try {
-      const seen: Response[] = [];
-      await expect(
-        connect(handler, { token: await issuer.token(), seen }),
-      ).rejects.toThrow();
-      expect(seen[0]?.status).toBe(500);
-      expect(
-        capture.lines.some(
-          (line) =>
-            line.method === "error" &&
-            lineText(line).includes("request-failed") &&
-            lineText(line).includes("500"),
-        ),
-      ).toBe(true);
-    } finally {
-      register.mockRestore();
-      capture.restore();
+  // A class of its own, so the line can be seen to carry it.
+  class ServerBuildFailed extends Error {
+    constructor() {
+      super("Could not register");
+      this.name = "ServerBuildFailed";
     }
-  });
+  }
+
+  // The SDK answers its own failure with a 500 and writes nothing. It hands
+  // the handler the error it caught, and the handler logs one line.
+  it.each(eras)(
+    "is logged once, by its class, when the MCP server cannot be built, %s handshake",
+    async (era) => {
+      const capture = captureLogs();
+      const register = vi
+        .spyOn(McpServer.prototype, "registerTool")
+        .mockImplementationOnce(() => {
+          throw new ServerBuildFailed();
+        });
+      try {
+        const seen: Response[] = [];
+        await expect(
+          connect(handler, { token: await issuer.token(), era, seen }),
+        ).rejects.toThrow();
+        expect(seen.map((answer) => answer.status)).toEqual([500]);
+        const failures = capture.lines.filter(
+          (line) => line.method === "error",
+        );
+        expect(failures).toHaveLength(1);
+        expect(failures[0]?.args[0]).toMatchObject({
+          event: "request-failed",
+          status: 500,
+          errorClass: "ServerBuildFailed",
+        });
+        expect(capture.lines.map(lineText).join("\n")).not.toContain(
+          "Could not register",
+        );
+      } finally {
+        register.mockRestore();
+        capture.restore();
+      }
+    },
+  );
 
   // API Gateway always sends a well-formed event, so this is askme's fault
   // (ADR 11).
