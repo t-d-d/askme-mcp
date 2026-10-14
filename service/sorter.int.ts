@@ -94,7 +94,8 @@ it("reads the model's key on its first sort, and keeps it for the runs after", a
 
 // OpenRouter answers 401 for a refused key and 402 for spent credit, which
 // alert. A 403 can come from moderation of a hostile ask, so it must not.
-// The failed sort itself stays at warn (ADR 22).
+// The failed sort itself stays at warn (ADR 22). A refusal of askme's own
+// gets no second try (ADR 28).
 describe("a sort the model refuses on the last delivery", () => {
   it.each([
     [401, "error"],
@@ -117,9 +118,8 @@ describe("a sort the model refuses on the last delivery", () => {
       new Date(),
     );
     if (posting.kind !== "posted") throw new Error("Not posted.");
-    fakes.model.reply(
-      ...Array.from({ length: sortAttempts }, () => ({ status })),
-    );
+    const tries = level === "error" ? 1 : sortAttempts;
+    fakes.model.reply(...Array.from({ length: tries }, () => ({ status })));
     const capture = captureLogs();
     try {
       expect(await runFor(sub, posting.id, sortDeliveries)).toEqual({

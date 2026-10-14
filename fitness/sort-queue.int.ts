@@ -25,7 +25,7 @@ import { invoke } from "../test/lambda";
 import { captureLogs, type Captured } from "../test/logs";
 import { connect, origin } from "../test/mcp";
 import { noon, startClockAt } from "../test/clock";
-import { setModelCalls } from "../test/model-cap";
+import { modelCallsMade, setModelCalls } from "../test/model-cap";
 
 const endpoint = inject("databaseEndpoint");
 const tableName = inject("tableName");
@@ -296,6 +296,70 @@ describe("fitness: a failed sort never fails the run (sort-queue.md)", () => {
       expect.objectContaining({ id, sort: null }),
     ]);
   });
+});
+
+// OpenRouter answers 401 for a refused key, 402 for spent credit and 404
+// for a withdrawn model. Each would fail every try the same way (ADR 28).
+describe("fitness: a refused key is tried once (sort-queue.md)", () => {
+  let capture: { lines: Captured[]; restore(): void };
+  beforeEach(() => {
+    capture = captureLogs();
+  });
+  afterEach(() => {
+    capture.restore();
+  });
+  const lines = () =>
+    capture.lines.map(({ method, args }) => ({
+      level: method,
+      ...z.record(z.string(), z.unknown()).parse(args[0]),
+    }));
+
+  it.each([401, 402, 404])(
+    "calls the model once for a %i, counts that call, and lets the job go on its first delivery",
+    async (status) => {
+      const sub = newAccount();
+      await saveRead(sub, "#work first.", ["work"]);
+      const id = await post(sub);
+      const reading = fakes.model.calls.length;
+      fakes.model.reply({ status });
+      const answers: unknown[] = [];
+      expect(
+        await fakes.queue.deliver((event) =>
+          sorter(event, { awsRequestId: "sort-1" }).then((answer) => {
+            answers.push(answer);
+            return answer;
+          }),
+        ),
+      ).toBe(1);
+      expect(fakes.queue.waiting()).toBe(0);
+      expect(answers.map((answer) => queueAnswer.parse(answer))).toEqual([
+        { batchItemFailures: [] },
+      ]);
+      expect(fakes.model.calls.length - reading).toBe(1);
+      expect(await modelCallsMade(accountId(sub))).toBe(
+        fakes.model.calls.length,
+      );
+      expect(
+        lines().filter(({ level }) => level === "error" || level === "warn"),
+      ).toEqual([
+        expect.objectContaining({
+          level: "error",
+          event: "request-failed",
+          errorClass: `status-${String(status)}`,
+        }),
+        expect.objectContaining({
+          level: "warn",
+          event: "sort-failed",
+          accountId: sub,
+          askId: id,
+          errorClass: `status-${String(status)}`,
+        }),
+      ]);
+      expect((await listed(sub)).asks).toEqual([
+        expect.objectContaining({ id, sort: null }),
+      ]);
+    },
+  );
 });
 
 describe("fitness: stopped is worked out, not written (sort-queue.md)", () => {
