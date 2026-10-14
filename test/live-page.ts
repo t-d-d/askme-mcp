@@ -2,12 +2,12 @@
 // the browser tier can rehearse them against a faked API (ADR 26).
 import type { Page } from "playwright";
 import { expect } from "vitest";
-import { z } from "zod";
 import {
   askChange,
   askChangePaths,
   pagePaths,
   pollAnswer,
+  refusalAnswer,
   samplesPath,
   type AsksAnswer,
   type PageAsk,
@@ -23,8 +23,6 @@ export interface Waits {
   // From the press until every sample shows as sorted.
   sortMs: number;
 }
-
-const pageRefusal = z.object({ code: z.string(), message: z.string() });
 
 // The newest full answer the page has had to its polls, from the page at
 // origin. An answer that says nothing changed is left out.
@@ -91,7 +89,7 @@ export async function sendSortAndDismiss(
   ]);
   const sortedBy = Date.now() + sortMs;
   if (!sent.ok()) {
-    const refused = pageRefusal.safeParse(
+    const refused = refusalAnswer.safeParse(
       await sent.json().catch(() => undefined),
     );
     throw new Error(
@@ -100,12 +98,17 @@ export async function sendSortAndDismiss(
   }
   const fresh = () =>
     (answer()?.asks ?? []).filter(({ id }) => !before.has(id));
+  // The service answers 204 when it posted any sample, so an area whose
+  // samples were all sent in the last ten minutes shows as fewer here.
   await expect
-    .poll(() => fresh().length, {
-      timeout: stepMs,
-      message: `The list did not show ${String(sampleCount)} new asks after Send sample asks.`,
-    })
-    .toBe(sampleCount);
+    .poll(() => fresh().length, { timeout: stepMs })
+    .toBe(sampleCount)
+    .catch(() => {
+      const seen = fresh().map(({ summary }) => summary);
+      throw new Error(
+        `The list showed ${String(seen.length)} new asks after Send sample asks, not ${String(sampleCount)}: ${seen.join("; ") || "none"}.`,
+      );
+    });
   const posted = fresh();
   const ids = new Set(posted.map(({ id }) => id));
   // What the sorting line counts: an ask with a sortingUntil.
