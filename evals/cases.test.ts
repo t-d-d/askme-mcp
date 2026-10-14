@@ -163,9 +163,13 @@ describe("the timing group", () => {
 const addedLine = (one: RulesCase) =>
   one.rules.text.slice(evalRules.text.length).trim();
 const ownHashtag = (one: RulesCase) => one.rules.hashtags.at(-1) ?? "";
+// A case with no expected sets would pass `every` for both, so it counts as
+// neither.
 const underOwn = (one: RulesCase) =>
+  one.expected.hashtags.length > 0 &&
   one.expected.hashtags.every((set) => set.includes(ownHashtag(one)));
 const underOther = (one: RulesCase) =>
+  one.expected.hashtags.length > 0 &&
   one.expected.hashtags.every((set) => !set.includes(ownHashtag(one)));
 
 describe("the rules group", () => {

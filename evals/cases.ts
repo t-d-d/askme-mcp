@@ -811,7 +811,8 @@ export const cases: EvalCase[] = [
   },
 
   {
-    // Names no cost, so only the rule lifts it.
+    // Names no cost, and reads as a routine question, which the eval's rules
+    // say can wait. As on the live site, the hashtag's rule must lift it.
     name: "a demo trimmed for an app that is top priority",
     group: "rules",
     area: "work",
