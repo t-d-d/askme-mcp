@@ -60,7 +60,9 @@ function outsideSources(csp: string): string[] {
 const protectSources = [
   "script-src https://cdn.protect.clerk.com",
   "script-src https://*.client.protect.clerk.com",
-  "connect-src https://*.client.protect.clerk.com",
+  // Its probe also tries ports other than 443, which a source with no port
+  // does not cover (ADR 32).
+  "connect-src https://*.client.protect.clerk.com:*",
 ];
 
 // Every outside source the policy may name, each in its directive. A pull
