@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { answerRead, reloadOnce, storedMarks, type Marks } from "./reload";
+import {
+  answerRead,
+  heldReloads,
+  reloadOnce,
+  storedMarks,
+  type Marks,
+} from "./reload";
 
 const memory = (): Marks => {
   const held = new Map<string, string>();
@@ -148,5 +154,65 @@ describe("reloading for an answer the page cannot read", () => {
     reloadOnce(blocked, reload, asks);
     answerRead(blocked, asks);
     expect(reloads.count).toBe(0);
+  });
+});
+
+describe("reloading while a screen holds unsaved work", () => {
+  it("reloads at once when nothing holds", () => {
+    const reloads = heldReloads();
+    const { reloads: count, reload } = counting();
+    reloads.reload(reload);
+    reloads.reload(reload);
+    expect(count.count).toBe(2);
+  });
+
+  it("tries once while held, then waits", () => {
+    const reloads = heldReloads();
+    reloads.hold();
+    const { reloads: count, reload } = counting();
+    reloads.reload(reload);
+    reloads.reload(reload);
+    reloads.reload(reload);
+    expect(count.count).toBe(1);
+  });
+
+  it("reloads once when the hold ends after a reload waited", () => {
+    const reloads = heldReloads();
+    const release = reloads.hold();
+    const { reloads: count, reload } = counting();
+    reloads.reload(reload);
+    reloads.reload(reload);
+    release();
+    release();
+    expect(count.count).toBe(2);
+  });
+
+  it("reloads when the hold ends after its one try, as the person stayed", () => {
+    const reloads = heldReloads();
+    const release = reloads.hold();
+    const { reloads: count, reload } = counting();
+    reloads.reload(reload);
+    release();
+    expect(count.count).toBe(2);
+  });
+
+  it("does not reload when the hold ends with nothing waiting", () => {
+    const reloads = heldReloads();
+    const { reloads: count, reload } = counting();
+    reloads.hold()();
+    expect(count.count).toBe(0);
+    reloads.reload(reload);
+    expect(count.count).toBe(1);
+  });
+
+  it("waits while any hold remains", () => {
+    const reloads = heldReloads();
+    const { reloads: count, reload } = counting();
+    reloads.hold();
+    const release = reloads.hold();
+    reloads.reload(reload);
+    release();
+    reloads.reload(reload);
+    expect(count.count).toBe(1);
   });
 });
