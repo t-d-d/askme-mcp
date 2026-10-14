@@ -76,8 +76,8 @@ const resources = () =>
     }),
   ).resources.Resources;
 
-export function distribution() {
-  const found = Object.values(resources()).filter(
+export function distribution(declared = resources()) {
+  const found = Object.values(declared).filter(
     (resource) => resource.Type === "AWS::CloudFront::Distribution",
   );
   if (found.length !== 1) {
@@ -91,10 +91,13 @@ export function distribution() {
 // The policy the page's own behaviour names, as a resource in the file, or
 // undefined when it names none there, such as one of AWS's managed policies.
 export function pagePolicy(): HeadersPolicy | undefined {
+  const declared = resources();
   const named = z
     .object({ Ref: z.string() })
-    .safeParse(distribution().DefaultCacheBehavior.ResponseHeadersPolicyId);
-  const resource = named.success ? resources()[named.data.Ref] : undefined;
+    .safeParse(
+      distribution(declared).DefaultCacheBehavior.ResponseHeadersPolicyId,
+    );
+  const resource = named.success ? declared[named.data.Ref] : undefined;
   return resource?.Type === "AWS::CloudFront::ResponseHeadersPolicy"
     ? policySchema.parse(resource.Properties)
     : undefined;

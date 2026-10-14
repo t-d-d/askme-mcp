@@ -20,12 +20,13 @@ const managedHeaders = {
   "x-xss-protection": "1; mode=block",
 };
 
-// A policy's directives, by name, each with its sources.
+// A policy's directives, by name, each with its sources. A browser ignores
+// a directive's later appearances, so only the first is kept.
 function directives(csp: string): Map<string, string[]> {
   const parsed = new Map<string, string[]>();
   for (const text of csp.split(";")) {
     const [name, ...sources] = text.trim().split(/\s+/u);
-    if (name !== undefined && name !== "") {
+    if (name !== undefined && name !== "" && !parsed.has(name.toLowerCase())) {
       parsed.set(name.toLowerCase(), sources);
     }
   }
@@ -53,6 +54,28 @@ function outsideSources(csp: string): string[] {
   );
 }
 
+// Every outside source the policy may name, each in its directive. A pull
+// request that makes the page reach a new origin adds it here (ADR 28).
+const allowedOutside = [`script-src ${clerkHost}`, `connect-src ${clerkHost}`];
+
+function notListed(csp: string): string[] {
+  return outsideSources(csp).filter((entry) => !allowedOutside.includes(entry));
+}
+
+// Each source that lets in eval anywhere or inline script, in lower case.
+function scriptHoles(csp: string): string[] {
+  return [...directives(csp)].flatMap(([name, sources]) =>
+    sources
+      .map((source) => source.toLowerCase())
+      .filter(
+        (source) =>
+          source === "'unsafe-eval'" ||
+          (source === "'unsafe-inline'" && name.startsWith("script-src")),
+      )
+      .map((source) => `${name} ${source}`),
+  );
+}
+
 const csp = () => pageCsp().value;
 
 describe("fitness: the page's CSP names only Clerk's host (content-security-policy.md)", () => {
@@ -65,11 +88,8 @@ describe("fitness: the page's CSP names only Clerk's host (content-security-poli
   });
 
   it("names no outside origin but Clerk's host, as the deploy reads it from CLERK_ISSUER", () => {
-    const outside = outsideSources(csp());
-    expect(outside.filter((entry) => !entry.endsWith(` ${clerkHost}`))).toEqual(
-      [],
-    );
-    expect(outside).not.toEqual([]);
+    expect(notListed(csp())).toEqual([]);
+    expect(outsideSources(csp())).not.toEqual([]);
   });
 
   it("forbids framing the page, plugins and a changed base address", () => {
@@ -80,12 +100,7 @@ describe("fitness: the page's CSP names only Clerk's host (content-security-poli
   });
 
   it("allows no eval anywhere and no inline script", () => {
-    const parsed = directives(csp());
-    const all = [...parsed.values()]
-      .flat()
-      .map((source) => source.toLowerCase());
-    expect(all).not.toContain("'unsafe-eval'");
-    expect(parsed.get("script-src") ?? []).not.toContain("'unsafe-inline'");
+    expect(scriptHoles(csp())).toEqual([]);
   });
 
   it("tells an outside origin, a wildcard or a misplaced scheme from the page's own sources", () => {
@@ -98,6 +113,32 @@ describe("fitness: the page's CSP names only Clerk's host (content-security-poli
       "script-src *",
       "script-src blob:",
       "connect-src https:",
+    ]);
+  });
+
+  it("reads a repeated directive as the browser does, by its first appearance", () => {
+    expect(
+      outsideSources("script-src *; script-src 'self'; default-src 'self'"),
+    ).toEqual(["script-src *"]);
+  });
+
+  it("flags a listed host in a directive the list does not give it", () => {
+    expect(
+      notListed(
+        `script-src 'self' ${clerkHost}; frame-src ${clerkHost}; connect-src ${clerkHost}`,
+      ),
+    ).toEqual([`frame-src ${clerkHost}`]);
+  });
+
+  it("tells eval or inline script, in any script directive and any case, from the page's own sources", () => {
+    expect(
+      scriptHoles(
+        "script-src 'self'; script-src-elem 'UNSAFE-INLINE'; script-src-attr 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'Unsafe-Eval'",
+      ),
+    ).toEqual([
+      "script-src-elem 'unsafe-inline'",
+      "script-src-attr 'unsafe-inline'",
+      "img-src 'unsafe-eval'",
     ]);
   });
 });

@@ -79,4 +79,5 @@ The first four land with this record. The last lands with the second pull reques
 - The page loads the newest clerk-js 6 from Clerk's host, so Clerk can change the script with no deploy here. Under the enforcing header, a change that needs a new source breaks sign-in until the policy is widened, and the live check only runs on a deploy.
 - In a development instance, clerk-js sends telemetry to `clerk-telemetry.com` from a real person's browser. The policy refuses it, and the request fails quietly. Clerk sends none when the browser is automated, so the live check cannot see it.
 - Nothing reports a violation in a real visitor's browser. The browser tier and the live check are the only places one shows.
+- The checks listen on each page, so they do not hear a violation inside a worker. The one worker today is clerk-js's timer worker, which loads nothing.
 - zod checks the page's API answers without compiled parsers. The answers are small, so the page is no slower in a way anyone would see.

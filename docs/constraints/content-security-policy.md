@@ -53,4 +53,7 @@ Judgment: No test sees what Clerk needs on a path the live check does not
 take, such as a Clerk component in the page, or Clerk's telemetry in a
 real person's browser. Clerk serves the newest clerk-js 6 with no deploy
 here, so a change Clerk makes can need a new source between deploys.
+The checks listen on each page, not in workers, so a pull request that
+adds a worker which loads anything checks those loads against the policy
+by hand.
 History: [ADR 28](../adr/0028-page-csp.md)
