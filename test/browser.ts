@@ -64,6 +64,10 @@ export interface PageOptions {
   motion?: boolean;
   // true leaves sign-in loading, as when Clerk cannot be reached.
   signInStuck?: boolean;
+  // false opens the page without its CSP (ADR 28), for a check of what the
+  // page's own code asks for, which the CSP would refuse before the guard
+  // below sees it.
+  csp?: false;
 }
 
 export class Status {
@@ -264,6 +268,7 @@ export async function openPage(
     viewport,
     reducedMotion: options.motion === true ? "no-preference" : "reduce",
     ...(options.timeZone === undefined ? {} : { timezoneId: options.timeZone }),
+    bypassCSP: options.csp === false,
   });
   const refused: string[] = [];
   await context.route("**/*", async (route) => {

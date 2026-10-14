@@ -229,3 +229,11 @@ describe("fitness: the page keeps the managed security headers (content-security
     });
   });
 });
+
+// Report-only stops nothing, so it was only for the first deploys
+// (ADR 28).
+describe("fitness: the page's CSP is enforced (content-security-policy.md)", () => {
+  it("sends the page's CSP as Content-Security-Policy, not report-only", () => {
+    expect(pageCsp().header).toBe("content-security-policy");
+  });
+});
