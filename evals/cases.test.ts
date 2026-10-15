@@ -135,7 +135,7 @@ describe("the core eval set", () => {
     expect(level("a print about to sell out")).toBe("normal");
   });
 
-  it("marks the five asks the owner accepts as misses, and keeps them in the set", () => {
+  it("marks the six asks the owner accepts as misses, and keeps them in the set", () => {
     const marked = cases
       .filter(({ knownMiss }) => knownMiss !== undefined)
       .map(({ name, knownMiss }) => `${name}, #${String(knownMiss)}`);
@@ -146,6 +146,7 @@ describe("the core eval set", () => {
         "a database migration due before Thursday, #424",
         "a print about to sell out, #424",
         "a major upgrade, #424",
+        "the passkey ask, #438",
       ].sort(),
     );
   });

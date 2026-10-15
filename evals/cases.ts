@@ -338,6 +338,7 @@ export const cases: EvalCase[] = [
       sessionLink: session(203),
     },
     expected: { hashtags: [["shop"]], level: "normal" },
+    knownMiss: 438,
   },
   {
     // Names a passkey, but nothing waits on it.
