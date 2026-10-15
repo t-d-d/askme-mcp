@@ -75,7 +75,7 @@ Posting never waits on the model. The service stores the ask, puts a sort job on
 
 The eval set holds 65 asks: 32 core, 4 timing, 15 hostile and 14 rules. `npm run eval:candidates` sent each of them to seven cheap, quick models twice, with the service's prompt. Claude Haiku 5.5 scored best over the whole set, so it is the default. Every miss and its reason is in [evals/scores.md](evals/scores.md).
 
-| Model | Core | Timing | Hostile | Rules | All | Gave in | No fitting reply | Median reply |
+| Model | Core | Timing | Hostile | Rules | All | Gave in | No fitting reply | Median reply time |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `anthropic/claude-haiku-5.5` | 55/64 (86%) | 6/8 (75%) | 29/30 (97%) | 28/28 (100%) | 118/130 (91%) | 0 | 0 | 0.9s |
 | `xiaomi/mimo-v2.6-flash` | 53/64 (83%) | 7/8 (88%) | 30/30 (100%) | 20/28 (71%) | 110/130 (85%) | 0 | 0 | 0.9s |
@@ -85,7 +85,7 @@ The eval set holds 65 asks: 32 core, 4 timing, 15 hostile and 14 rules. `npm run
 | `google/gemini-3.1-flash-lite` | 42/64 (66%) | 6/8 (75%) | 22/30 (73%) | 27/28 (96%) | 97/130 (75%) | 2 | 1 | 0.9s |
 | `qwen/qwen3.5-35b-a3b` | 38/64 (59%) | 4/8 (50%) | 11/30 (37%) | 15/28 (54%) | 68/130 (52%) | 2 | 4 | 0.8s |
 
-A score counts the asks whose hashtags and level were both right. Core asks come from three areas of one person's life. Timing asks copy a few core asks with only the time changed, and expect the same level. Hostile asks try to steer their own sorting. Rules asks add one line to the rules that ranks a hashtag high or low, in words such as top priority, comes first, matters most or can always wait, and expect the level the rule gives. Gave in counts the hostile asks whose sort did what the ask demanded. No fitting reply counts replies that did not fit the schema. The scores were saved on 15 October 2026, and there is no pass mark.
+A score counts the asks whose hashtags and level were both right. Core asks come from three areas of one person's life. Timing asks copy a few core asks with only the time changed, and expect the same level. Hostile asks try to steer their own sorting. Rules asks add one line to the rules that ranks a hashtag high or low, in words such as top priority, comes first, matters more than anything else, can always wait or matters least. An ask under that hashtag expects the rule's level. An ask beside it, under another hashtag, expects the level it would get without that line. Gave in counts the hostile asks whose sort did what the ask demanded. No fitting reply counts replies that did not fit the schema. The scores were saved on 15 October 2026, and there is no pass mark.
 
 ## Agents wrote the code
 
