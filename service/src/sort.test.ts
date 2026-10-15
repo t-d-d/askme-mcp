@@ -4,6 +4,7 @@ import {
   followUpForLongReason,
   levels,
   parseSortReply,
+  rankingWords,
   reasonAsked,
   reasonLimit,
   sortingPrompt,
@@ -170,6 +171,18 @@ describe("the sorting prompt", () => {
     expect(levelLine(system, "low")).toBe(
       "low: never acting would leave nobody worse off in a way they would notice: any answer, or none, would do. So is any ask under a hashtag the rules call low priority, even if never acting would cost something, since the person's rules put it there.",
     );
+  });
+
+  // The eval's check of rules in a person's own words reads the same list
+  // (#439).
+  it("ranks a hashtag high or low in the words of one list", () => {
+    const { system } = sortingPrompt(rules, ask);
+    for (const level of ["high", "low"] as const) {
+      expect(rankingWords[level].length, level).toBeGreaterThan(0);
+      for (const words of rankingWords[level]) {
+        expect(levelLine(system, level), level).toContain(words);
+      }
+    }
   });
 
   it("asks for a shorter reason than the limit, since the model runs past what it is asked", () => {

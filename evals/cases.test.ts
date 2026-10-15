@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { askTool } from "../service/src/ask";
 import { parseReading } from "../service/src/rules";
+import { rankingWords } from "../service/src/sort";
 import {
   attackKinds,
   cases,
@@ -256,15 +257,15 @@ describe("the rules group", () => {
   });
 
   // People write their rules in their own words, so a rule that ranks a
-  // hashtag works whatever words it uses.
-  it.each([
-    ["high", /top priority|most important/iu],
-    ["low", /low priority/iu],
-  ] as const)(
+  // hashtag works whatever words it uses. The prompt's words come from the
+  // prompt's own list (#439).
+  it.each(["high", "low"] as const)(
     "ranks a hashtag %s in at least two lines that do not use the sorting prompt's words for it",
-    (rank, words) => {
+    (rank) => {
+      const promptWords = (line: string) =>
+        rankingWords[rank].some((words) => line.toLowerCase().includes(words));
       const inOwnWords = lines.filter(
-        (line) => !words.test(line) && ownLevels(line)[0] === rank,
+        (line) => !promptWords(line) && ownLevels(line)[0] === rank,
       );
       expect(inOwnWords.length).toBeGreaterThanOrEqual(2);
     },

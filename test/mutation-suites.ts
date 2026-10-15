@@ -19,6 +19,12 @@ export const suites: Record<string, Suite> = {
     mutate: ["service/src/view.ts"],
     tests: ["service/src/view.test.ts", "service/src/sorter.test.ts"],
   },
+  sortingPrompt: {
+    about:
+      "The sorting prompt, the check on the model's reply and the follow-up for a long reason, against their unit tests and the eval set's check of rules in the person's own words.",
+    mutate: ["service/src/sort.ts"],
+    tests: ["service/src/sort.test.ts", "evals/cases.test.ts"],
+  },
   sorter: {
     about:
       "How a job sorts one ask: whether it is already sorted with the rules in force, the tries, the daily cap and what goes back to the queue, against its unit tests, the sort queue's fitness test, which runs the handler, and the handler's own test of the services it keeps between runs.",
