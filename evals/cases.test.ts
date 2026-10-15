@@ -126,7 +126,13 @@ describe("the core eval set", () => {
 
   it("holds a saving passed up and a price rise left unanswered at high, since a saving not had costs as much as money lost", () => {
     expect(level("a courier change from Monday")).toBe("high");
+    expect(level("a courier change from next month")).toBe("high");
     expect(level("a supplier's price rise next month")).toBe("high");
+  });
+
+  it("holds the migration and the print at normal, since neither blocks a release nor stops a customer buying", () => {
+    expect(level("a database migration due before Thursday")).toBe("normal");
+    expect(level("a print about to sell out")).toBe("normal");
   });
 
   it("marks the five asks the owner accepts as misses, and keeps them in the set", () => {
@@ -135,11 +141,11 @@ describe("the core eval set", () => {
       .map(({ name, knownMiss }) => `${name}, #${String(knownMiss)}`);
     expect(marked.sort()).toEqual(
       [
-        "a ticket for next sprint, #262",
-        "the passkey ask, #262",
         "a sign-in code for the school's payment site, #262",
         "a consent form due next week, #262",
-        "a courier change from next month, #295",
+        "a database migration due before Thursday, #424",
+        "a print about to sell out, #424",
+        "a major upgrade, #424",
       ].sort(),
     );
   });

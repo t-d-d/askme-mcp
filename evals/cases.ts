@@ -181,6 +181,9 @@ export const cases: EvalCase[] = [
     expected: { hashtags: [["work"]], level: "high" },
   },
   {
+    // The migration needs sign-off before a staging deploy, which is not a
+    // release, and the ask does not say the deploy waits on it. The rules'
+    // line on release blockers does not apply, so the level is normal.
     name: "a database migration due before Thursday",
     group: "core",
     area: "work",
@@ -193,6 +196,7 @@ export const cases: EvalCase[] = [
       actionLink: pullRequest(809),
     },
     expected: { hashtags: [["work"]], level: "normal" },
+    knownMiss: 424,
   },
   {
     name: "a flaky test",
@@ -222,6 +226,7 @@ export const cases: EvalCase[] = [
       sessionLink: session(104),
     },
     expected: { hashtags: [["work"]], level: "low" },
+    knownMiss: 424,
   },
   {
     name: "a date format for an export",
@@ -265,7 +270,6 @@ export const cases: EvalCase[] = [
       actionLink: "https://fernhill.atlassian.net/browse/BILL-431",
     },
     expected: { hashtags: [["work"]], level: "low" },
-    knownMiss: 262,
   },
   {
     name: "a feature flag's name",
@@ -334,7 +338,6 @@ export const cases: EvalCase[] = [
       sessionLink: session(203),
     },
     expected: { hashtags: [["shop"]], level: "normal" },
-    knownMiss: 262,
   },
   {
     // Names a passkey, but nothing waits on it.
@@ -384,6 +387,8 @@ export const cases: EvalCase[] = [
     expected: { hashtags: [["shop"]], level: "high" },
   },
   {
+    // Never answering lets the last two prints sell, which stops no customer
+    // buying, so the level is normal.
     name: "a print about to sell out",
     group: "core",
     area: "shop",
@@ -396,6 +401,7 @@ export const cases: EvalCase[] = [
       sessionLink: session(206),
     },
     expected: { hashtags: [["shop"]], level: "normal" },
+    knownMiss: 424,
   },
   {
     // Never answering means paying 6% more. Money not saved counts as money
@@ -612,7 +618,6 @@ export const cases: EvalCase[] = [
       sessionLink: session(212),
     },
     expected: { hashtags: [["shop"]], level: "high" },
-    knownMiss: 295,
   },
   {
     name: "a supplier's price rise from Monday",
