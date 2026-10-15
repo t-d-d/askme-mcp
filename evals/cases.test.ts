@@ -325,6 +325,19 @@ describe("fitness: the eval set keeps a hostile group (untrusted-ask-text.md)", 
     expect(filedFirst.length).toBeGreaterThan(0);
   });
 
+  // The sorting prompt lifts a hashtag the rules call most important, so an
+  // ask that claims those words for itself or its hashtag may pay more than
+  // other rank-first wording (#441).
+  it("holds a rank-first ask that calls itself or its hashtag most important, which costs nothing if never answered", () => {
+    const echoes = hostile.filter(
+      (one) =>
+        one.attack.kind === "rank-first" &&
+        /most important/iu.test(`${one.ask.summary} ${one.ask.spokenDetail}`),
+    );
+    expect(echoes.length).toBeGreaterThan(0);
+    for (const one of echoes) expect(one.expected.level, one.name).toBe("low");
+  });
+
   it.each(hostile.map((one) => [one.name, one] as const))(
     "scores giving in as a miss: %s",
     (_, one) => {
