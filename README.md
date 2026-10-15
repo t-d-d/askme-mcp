@@ -73,19 +73,19 @@ Posting never waits on the model. The service stores the ask, puts a sort job on
 
 ### Why Claude Haiku 5.5
 
-The eval set holds 54 asks: 32 core, 4 timing, 12 hostile and 6 rules. `npm run eval:candidates` sent each of them to seven cheap, quick models twice, with the service's prompt. Claude Haiku 5.5 scored best over the whole set, so it is the default. Every miss and its reason is in [evals/scores.md](evals/scores.md).
+The eval set holds 65 asks: 32 core, 4 timing, 15 hostile and 14 rules. `npm run eval:candidates` sent each of them to seven cheap, quick models twice, with the service's prompt. Claude Haiku 5.5 scored best over the whole set, so it is the default. Every miss and its reason is in [evals/scores.md](evals/scores.md).
 
 | Model | Core | Timing | Hostile | Rules | All | Gave in | No fitting reply | Median reply |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `anthropic/claude-haiku-5.5` | 58/64 (91%) | 6/8 (75%) | 24/24 (100%) | 12/12 (100%) | 100/108 (93%) | 0 | 0 | 0.9s |
-| `xiaomi/mimo-v2.6-flash` | 53/64 (83%) | 6/8 (75%) | 24/24 (100%) | 11/12 (92%) | 94/108 (87%) | 0 | 0 | 1.0s |
-| `google/gemma-4-31b-it` | 47/64 (73%) | 6/8 (75%) | 22/24 (92%) | 12/12 (100%) | 87/108 (81%) | 0 | 0 | 1.0s |
-| `mistralai/mistral-large-4-0` | 50/64 (78%) | 6/8 (75%) | 20/24 (83%) | 10/12 (83%) | 86/108 (80%) | 0 | 0 | 1.8s |
-| `deepseek/deepseek-v4.1-flash` | 46/64 (72%) | 6/8 (75%) | 21/24 (88%) | 12/12 (100%) | 85/108 (79%) | 0 | 0 | 0.7s |
-| `google/gemini-3.1-flash-lite` | 43/64 (67%) | 6/8 (75%) | 20/24 (83%) | 11/12 (92%) | 80/108 (74%) | 1 | 0 | 1.0s |
-| `qwen/qwen3.5-35b-a3b` | 38/64 (59%) | 4/8 (50%) | 10/24 (42%) | 10/12 (83%) | 62/108 (57%) | 4 | 4 | 1.1s |
+| `anthropic/claude-haiku-5.5` | 55/64 (86%) | 6/8 (75%) | 29/30 (97%) | 28/28 (100%) | 118/130 (91%) | 0 | 0 | 0.9s |
+| `xiaomi/mimo-v2.6-flash` | 53/64 (83%) | 7/8 (88%) | 30/30 (100%) | 20/28 (71%) | 110/130 (85%) | 0 | 0 | 0.9s |
+| `google/gemma-4-31b-it` | 49/64 (77%) | 6/8 (75%) | 28/30 (93%) | 24/28 (86%) | 107/130 (82%) | 0 | 0 | 2.0s |
+| `deepseek/deepseek-v4.1-flash` | 45/64 (70%) | 6/8 (75%) | 28/30 (93%) | 26/28 (93%) | 105/130 (81%) | 0 | 0 | 0.7s |
+| `mistralai/mistral-large-4-0` | 48/64 (75%) | 5/8 (63%) | 25/30 (83%) | 22/28 (79%) | 100/130 (77%) | 0 | 0 | 1.5s |
+| `google/gemini-3.1-flash-lite` | 42/64 (66%) | 6/8 (75%) | 22/30 (73%) | 27/28 (96%) | 97/130 (75%) | 2 | 1 | 0.9s |
+| `qwen/qwen3.5-35b-a3b` | 38/64 (59%) | 4/8 (50%) | 11/30 (37%) | 15/28 (54%) | 68/130 (52%) | 2 | 4 | 0.8s |
 
-A score counts the asks whose hashtags and level were both right. Core asks come from three areas of one person's life. Timing asks copy a few core asks with only the time changed, and expect the same level. Hostile asks try to steer their own sorting. Rules asks add one line to the rules that calls a hashtag top or low priority, and expect the level the rule gives. Gave in counts the hostile asks whose sort did what the ask demanded. No fitting reply counts replies that did not fit the schema. The scores were saved on 14 October 2026, and there is no pass mark.
+A score counts the asks whose hashtags and level were both right. Core asks come from three areas of one person's life. Timing asks copy a few core asks with only the time changed, and expect the same level. Hostile asks try to steer their own sorting. Rules asks add one line to the rules that ranks a hashtag high or low, in words such as top priority, comes first, matters most or can always wait, and expect the level the rule gives. Gave in counts the hostile asks whose sort did what the ask demanded. No fitting reply counts replies that did not fit the schema. The scores were saved on 15 October 2026, and there is no pass mark.
 
 ## Agents wrote the code
 
