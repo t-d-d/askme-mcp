@@ -174,14 +174,15 @@ describe("the sorting prompt", () => {
   });
 
   // The eval's check of rules in a person's own words reads the same list
-  // (#439).
-  it("ranks a hashtag high or low in the words of one list", () => {
+  // (#439). A word in the line but not the list, or in the list but not the
+  // line, fails here as well as in the whole-line tests above.
+  it("ranks a hashtag high or low in the words of one list, and no others", () => {
     const { system } = sortingPrompt(rules, ask);
     for (const level of ["high", "low"] as const) {
       expect(rankingWords[level].length, level).toBeGreaterThan(0);
-      for (const words of rankingWords[level]) {
-        expect(levelLine(system, level), level).toContain(words);
-      }
+      expect(levelLine(system, level), level).toContain(
+        ` the rules call ${rankingWords[level].join(" or ")}, even if `,
+      );
     }
   });
 

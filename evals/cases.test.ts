@@ -196,6 +196,12 @@ const underOwn = (one: OwnRules) =>
 const underOther = (one: OwnRules) =>
   one.expected.hashtags.length > 0 &&
   one.expected.hashtags.every((set) => !set.includes(ownHashtag(one)));
+// Whether a line ranks a hashtag in the sorting prompt's own words for a
+// level. The prompt's words come from the prompt's own list (#439).
+const inPromptWords = (rank: keyof typeof rankingWords, line: string) =>
+  rankingWords[rank].some((words) =>
+    line.toLowerCase().includes(words.toLowerCase()),
+  );
 
 describe("the rules group", () => {
   it("adds one line to the eval's rules in each ask with rules of its own, naming one hashtag of its own", () => {
@@ -222,18 +228,18 @@ describe("the rules group", () => {
   });
 
   // Each of these asks names no cost, so only the rule lifts it.
-  it("holds asks under a hashtag the rules call top priority at high", () => {
+  it("holds asks under a hashtag the rules rank high in the sorting prompt's words at high", () => {
     const top = ruled.filter(
-      (one) => /top priority/u.test(addedLine(one)) && underOwn(one),
+      (one) => inPromptWords("high", addedLine(one)) && underOwn(one),
     );
     expect(top.length).toBeGreaterThanOrEqual(2);
     for (const one of top) expect(one.expected.level, one.name).toBe("high");
   });
 
   // Each of these asks names a cost, so only the rule sinks it.
-  it("holds asks under a hashtag the rules call low priority at low", () => {
+  it("holds asks under a hashtag the rules rank low in the sorting prompt's words at low", () => {
     const bottom = ruled.filter(
-      (one) => /low priority/u.test(addedLine(one)) && underOwn(one),
+      (one) => inPromptWords("low", addedLine(one)) && underOwn(one),
     );
     expect(bottom.length).toBeGreaterThanOrEqual(2);
     for (const one of bottom) expect(one.expected.level, one.name).toBe("low");
@@ -257,15 +263,12 @@ describe("the rules group", () => {
   });
 
   // People write their rules in their own words, so a rule that ranks a
-  // hashtag works whatever words it uses. The prompt's words come from the
-  // prompt's own list (#439).
+  // hashtag works whatever words it uses.
   it.each(["high", "low"] as const)(
     "ranks a hashtag %s in at least two lines that do not use the sorting prompt's words for it",
     (rank) => {
-      const promptWords = (line: string) =>
-        rankingWords[rank].some((words) => line.toLowerCase().includes(words));
       const inOwnWords = lines.filter(
-        (line) => !promptWords(line) && ownLevels(line)[0] === rank,
+        (line) => !inPromptWords(rank, line) && ownLevels(line)[0] === rank,
       );
       expect(inOwnWords.length).toBeGreaterThanOrEqual(2);
     },
