@@ -103,12 +103,35 @@ const clubLast = withLine(
   "club",
 );
 
+// Rank a hashtag in the owner's own words, not the sorting prompt's.
+const tidepoolComesFirst = withLine(
+  "#tidepool is the tide times app I'm building with two friends. It comes first, ahead of everything else.",
+  "tidepool",
+);
+
+const thesisMattersMost = withLine(
+  "#thesis is the master's dissertation I'm writing. It matters more to me than anything else here.",
+  "thesis",
+);
+
+const clubCanWait = withLine(
+  "#club is the cycling club I help run. It's only a hobby, so it can always wait.",
+  "club",
+);
+
+const choirMattersLeast = withLine(
+  "#choir is the community choir I sing in. Of everything here, it matters least.",
+  "choir",
+);
+
 const work = "Fernhill billing service";
 const shop = "The print shop";
 const family = "Home and family";
 
 const tidepool = "Tidepool app";
 const club = "Harbourside cycling club";
+const thesis = "Master's dissertation";
+const choir = "Riverside community choir";
 
 const pullRequest = (n: number) =>
   `https://github.com/fernhill/billing/pull/${String(n)}`;
@@ -921,5 +944,127 @@ export const cases: EvalCase[] = [
       sessionLink: session(504),
     },
     expected: { hashtags: [["shop"]], level: "high" },
+  },
+  {
+    // Names no cost, and reads as a choice of style, which the eval's rules
+    // say can wait. Only the rule lifts it.
+    name: "an app icon for an app that comes first",
+    group: "rules",
+    area: "work",
+    rules: tidepoolComesFirst,
+    ask: {
+      summary: "Use the wave or the moon as Tidepool's app store icon?",
+      area: tidepool,
+      spokenDetail:
+        "Tidepool's app store listing needs an icon. I've drawn two, a wave and a crescent moon. Which one should I use?",
+      sessionLink: session(505),
+    },
+    expected: { hashtags: [["tidepool"]], level: "high" },
+  },
+  {
+    name: "a log line's wording beside an app that comes first",
+    group: "rules",
+    area: "work",
+    rules: tidepoolComesFirst,
+    ask: {
+      summary: "Should the payment retry log say 'retrying' or 'trying again'?",
+      area: work,
+      spokenDetail:
+        "The billing worker logs a line each time it retries a payment. Should it say retrying, or trying again? I've left it as it is for now.",
+      sessionLink: session(506),
+    },
+    expected: { hashtags: [["work"]], level: "low" },
+  },
+  {
+    // Names no cost, and reads as a choice of style. Only the rule lifts it.
+    name: "a citation style for a dissertation that matters most",
+    group: "rules",
+    area: "work",
+    rules: thesisMattersMost,
+    ask: {
+      summary:
+        "Footnotes, or one reference list at the end, for the dissertation's citations?",
+      area: thesis,
+      spokenDetail:
+        "The dissertation's citations can go in footnotes on each page, or in one reference list at the end. The university allows either. Which would you like?",
+      sessionLink: session(507),
+    },
+    expected: { hashtags: [["thesis"]], level: "high" },
+  },
+  {
+    name: "a card colour beside a dissertation that matters most",
+    group: "rules",
+    area: "shop",
+    rules: thesisMattersMost,
+    ask: {
+      summary: "Print the shop's thank-you cards on cream or white card?",
+      area: shop,
+      spokenDetail:
+        "The next batch of thank-you cards for parcels is ready to order. Cream card, or white? Both cost the same.",
+      sessionLink: session(508),
+    },
+    expected: { hashtags: [["shop"]], level: "low" },
+  },
+  {
+    // Names a cost, so only the rule sinks it.
+    name: "a ride's insurance, for a hobby that can always wait",
+    group: "rules",
+    area: "family",
+    rules: clubCanWait,
+    ask: {
+      summary:
+        "Renew the club's ride insurance? Sunday's ride can't go ahead without it.",
+      area: club,
+      spokenDetail:
+        "The cycling club's ride insurance has run out. Without it, Sunday's ride can't go ahead, and twenty riders have signed up. Renewing costs forty pounds from the club's account. Shall I renew it?",
+      sessionLink: session(509),
+    },
+    expected: { hashtags: [["club"]], level: "low" },
+  },
+  {
+    name: "a double charge beside a hobby that can always wait",
+    group: "rules",
+    area: "shop",
+    rules: clubCanWait,
+    ask: {
+      summary:
+        "A customer was charged twice for order 1051. Refund the second £32?",
+      area: shop,
+      spokenDetail:
+        "Tom Reid was charged twice for order 1051, thirty two pounds each time, and has emailed asking for his money back. Shall I refund the second charge?",
+      sessionLink: session(510),
+    },
+    expected: { hashtags: [["shop"]], level: "high" },
+  },
+  {
+    // Names a cost, so only the rule sinks it.
+    name: "sheet music for a choir that matters least",
+    group: "rules",
+    area: "family",
+    rules: choirMattersLeast,
+    ask: {
+      summary:
+        "Order the sheet music? The choir can't rehearse for the concert without it.",
+      area: choir,
+      spokenDetail:
+        "The choir needs thirty copies of the music for the spring concert, and it can't start rehearsing until they arrive. They cost ninety pounds. Shall I order them?",
+      sessionLink: session(511),
+    },
+    expected: { hashtags: [["choir"]], level: "low" },
+  },
+  {
+    name: "a broken boiler beside a choir that matters least",
+    group: "rules",
+    area: "family",
+    rules: choirMattersLeast,
+    ask: {
+      summary:
+        "The boiler has stopped and there's no hot water. Book an engineer for today?",
+      area: family,
+      spokenDetail:
+        "The boiler stopped this morning, so the house has no heating or hot water. An engineer can come at three this afternoon for ninety five pounds. Shall I book it?",
+      sessionLink: session(512),
+    },
+    expected: { hashtags: [["family"]], level: "high" },
   },
 ];
