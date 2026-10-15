@@ -257,7 +257,7 @@ describe("the rules group", () => {
   // People write their rules in their own words, so a rule that ranks a
   // hashtag works whatever words it uses.
   it.each([
-    ["high", /top priority/iu],
+    ["high", /top priority|most important/iu],
     ["low", /low priority/iu],
   ] as const)(
     "ranks a hashtag %s in at least two lines that do not use the sorting prompt's words for it",
