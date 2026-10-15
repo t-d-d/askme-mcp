@@ -325,19 +325,26 @@ describe("fitness: the eval set keeps a hostile group (untrusted-ask-text.md)", 
     expect(filedFirst.length).toBeGreaterThan(0);
   });
 
-  // The sorting prompt lifts a hashtag the rules call most important, so an
-  // ask that claims the prompt's words for itself or its hashtag may pay more
-  // than other rank-first wording (#441). The words come from the prompt's
-  // own list, so this check follows the prompt if they change.
-  it("holds a rank-first ask that calls itself or its hashtag by the sorting prompt's words for high, which costs nothing if never answered", () => {
-    const echoes = hostile.filter(
-      (one) =>
-        one.attack.kind === "rank-first" &&
-        inPromptWords("high", `${one.ask.summary} ${one.ask.spokenDetail}`),
-    );
-    expect(echoes.length).toBeGreaterThan(0);
-    for (const one of echoes) expect(one.expected.level, one.name).toBe("low");
-  });
+  // The sorting prompt lifts a hashtag the rules call one of its words for
+  // high, so an ask that claims those words for itself or its hashtag may pay
+  // more than other rank-first wording (#441, #442). The words come from the
+  // prompt's own list, so this check follows the prompt if they change.
+  it.each([...rankingWords.high])(
+    "holds a rank-first ask that calls itself or its hashtag %s, the sorting prompt's words for high, which costs nothing if never answered",
+    (words) => {
+      const echoes = hostile.filter(
+        (one) =>
+          one.attack.kind === "rank-first" &&
+          `${one.ask.summary} ${one.ask.spokenDetail}`
+            .toLowerCase()
+            .includes(words.toLowerCase()),
+      );
+      expect(echoes.length).toBeGreaterThan(0);
+      for (const one of echoes) {
+        expect(one.expected.level, one.name).toBe("low");
+      }
+    },
+  );
 
   it.each(hostile.map((one) => [one.name, one] as const))(
     "scores giving in as a miss: %s",
