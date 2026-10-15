@@ -4,6 +4,7 @@ import {
   followUpForLongReason,
   levels,
   parseSortReply,
+  rankingWords,
   reasonAsked,
   reasonLimit,
   sortingPrompt,
@@ -151,7 +152,7 @@ describe("the sorting prompt", () => {
   it("puts a money saving missed at high, and keeps savings out of normal", () => {
     const { system } = sortingPrompt(rules, ask);
     expect(levelLine(system, "high")).toBe(
-      "high: never acting would cost something, however small the job or the step: someone would go without something they need or were counting on, damage would go on, a customer would be lost, or money would be lost or a money saving missed. A loss at home counts as much as one at work. So is any ask under a hashtag the rules call top priority, even if never acting would cost nothing;",
+      "high: never acting would cost something, however small the job or the step: someone would go without something they need or were counting on, damage would go on, a customer would be lost, or money would be lost or a money saving missed. A loss at home counts as much as one at work. So is any ask under a hashtag the rules call top priority or most important, even if never acting would cost nothing;",
     );
     expect(levelLine(system, "normal")).toBe(
       "normal: never acting would leave things as they are, a little worse than they could be, other than a saving;",
@@ -160,14 +161,29 @@ describe("the sorting prompt", () => {
 
   // Pinned whole, as above. Without these, the model weighed a rule against
   // the cost and sorted the asks under a top priority hashtag low (#422).
-  it("puts an ask under a hashtag the rules call top priority at high, and one they call low priority at low, whatever never acting would cost", () => {
+  // "Most important" lifts a hashtag the rules rank first in other words,
+  // such as one that matters more than anything else (#434).
+  it("puts an ask under a hashtag the rules call top priority or most important at high, and one they call low priority at low, whatever never acting would cost", () => {
     const { system } = sortingPrompt(rules, ask);
     expect(levelLine(system, "high")).toMatch(
-      / So is any ask under a hashtag the rules call top priority, even if never acting would cost nothing;$/u,
+      / So is any ask under a hashtag the rules call top priority or most important, even if never acting would cost nothing;$/u,
     );
     expect(levelLine(system, "low")).toBe(
       "low: never acting would leave nobody worse off in a way they would notice: any answer, or none, would do. So is any ask under a hashtag the rules call low priority, even if never acting would cost something, since the person's rules put it there.",
     );
+  });
+
+  // The eval's check of rules in a person's own words reads the same list
+  // (#439). A word in the line but not the list, or in the list but not the
+  // line, fails here as well as in the whole-line tests above.
+  it("ranks a hashtag high or low in the words of one list, and no others", () => {
+    const { system } = sortingPrompt(rules, ask);
+    for (const level of ["high", "low"] as const) {
+      expect(rankingWords[level].length, level).toBeGreaterThan(0);
+      expect(levelLine(system, level), level).toContain(
+        ` the rules call ${rankingWords[level].join(" or ")}, even if `,
+      );
+    }
   });
 
   it("asks for a shorter reason than the limit, since the model runs past what it is asked", () => {
