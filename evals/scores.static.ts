@@ -52,10 +52,12 @@ describe("the README's eval section", () => {
   });
 
   it("gives the number of asks in the eval set, and in each group", () => {
-    const [, total, groups = ""] =
-      /^The eval set holds (\d+) asks: ([^.]+)\./mu.exec(readme) ?? [];
+    const sentence = /^The eval set holds (\d+) asks: ([^.]+)\./mu.exec(readme);
+    expect(sentence).not.toBeNull();
+    const [, total, groups = ""] = sentence ?? [];
+    const parts = groups.split(/,? and |, /u);
     const stated = Object.fromEntries(
-      groups.split(/, | and /u).map((part) => {
+      parts.map((part) => {
         const [, count, group] = /^(\d+) (\w+)$/u.exec(part) ?? [];
         return [group ?? part, Number(count)];
       }),
@@ -63,6 +65,8 @@ describe("the README's eval section", () => {
     const inSet: Record<string, number> = {};
     for (const { group } of cases) inSet[group] = (inSet[group] ?? 0) + 1;
     expect(Number(total)).toBe(cases.length);
+    // A group named twice would otherwise count only once.
+    expect(Object.keys(stated)).toHaveLength(parts.length);
     expect(stated).toEqual(inSet);
   });
 });
