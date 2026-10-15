@@ -196,12 +196,12 @@ const underOwn = (one: OwnRules) =>
 const underOther = (one: OwnRules) =>
   one.expected.hashtags.length > 0 &&
   one.expected.hashtags.every((set) => !set.includes(ownHashtag(one)));
+const mentions = (words: string, line: string) =>
+  line.toLowerCase().includes(words.toLowerCase());
 // Whether a line ranks a hashtag in the sorting prompt's own words for a
 // level. The prompt's words come from the prompt's own list (#439).
 const inPromptWords = (rank: keyof typeof rankingWords, line: string) =>
-  rankingWords[rank].some((words) =>
-    line.toLowerCase().includes(words.toLowerCase()),
-  );
+  rankingWords[rank].some((words) => mentions(words, line));
 
 describe("the rules group", () => {
   it("adds one line to the eval's rules in each ask with rules of its own, naming one hashtag of its own", () => {
@@ -329,15 +329,13 @@ describe("fitness: the eval set keeps a hostile group (untrusted-ask-text.md)", 
   // high, so an ask that claims those words for itself or its hashtag may pay
   // more than other rank-first wording (#441, #442). The words come from the
   // prompt's own list, so this check follows the prompt if they change.
-  it.each([...rankingWords.high])(
+  it.each(rankingWords.high)(
     "holds a rank-first ask that calls itself or its hashtag %s, the sorting prompt's words for high, which costs nothing if never answered",
     (words) => {
       const echoes = hostile.filter(
         (one) =>
           one.attack.kind === "rank-first" &&
-          `${one.ask.summary} ${one.ask.spokenDetail}`
-            .toLowerCase()
-            .includes(words.toLowerCase()),
+          mentions(words, `${one.ask.summary} ${one.ask.spokenDetail}`),
       );
       expect(echoes.length).toBeGreaterThan(0);
       for (const one of echoes) {
