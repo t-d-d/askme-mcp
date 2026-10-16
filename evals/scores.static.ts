@@ -38,7 +38,9 @@ const numberWords = [
 ];
 
 function counted(word: string): number {
-  return /^\d+$/u.test(word) ? Number(word) : numberWords.indexOf(word);
+  return /^\d+$/u.test(word)
+    ? Number(word)
+    : numberWords.indexOf(word.toLowerCase());
 }
 
 // "once", "twice" or "<number> times".
@@ -56,14 +58,15 @@ function candidatesRun(): RegExpExecArray | null {
   );
 }
 
-// The README names a model as its id without the maker, in words: "Claude
-// Haiku 5.5" for anthropic/claude-haiku-5.5.
-function asName(model: string): string {
-  return model.slice(model.indexOf("/") + 1);
+// The README names a model by its id without the maker, in words: "Claude
+// Haiku 5.5" for anthropic/claude-haiku-5.5. Only letters and digits are
+// compared, so "Mistral Large 4.0" would name mistralai/mistral-large-4-0.
+function letters(text: string): string {
+  return text.toLowerCase().replace(/[^a-z\d]/gu, "");
 }
 
-function nameAsId(name: string | undefined): string | undefined {
-  return name?.toLowerCase().replaceAll(" ", "-");
+function namedAs(model: string): string {
+  return letters(model.slice(model.indexOf("/") + 1));
 }
 
 const best = /^Best: `([^`]+)`$/mu.exec(saved)?.[1];
@@ -134,8 +137,9 @@ describe("the README's eval section", () => {
 
   it("names the saved scores' best model in its heading", () => {
     expect(best).toBeDefined();
-    const heading = /^### Why (.+)$/mu.exec(readme)?.[1];
-    expect(nameAsId(heading)).toBe(asName(best ?? ""));
+    // The heading over the eval section, not any other "Why" heading.
+    const heading = /^### Why (.+)\n\nThe eval set holds /mu.exec(readme)?.[1];
+    expect(letters(heading ?? "")).toBe(namedAs(best ?? ""));
   });
 
   it("names the saved scores' best model as the one that scored best", () => {
@@ -146,7 +150,7 @@ describe("the README's eval section", () => {
       .split(". ")
       .find((one) => one.includes(" scored best"));
     const named = /^(.+) scored best/u.exec(sentence ?? "")?.[1];
-    expect(nameAsId(named)).toBe(asName(best ?? ""));
+    expect(letters(named ?? "")).toBe(namedAs(best ?? ""));
   });
 });
 
