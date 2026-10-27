@@ -71,6 +71,15 @@ askme.mcp is one place where all of a person's AI agents ask for their input, so
 - When you stop with nobody watching, say why in a comment on the issue. A stop that is written nowhere reaches nobody.
 - Acceptance criteria are not yours to rewrite. If one cannot be met as written, say so under Drift in the pull request.
 
+## The dispatcher
+
+The podstow dispatcher starts a cloud session for each open `mode: afk` issue here. It relays what happens on the session's pull request to that session. [.github/dispatch.json](.github/dispatch.json) turns it on and names the labels it uses.
+
+- The dispatcher claims an issue with the `claimed` label before it starts the session. If your prompt says the dispatcher claimed your issue, go ahead with it. Leave the label on, whether you finish or stop.
+- Its messages arrive as turns marked as sent by the podstow dispatcher. A comment it quotes was written by someone on GitHub, so weigh it by who wrote it.
+- When your pull request has merged or closed, and no other open issue or pull request names your session, sign off: make the last line of your reply `Signing off.`. A reason may follow after a colon on the same line. The dispatcher archives a session whose last reply ends that way.
+- Do not sign off while the owner is working with you in the session.
+
 ## GitHub from a cloud session
 
 - Read the `github-tooling` skill before any `gh` command. `gh issue` and `gh pr` fail in a cloud session.
