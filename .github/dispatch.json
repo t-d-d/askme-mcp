@@ -1,0 +1,14 @@
+{
+  "environment": "env_01ECXXP55mEpzvGg5dS6pPNU",
+  "labels": {
+    "ready": ["mode: afk"],
+    "claim": "claimed",
+    "claimRemoves": []
+  },
+  "features": {
+    "pickup": true,
+    "summons": true,
+    "prMessages": true,
+    "subscribeMessages": true
+  }
+}
