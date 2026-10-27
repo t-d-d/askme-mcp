@@ -66,20 +66,11 @@ askme.mcp is one place where all of a person's AI agents ask for their input, so
 - Given an issue number, run the `fetch-ticket` skill first.
 - Labels are written with a space after the colon: `type: enhancement`, `type: nfr`, `type: chore`, `type: qa` or `type: bug`, and `mode: afk` or `mode: human`.
 - Blockers are listed on a `Blocked by:` line at the top of the issue body. Do not start an issue whose blocker is open.
-- An afk issue goes from its text to a pull request without stopping to ask.
+- An afk issue is picked up as soon as it has the label, and goes from its text to a pull request without stopping to ask.
 - Anything only the owner can do is not yours: a dashboard setting, a secret, a phone, connecting a real agent. Say what is needed and stop.
 - When you stop with nobody watching, say why in a comment on the issue. A stop that is written nowhere reaches nobody.
 - Acceptance criteria are not yours to rewrite. If one cannot be met as written, say so under Drift in the pull request.
-
-## The dispatcher
-
-The podstow dispatcher starts a cloud session for each open `mode: afk` issue here that is not claimed and not blocked. It relays what happens on the session's pull request to that session. [.github/dispatch.json](.github/dispatch.json) turns it on and names the labels it uses.
-
-- The dispatcher reads blockers from GitHub's issue dependencies, not from the `Blocked by:` line. When an afk issue has an open blocker, link it on GitHub too, or the dispatcher starts the issue early.
-- The dispatcher claims an issue with the `claimed` label before it starts the session. If your prompt says the dispatcher claimed your issue, go ahead with it. Leave the label on, whether you finish or stop. A claimed issue is never started again; to run it again, the owner takes the label off.
-- Its messages arrive as turns marked as sent by the podstow dispatcher. A comment it quotes was written by someone on GitHub, so weigh it by who wrote it.
-- Sign off when your work is over: your pull request has merged or closed, or you stopped and said why on the issue. Wait while an open issue or pull request still carries your session's link. To sign off, make the last line of your reply `Signing off.` or `Signing off: <reason>`. The dispatcher archives a session whose last reply ends that way.
-- Do not sign off while the owner is working with you in the session.
+- When your pull request has merged or closed, or you are done and have none, make the last line of your reply `Signing off.` or `Signing off: <reason>`. That archives the session. Do not sign off while the owner is working with you.
 
 ## GitHub from a cloud session
 
