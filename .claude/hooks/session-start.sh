@@ -26,7 +26,7 @@ fi
 # file. Its first line names the profiles.
 if [ -n "${ACCESS_URL:-}" ]; then
   mkdir -p ~/.aws
-  if err=$(curl -fsS "${ACCESS_URL%/}/config?region=${AWS_REGION:-us-east-1}" 2>&1 > ~/.aws/config.part); then
+  if err=$(curl -fsS --max-time 20 "${ACCESS_URL%/}/config?region=${AWS_REGION:-us-east-1}" 2>&1 > ~/.aws/config.part); then
     mv ~/.aws/config.part ~/.aws/config
     head -1 ~/.aws/config
   else
