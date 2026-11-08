@@ -20,3 +20,17 @@ if [ -f package-lock.json ]; then
     echo "$LOCK_SHA" > "$SENTINEL"
   fi
 fi
+
+# Only the cloud environment sets ACCESS_URL. The endpoint answers with the
+# whole ~/.aws/config, a profile for each AWS account, so it replaces the
+# file. Its first line names the profiles.
+if [ -n "${ACCESS_URL:-}" ]; then
+  mkdir -p ~/.aws
+  if err=$(curl -fsS --max-time 20 "${ACCESS_URL%/}/config?region=${AWS_REGION:-us-east-1}" 2>&1 > ~/.aws/config.part); then
+    mv ~/.aws/config.part ~/.aws/config
+    head -1 ~/.aws/config
+  else
+    rm -f ~/.aws/config.part
+    echo "# access: the AWS profiles could not be fetched (${err%%$'\n'*})"
+  fi
+fi

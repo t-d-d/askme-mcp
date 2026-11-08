@@ -75,7 +75,10 @@ askme.mcp is one place where all of a person's AI agents ask for their input, so
 ## GitHub from a cloud session
 
 - Read the `github-tooling` skill before any `gh` command. `gh issue` and `gh pr` fail in a cloud session.
-- A session has no cloud credentials and cannot read the repo's secrets or variables. Code refers to them by the names the issue gives. If a task needs a value, stop and say so.
+- A cloud session reads the live account with `aws --profile askme`. The session start hook prints every profile it wrote.
+- It may read logs, metrics, alarms and how resources stand. It cannot read a secret, a Parameter Store value or stored data. If a task needs one, it stops and says so.
+- It still cannot read the repo's secrets or variables. Code refers to them by the names the issue gives.
+- It never copies an account id or an ARN from AWS output into GitHub.
 
 ## The page
 
